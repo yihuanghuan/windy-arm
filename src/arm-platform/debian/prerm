@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+if command -v systemctl >/dev/null 2>&1; then
+    if [ "${1:-}" = "remove" ]; then
+        systemctl stop robot.service || true
+        systemctl disable robot.service || true
+    else
+        systemctl stop robot.service || true
+    fi
+fi
+
+exit 0

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="ll100_lh420_nmpc">
+  <!-- Lightweight kinematic model for LL100-LH420 arm NMPC.
+       The full visual model remains config/ll100_lh420.urdf. -->
+  <link name="base_link" />
+  <link name="arm_base_Link" />
+  <link name="A_Link" />
+  <link name="B_Link" />
+  <link name="C_Link" />
+  <link name="D_Link" />
+  <link name="E_Link" />
+  <link name="F_Link" />
+
+  <joint name="arm_base_Joint" type="fixed">
+    <origin xyz="0.4159 -0.015325 -0.030127" rpy="1.5708 0.0021304 1.5359" />
+    <parent link="base_link" />
+    <child link="arm_base_Link" />
+  </joint>
+
+  <joint name="A_Joint" type="revolute">
+    <origin xyz="0 0 0.05225" rpy="0 0 0" />
+    <parent link="arm_base_Link" />
+    <child link="A_Link" />
+    <axis xyz="0 0 1" />
+    <limit lower="-4.0" upper="4.0" effort="0" velocity="0" />
+  </joint>
+
+  <joint name="B_Joint" type="revolute">
+    <origin xyz="0.028863 0.064129 0.052036" rpy="1.5708 1.5702 1.5729" />
+    <parent link="A_Link" />
+    <child link="B_Link" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.1415" upper="2.0" effort="0" velocity="0" />
+  </joint>
+
+  <joint name="C_Joint" type="revolute">
+    <origin xyz="0.00014704 0.24873 -0.04605" rpy="3.1416 0 3.1416" />
+    <parent link="B_Link" />
+    <child link="C_Link" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.5708" upper="1.5708" effort="0" velocity="0" />
+  </joint>
+
+  <joint name="D_Joint" type="revolute">
+    <origin xyz="0.0084627 0.063019 -0.019" rpy="-1.5708 1.5687 -1.5702" />
+    <parent link="C_Link" />
+    <child link="D_Link" />
+    <axis xyz="0 0 -1" />
+    <limit lower="-4.0" upper="4.0" effort="0" velocity="0" />
+  </joint>
+
+  <joint name="E_Joint" type="revolute">
+    <origin xyz="-4.2609E-05 0.02 0.1565" rpy="-1.5708 -1.5691 0.0021304" />
+    <parent link="D_Link" />
+    <child link="E_Link" />
+    <axis xyz="0 0 -1" />
+    <limit lower="-2.0" upper="2.0" effort="0" velocity="0" />
+  </joint>
+
+  <joint name="F_Joint" type="revolute">
+    <origin xyz="0.0775 -0.00012788 -0.0215" rpy="1.5708 0.3459 1.5691" />
+    <parent link="E_Link" />
+    <child link="F_Link" />
+    <axis xyz="0 0 -1" />
+    <limit lower="-4.0" upper="4.0" effort="0" velocity="0" />
+  </joint>
+</robot>

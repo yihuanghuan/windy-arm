@@ -1,0 +1,71 @@
+FROM docker.1ms.run/library/ros:humble
+
+LABEL maintainer="Benjamin Chen"
+LABEL description="Minimal Docker image for quick compilation verification of manipulator package"
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ROS_DISTRO=humble
+
+# Install minimal build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    rsync \
+    bash \
+    coreutils \
+    dpkg-dev \
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    libeigen3-dev \
+    libserial-dev \
+    libboost-all-dev \
+    libglew-dev \
+    libomp-dev \
+    libgl1-mesa-dev \
+    libglu1-mesa-dev \
+    qtbase5-dev \
+    libqt5opengl5-dev \
+    liburdfdom-headers-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y ros-humble-pinocchio
+
+WORKDIR /tmp
+# Clone serial package dependency to workspace
+RUN git config --global http.version HTTP/1.1 && \
+    for attempt in 1 2 3; do \
+      git clone --depth 1 https://github.com/ZhaoXiangBox/serial.git && break; \
+      rm -rf serial; \
+      echo "serial clone failed, retry ${attempt}/3"; \
+      sleep 5; \
+    done && \
+    test -d serial/.git
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && cd serial && mkdir build && cd build && cmake .. && make && make install"
+
+# Create workspace directory
+WORKDIR /ros_ws/src
+
+# Copy manipulator package to workspace (excluding dummy-interface)
+
+# Clone dummy-interface package dependency to workspace
+RUN git clone http://10.0.2.66:8000/aerial_manipulator_hub/interface/dummy-interface.git
+COPY . /ros_ws/src/arm-platform
+# Install ROS dependencies using rosdep
+RUN cd /ros_ws && \
+    rosdep update && \
+    rosdep install --from-paths src --ignore-src -r -y || true
+
+# Build workspace - only build required packages
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && cd /ros_ws && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release"
+
+# Verify build success
+RUN ls -la /ros_ws/build/manipulator/ && \
+    ls -la /ros_ws/install/manipulator/lib/manipulator/
+
+# Set up the environment
+RUN echo "source /ros_ws/install/setup.bash" >> ~/.bashrc
+
+# Default command - verify build
+CMD ["bash", "-c", "source /ros_ws/install/setup.bash && echo 'Build successful!' && ls -la /ros_ws/install/manipulator/lib/manipulator/"]

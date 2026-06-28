@@ -1,0 +1,82 @@
+stages:
+  - package
+  - release
+
+variables:
+  DEB_PACKAGE_NAME: windshape-robot-interfaces
+  ROS_PACKAGE_NAME: dummy_interface
+  DEFAULT_PACKAGE_VERSION: "0.1.0"
+  PACKAGE_ARCH: arm64
+  ROS_DISTRO: humble
+  DEBIAN_FRONTEND: noninteractive
+
+package-deb:
+  stage: package
+  image: manipulator:verify
+  tags:
+    - interface
+  script:
+    - |
+      if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        export PACKAGE_VERSION="${CI_COMMIT_TAG#v}"
+      else
+        export PACKAGE_VERSION="${DEFAULT_PACKAGE_VERSION}"
+      fi
+      export DEB_FILE="${DEB_PACKAGE_NAME}_${PACKAGE_VERSION}_${PACKAGE_ARCH}.deb"
+      echo "PACKAGE_VERSION=${PACKAGE_VERSION}" > build.env
+      echo "DEB_FILE=${DEB_FILE}" >> build.env
+    - bash -n scripts/package_deb.sh
+    - PACKAGE_VERSION=${PACKAGE_VERSION} PACKAGE_ARCH=${PACKAGE_ARCH} DEB_PACKAGE_NAME=${DEB_PACKAGE_NAME} ./scripts/package_deb.sh
+    - dpkg-deb --info dist/${DEB_FILE}
+    - dpkg-deb --contents dist/${DEB_FILE}
+  artifacts:
+    name: "${DEB_PACKAGE_NAME}-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - dist/*.deb
+      - dist/*.sha256
+    reports:
+      dotenv: build.env
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_TAG
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  tags:
+    - hotspot
+  needs:
+    - job: package-deb
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_TAG
+  before_script:
+    - |
+      if ! command -v release-cli >/dev/null 2>&1; then
+        echo "ERROR: release-cli is not installed on this shell runner."
+        echo "Install it on the runner host, for example: sudo install -m 0755 release-cli /usr/local/bin/release-cli"
+        exit 1
+      fi
+  script:
+    - release-cli --version
+    - echo "Creating release ${CI_COMMIT_TAG}"
+  release:
+    tag_name: "$CI_COMMIT_TAG"
+    name: "Windshape Robot Interfaces ${CI_COMMIT_TAG}"
+    description: |
+      ## Windshape Robot Interfaces ${CI_COMMIT_TAG}
+
+      ROS 2 interface message package for Windshape robot components.
+
+      ### Install
+
+      ```bash
+      sudo dpkg -i dist/${DEB_FILE}
+      ```
+    assets:
+      links:
+        - name: "${DEB_FILE}"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/${DEB_FILE}?job=package-deb"
+        - name: "${DEB_FILE}.sha256"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/${DEB_FILE}.sha256?job=package-deb"

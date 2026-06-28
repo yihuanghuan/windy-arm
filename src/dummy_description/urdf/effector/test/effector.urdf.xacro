@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <link
+    name="link6">
+    <inertial>
+      <origin
+        xyz="-0.024394 4.6432E-05 -0.00010323"
+        rpy="0 0 0" />
+      <mass
+        value="0.023056" />
+      <inertia
+        ixx="7.9374E-06"
+        ixy="-1.9777E-08"
+        ixz="4.884E-08"
+        iyy="4.8157E-06"
+        iyz="-4.2131E-09"
+        izz="4.8109E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link6.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link6.STL" />
+      </geometry>
+    </collision>
+  </link>
+</robot>

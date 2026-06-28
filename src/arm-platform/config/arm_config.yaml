@@ -1,0 +1,39 @@
+arms:
+  a_l1_gamma:
+    joints:
+      - name: "joint1"
+        model: "DM4340-48V"
+        id: 0
+        lower_limit: -4
+        upper_limit: 4
+      - name: "joint2"
+        model: "DM4340-48V"
+        id: 1
+        lower_limit: -3.1415
+        upper_limit: 2
+      - name: "joint3"
+        model: "DM4340-48V"
+        id: 2
+        lower_limit: -1.5708
+        upper_limit: 1.5708
+      - name: "joint4"
+        model: "RS05"
+        id: 3
+        coord_system: "left_hand"
+        lower_limit: -4
+        upper_limit: 4
+      - name: "joint5"
+        model: "RS05"
+        id: 4
+        lower_limit: -2
+        upper_limit: 2
+      - name: "joint6"
+        model: "RS05"
+        id: 5
+        lower_limit: -4
+        upper_limit: 4
+      - name: "joint7"
+        model: "RS05"
+        id: 6
+        lower_limit: -4
+        upper_limit: 4

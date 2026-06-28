@@ -1,0 +1,6 @@
+camera:
+  ip: "192.168.50.179"
+  port: 5600
+  device: "/dev/video0"
+  framerate: 30
+  bitrate: 4000000

@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <link
+    name="uav_link">
+    <inertial>
+      <origin
+        xyz="-0.0 -0.033264 0.0027752"
+        rpy="0 0 0" />
+      <mass
+        value="4.0979" />
+      <inertia
+        ixx="0.0086617"
+        ixy="5.5626E-05"
+        ixz="-8.6324E-05"
+        iyy="0.03101"
+        iyz="-9.9467E-06"
+        izz="0.027718" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="1.57 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/lift/L-H20/uav_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="1.57 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/lift/L-H8/uav_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+</robot>

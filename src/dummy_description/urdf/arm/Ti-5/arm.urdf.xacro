@@ -1,0 +1,410 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+    Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+    For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="ti5_description">
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="-2.55125090697262E-05 -2.99887234698574E-05 0.0567822085308678"
+        rpy="0 0 0" />
+      <mass
+        value="0.479859182745506" />
+      <inertia
+        ixx="0.000368236673685098"
+        ixy="1.44950782865597E-07"
+        ixz="7.30775878924278E-08"
+        iyy="0.000368682282310476"
+        iyz="-5.31409945922349E-07"
+        izz="0.000288202070030983" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="link1">
+    <inertial>
+      <origin
+        xyz="-8.78811301809214E-07 -0.0303758942389149 0.0317917979822358"
+        rpy="0 0 0" />
+      <mass
+        value="0.179619223671153" />
+      <inertia
+        ixx="0.000203833527450302"
+        ixy="-9.63866472638573E-09"
+        ixz="-2.0191954667839E-08"
+        iyy="0.000154611695826463"
+        iyz="5.0032257174032E-05"
+        izz="0.000200287305283539" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/A.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/A.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint1"
+    type="revolute">
+    <origin
+      xyz="0 0 0.095"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="link1" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link2">
+    <inertial>
+      <origin
+        xyz="-6.10147446306823E-07 -0.00859004707353009 0.102270929184009"
+        rpy="0 0 0" />
+      <mass
+        value="0.241766740141488" />
+      <inertia
+        ixx="0.0013463411852497"
+        ixy="1.70364473595434E-09"
+        ixz="1.91056066696219E-08"
+        iyy="0.00137447888503465"
+        iyz="-0.000111817096603996"
+        izz="0.000134066003087332" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/B.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/B.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint2"
+    type="revolute">
+    <origin
+      xyz="0 -0.0755 0.04"
+      rpy="0 0 0" />
+    <parent
+      link="link1" />
+    <child
+      link="link2" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-4.62"
+      upper="1.48"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link3">
+    <inertial>
+      <origin
+        xyz="-2.14028914647843E-06 0.0282803031488427 0.0268702514994258"
+        rpy="0 0 0" />
+      <mass
+        value="0.092096460958198" />
+      <inertia
+        ixx="8.03092124245838E-05"
+        ixy="9.60109411600156E-09"
+        ixz="-4.40049981751701E-09"
+        iyy="7.53660012500824E-05"
+        iyz="-2.09608920176471E-05"
+        izz="5.5778799394098E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/C.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/C.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint3"
+    type="revolute">
+    <origin
+      xyz="0 0.0405 0.19"
+      rpy="0 0 0" />
+    <parent
+      link="link2" />
+    <child
+      link="link3" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-2.62"
+      upper="2.62"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link4">
+    <inertial>
+      <origin
+        xyz="-5.96940844193466E-06 -0.0436556294928417 0.0478240088287697"
+        rpy="0 0 0" />
+      <mass
+        value="0.241827211119189" />
+      <inertia
+        ixx="0.0006420880539358"
+        ixy="-5.04625492974642E-09"
+        ixz="-1.85896527075764E-09"
+        iyy="0.000479097731222028"
+        iyz="0.000214763134184144"
+        izz="0.000280538676674426" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/D.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/D.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint4"
+    type="revolute">
+    <origin
+      xyz="0 0.035 0.077363"
+      rpy="0 0 0" />
+    <parent
+      link="link3" />
+    <child
+      link="link4" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link5">
+    <inertial>
+      <origin
+        xyz="-2.15405061232623E-06 0.0188393864241793 0.0268702473671192"
+        rpy="0 0 0" />
+      <mass
+        value="0.092096513463176" />
+      <inertia
+        ixx="8.03092496848824E-05"
+        ixy="9.61916448944496E-09"
+        ixz="-4.42822975241067E-09"
+        iyy="7.53660543564142E-05"
+        iyz="-2.0960876457579E-05"
+        izz="5.57788388645427E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/E.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/E.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint5"
+    type="revolute">
+    <origin
+      xyz="0 -0.025559 0.11264"
+      rpy="0 0 0" />
+    <parent
+      link="link4" />
+    <child
+      link="link5" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-3.05"
+      upper="3.05"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <!-- <link
+    name="link6">
+    <inertial>
+      <origin
+        xyz="0.000103904776369602 2.09270309463943E-05 -0.0345572505126092"
+        rpy="0 0 0" />
+      <mass
+        value="0.257695087370306" />
+      <inertia
+        ixx="3.5736938862393E-05"
+        ixy="8.0553291943802E-08"
+        ixz="7.38612955693032E-08"
+        iyy="3.53817385899582E-05"
+        iyz="2.21487603727035E-08"
+        izz="4.59519713621109E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/F.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.776470588235294 0.756862745098039 0.737254901960784 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/Ti-5/F.STL" />
+      </geometry>
+    </collision>
+  </link> -->
+
+  <link name="virtual_effector"/>
+
+  <joint
+    name="joint6"
+    type="revolute">
+    <origin
+      xyz="0 0.025559 0.0685"
+      rpy="0 0 0" />
+    <parent
+      link="link5" />
+    <child
+      link="virtual_effector" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.05"
+      upper="3.05"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <!-- <link name="tool0">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.1"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="F_to_tool0" type="fixed">
+    <parent link="F"/>
+    <child link="tool0"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint> -->
+</robot>

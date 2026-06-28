@@ -1,0 +1,630 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="ll100_lh420">
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="-0.0035513 0.0013 -0.050331"
+        rpy="0 0 0" />
+      <mass
+        value="8.057" />
+      <inertia
+        ixx="0.078395"
+        ixy="0"
+        ixz="0"
+        iyy="0.422973"
+        iyz="0"
+        izz="0.493568" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="rot1_Link">
+    <inertial>
+      <origin
+        xyz="0.0052133 0.00055592 -0.044441"
+        rpy="0 0 0" />
+      <mass
+        value="0.471" />
+      <inertia
+        ixx="2.787E-04"
+        ixy="0"
+        ixz="0"
+        iyy="1.872E-04"
+        iyz="0"
+        izz="1.874E-04" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/rot1_Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/rot1_Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rot1_Joint"
+    type="continuous">
+    <origin
+      xyz="0.29254 -0.40851 -0.058329"
+      rpy="0 0 -0.034907" />
+    <parent
+      link="base_link" />
+    <child
+      link="rot1_Link" />
+    <axis
+      xyz="0 0 -1" />
+  </joint>
+  <link
+    name="rot2_Link">
+    <inertial>
+      <origin
+        xyz="-0.00055256 -0.00036989 -0.04471"
+        rpy="0 0 0" />
+      <mass
+        value="0.471" />
+      <inertia
+        ixx="2.787E-04"
+        ixy="0"
+        ixz="0"
+        iyy="1.872E-04"
+        iyz="0"
+        izz="1.874E-04" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/rot2_Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/rot2_Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rot2_Joint"
+    type="continuous">
+    <origin
+      xyz="-0.27747 0.4055 -0.058247"
+      rpy="0.038594 0.0021601 1.48" />
+    <parent
+      link="base_link" />
+    <child
+      link="rot2_Link" />
+    <axis
+      xyz="0 0 -1" />
+  </joint>
+  <link
+    name="rot3_Link">
+    <inertial>
+      <origin
+        xyz="0.00023425 -3.3312E-06 -0.04471"
+        rpy="0 0 0" />
+      <mass
+        value="0.471" />
+      <inertia
+        ixx="2.787E-04"
+        ixy="0"
+        ixz="0"
+        iyy="1.872E-04"
+        iyz="0"
+        izz="1.874E-04" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/rot3_Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/rot3_Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rot3_Joint"
+    type="continuous">
+    <origin
+      xyz="0.32013 0.38551 -0.058348"
+      rpy="0.13586 -0.002121 -1.5902" />
+    <parent
+      link="base_link" />
+    <child
+      link="rot3_Link" />
+    <axis
+      xyz="0 0 -1" />
+  </joint>
+  <link
+    name="rot4_Link">
+    <inertial>
+      <origin
+        xyz="0.00037994 3.5059E-05 -0.045023"
+        rpy="0 0 0" />
+      <mass
+        value="0.471" />
+      <inertia
+        ixx="2.787E-04"
+        ixy="0"
+        ixz="0"
+        iyy="1.872E-04"
+        iyz="0"
+        izz="1.874E-04" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/rot4_Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/rot4_Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rot4_Joint"
+    type="continuous">
+    <origin
+      xyz="-0.30506 -0.38852 -0.058253"
+      rpy="0.050542 0.0021537 1.4933" />
+    <parent
+      link="base_link" />
+    <child
+      link="rot4_Link" />
+    <axis
+      xyz="0 0 -1" />
+  </joint>
+  <link
+    name="arm_base_Link">
+    <inertial>
+      <origin
+        xyz="-3.1975E-09 3.8507E-09 0.025297"
+        rpy="0 0 0" />
+      <mass
+        value="0.361" />
+      <inertia
+        ixx="0.00014566"
+        ixy="0"
+        ixz="0"
+        iyy="0.00015872"
+        iyz="0"
+        izz="0.00015872" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/arm_base_Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/arm_base_Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="arm_base_Joint"
+    type="fixed">
+    <origin
+      xyz="0.4159 -0.015325 -0.030127"
+      rpy="1.5708 0.0021304 1.5359" />
+    <parent
+      link="base_link" />
+    <child
+      link="arm_base_Link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="A_Link">
+    <inertial>
+      <origin
+        xyz="0.012857 0.027376 0.019773"
+        rpy="0 0 0" />
+      <mass
+        value="0.482" />
+      <inertia
+        ixx="0.00048916"
+        ixy="0"
+        ixz="0"
+        iyy="0.00049299"
+        iyz="0"
+        izz="0.0003462" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/A_Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/A_Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="A_Joint"
+    type="continuous">
+    <origin
+      xyz="0 0 0.05225"
+      rpy="0 0 0" />
+    <parent
+      link="arm_base_Link" />
+    <child
+      link="A_Link" />
+    <axis
+      xyz="0 0 1" />
+  </joint>
+  <link
+    name="B_Link">
+    <inertial>
+      <origin
+        xyz="6.9577E-05 0.11764 -0.019542"
+        rpy="0 0 0" />
+      <mass
+        value="0.481" />
+      <inertia
+        ixx="0.0015459"
+        ixy="0"
+        ixz="0"
+        iyy="0.0025514"
+        iyz="0"
+        izz="0.0012874" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/B_Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/B_Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="B_Joint"
+    type="continuous">
+    <origin
+      xyz="0.028863 0.064129 0.052036"
+      rpy="1.5708 1.5702 1.5729" />
+    <parent
+      link="A_Link" />
+    <child
+      link="B_Link" />
+    <axis
+      xyz="0 0 1" />
+  </joint>
+  <link
+    name="C_Link">
+    <inertial>
+      <origin
+        xyz="-0.0022436 0.032052 -0.017344"
+        rpy="0 0 0" />
+      <mass
+        value="0.239" />
+      <inertia
+        ixx="0.00014499"
+        ixy="0"
+        ixz="0"
+        iyy="0.0001552"
+        iyz="0"
+        izz="0.00010724" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/C_Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/C_Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="C_Joint"
+    type="continuous">
+    <origin
+      xyz="0.00014704 0.24873 -0.04605"
+      rpy="3.1416 0 3.1416" />
+    <parent
+      link="B_Link" />
+    <child
+      link="C_Link" />
+    <axis
+      xyz="0 0 1" />
+  </joint>
+  <link
+    name="D_Link">
+    <inertial>
+      <origin
+        xyz="2.838E-05 0.004264 0.11822"
+        rpy="0 0 0" />
+      <mass
+        value="0.262" />
+      <inertia
+        ixx="0.00010245"
+        ixy="0"
+        ixz="0"
+        iyy="0.00052076"
+        iyz="0"
+        izz="0.0005369" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/D_Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/D_Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="D_Joint"
+    type="continuous">
+    <origin
+      xyz="0.0084627 0.063019 -0.019"
+      rpy="-1.5708 1.5687 -1.5702" />
+    <parent
+      link="C_Link" />
+    <child
+      link="D_Link" />
+    <axis
+      xyz="0 0 -1" />
+  </joint>
+  <link
+    name="E_Link">
+    <inertial>
+      <origin
+        xyz="0.053657 -2.4202E-05 -0.012209"
+        rpy="0 0 0" />
+      <mass
+        value="0.042397" />
+      <inertia
+        ixx="6.544e-05"
+        ixy="0"
+        ixz="0"
+        iyy="5.714e-05"
+        iyz="0"
+        izz="2.005e-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/E_Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/E_Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="E_Joint"
+    type="continuous">
+    <origin
+      xyz="-4.2609E-05 0.02 0.1565"
+      rpy="-1.5708 -1.5691 0.0021304" />
+    <parent
+      link="D_Link" />
+    <child
+      link="E_Link" />
+    <axis
+      xyz="0 0 -1" />
+  </joint>
+  <link
+    name="F_Link">
+    <inertial>
+      <origin
+        xyz="-1.2677E-10 -3.4411E-10 -0.0012723"
+        rpy="0 0 0" />
+      <mass
+        value="0.192" />
+      <inertia
+        ixx="8.297e-05"
+        ixy="0"
+        ixz="0"
+        iyy="8.274e-05"
+        iyz="0"
+        izz="6.854e-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/F_Link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://manipulator/meshes/ll100_lh420/F_Link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="F_Joint"
+    type="continuous">
+    <origin
+      xyz="0.0775 -0.00012788 -0.0215"
+      rpy="1.5708 0.3459 1.5691" />
+    <parent
+      link="E_Link" />
+    <child
+      link="F_Link" />
+    <axis
+      xyz="0 0 -1" />
+  </joint>
+</robot>

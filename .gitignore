@@ -1,0 +1,15 @@
+build/
+install/
+log/
+dist/
+
+__pycache__/
+*.py[cod]
+*.o
+*.a
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.colcon/

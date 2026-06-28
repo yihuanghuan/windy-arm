@@ -1,0 +1,21 @@
+[Unit]
+Description=Windshape Robot System
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=windshape
+WorkingDirectory=/opt/windshape/manipulator
+Environment=HOME=/home/windshape
+Environment=RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+Environment=CYCLONEDDS_URI=file:///home/windshape/.ros/cyclonedds.xml
+ExecStart=/opt/windshape/manipulator/install/manipulator/share/manipulator/start.sh
+ExecStop=/opt/windshape/manipulator/install/manipulator/share/manipulator/stop.sh
+Restart=on-failure
+RestartSec=3
+KillMode=control-group
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

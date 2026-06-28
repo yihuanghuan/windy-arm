@@ -1,0 +1,30 @@
+dist
+build/
+install/
+log/
+__pycache__/
+*.py[cod]
+
+# Python / plotting outputs
+demo/__pycache__/
+launch/__pycache__/
+demo/data/*.csv
+demo/data/*.png
+demo/data/*.npy
+demo/data/*.npz
+
+# ACADOS generated solvers and local caches
+acados_ocp*.json
+c_generated_code/
+demo/c_generated_code/
+demo/acados_ocp*.json
+windylab_acados*/
+windylab_acados_bench*/
+
+# Local editor/system files
+.cache/
+.pytest_cache/
+.vscode/
+.idea/
+*.swp
+*~

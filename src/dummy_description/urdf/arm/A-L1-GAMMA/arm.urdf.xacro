@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="0.025701 5.0471E-18 1.8724E-17"
+        rpy="0 0 0" />
+      <mass
+        value="0.361" />
+      <inertia
+        ixx="0.00013128"
+        ixy="-9.8948E-21"
+        ixz="-1.4612E-21"
+        iyy="0.0001261"
+        iyz="8.4933E-21"
+        izz="0.0001261" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="link1">
+    <inertial>
+      <origin
+        xyz="0.03356 0.0084188 0.049178"
+        rpy="0 0 0" />
+      <mass
+        value="0.471" />
+      <inertia
+        ixx="0.00017444"
+        ixy="-1.9181E-06"
+        ixz="-1.3887E-05"
+        iyy="0.0001772"
+        iyz="-3.8449E-06"
+        izz="0.0001465" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link1.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.89804 0.91765 0.92941 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link1.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint1"
+    type="revolute">
+    <origin
+      xyz="0.0613 0 0"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="link1" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link2">
+    <inertial>
+      <origin
+        xyz="2.6368E-16 -0.012392 0.17249"
+        rpy="0 0 0" />
+      <mass
+        value="0.429" />
+      <inertia
+        ixx="0.0010287"
+        ixy="-1.3972E-20"
+        ixz="3.8782E-19"
+        iyy="0.0010584"
+        iyz="-3.9081E-08"
+        izz="5.6591E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link2.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.89804 0.91765 0.92941 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link2.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint2"
+    type="revolute">
+    <origin
+      xyz="0.042986 0.03395 0.064067"
+      rpy="0 0 0" />
+    <parent
+      link="link1" />
+    <child
+      link="link2" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link3">
+    <inertial>
+      <origin
+        xyz="0.00017294 0.021038 0.033489"
+        rpy="0 0 0" />
+      <mass
+        value="0.238" />
+      <inertia
+        ixx="3.4086E-05"
+        ixy="-2.0284E-07"
+        ixz="-1.895E-06"
+        iyy="2.6983E-05"
+        iyz="-1.4595E-07"
+        izz="2.098E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link3.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link3.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint3"
+    type="revolute">
+    <origin
+      xyz="0 -0.057 0.24873"
+      rpy="0 0 0" />
+    <parent
+      link="link2" />
+    <child
+      link="link3" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link4">
+    <inertial>
+      <origin
+        xyz="0.1005 2.5613E-05 0.0067766"
+        rpy="0 0 0" />
+      <mass
+        value="0.252" />
+      <inertia
+        ixx="1.7227E-05"
+        ixy="-4.213E-09"
+        ixz="-3.0057E-06"
+        iyy="6.0252E-05"
+        iyz="-6.9996E-08"
+        izz="6.852E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link4.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.89804 0.91765 0.92941 0.25" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link4.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint4"
+    type="revolute">
+    <origin
+      xyz="0.015 0.025 0.063014"
+      rpy="0 0 0" />
+    <parent
+      link="link3" />
+    <child
+      link="link4" />
+    <axis
+      xyz="1 0 0" />
+      <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="link5">
+    <inertial>
+      <origin
+        xyz="0.051595 -1.6142E-06 -0.014791"
+        rpy="0 0 0" />
+      <mass
+        value="0.238" />
+      <inertia
+        ixx="1.1912E-05"
+        ixy="-1.0649E-09"
+        ixz="6.8642E-09"
+        iyy="2.7295E-05"
+        iyz="-2.3545E-12"
+        izz="2.7133E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link5.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.69804 0.69804 0.69804 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://dummy_description/meshes/arm/A-L1-GAMMA/Link5.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint5"
+    type="revolute">
+    <origin
+      xyz="0.15 0 0.0335"
+      rpy="0 0 0" />
+    <parent
+      link="link4" />
+    <child
+      link="link5" />
+    <axis
+      xyz="0 0 1" />
+      <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link name="virtual_effector"/>
+
+  <joint
+    name="joint6"
+    type="revolute">
+    <origin
+      xyz="0.084 0 -0.035"
+      rpy="0 0 0" />
+    <parent
+      link="link5" />
+    <child
+      link="virtual_effector" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-3.15"
+      upper="3.15"
+      effort="0"
+      velocity="0" />
+  </joint>
+</robot>

@@ -1,0 +1,21 @@
+motor_models:
+  DM4340-48V:
+    type: "mit"
+    max_torque: 27.0
+    rated_torque: 9.0
+    max_velocity: 3.0
+    p_gain_default: 30.0
+    d_gain_default: 1.5
+    coord_system: "right_hand"
+
+
+  # ROBSTRIDE05
+  RS05:
+    type: "mit"
+    max_torque: 5.5
+    rated_torque: 1.6
+    max_velocity: 5.0
+    p_gain_default: 5
+    d_gain_default: 1
+    coord_system: "left_hand"
+  
