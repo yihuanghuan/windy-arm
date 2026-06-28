@@ -41,6 +41,42 @@ def generate_launch_description():
         description='Max joint velocity (rad/s) safety limit for students'
     )
 
+    enable_velocity_feedforward_arg = DeclareLaunchArgument(
+        'enable_velocity_feedforward',
+        default_value='false',
+        description='Enable velocity feedforward plus position feedback tracking'
+    )
+
+    velocity_feedforward_gain_arg = DeclareLaunchArgument(
+        'velocity_feedforward_gain',
+        default_value='0.7',
+        description='Joint velocity feedforward gain'
+    )
+
+    position_feedback_tau_arg = DeclareLaunchArgument(
+        'position_feedback_tau',
+        default_value='0.15',
+        description='Position feedback time constant (s) for velocity feedforward mode'
+    )
+
+    feedback_velocity_limit_arg = DeclareLaunchArgument(
+        'feedback_velocity_limit',
+        default_value='0.4',
+        description='Position feedback velocity clamp (rad/s)'
+    )
+
+    enable_acceleration_limit_arg = DeclareLaunchArgument(
+        'enable_acceleration_limit',
+        default_value='true',
+        description='Enable velocity command acceleration limiting'
+    )
+
+    max_acceleration_arg = DeclareLaunchArgument(
+        'max_acceleration',
+        default_value='5.0',
+        description='Velocity command acceleration limit (rad/s^2)'
+    )
+
     use_rviz_arg = DeclareLaunchArgument(
         'use_rviz',
         default_value='True',
@@ -62,6 +98,12 @@ def generate_launch_description():
             {'motor_config_path': motor_config_path},
             {'arm_config_path': arm_config_path},
             {'max_velocity': LaunchConfiguration('max_velocity')},
+            {'enable_velocity_feedforward': LaunchConfiguration('enable_velocity_feedforward')},
+            {'velocity_feedforward_gain': LaunchConfiguration('velocity_feedforward_gain')},
+            {'position_feedback_tau': LaunchConfiguration('position_feedback_tau')},
+            {'feedback_velocity_limit': LaunchConfiguration('feedback_velocity_limit')},
+            {'enable_acceleration_limit': LaunchConfiguration('enable_acceleration_limit')},
+            {'max_acceleration': LaunchConfiguration('max_acceleration')},
             {'command_timeout_sec': 1.0},
         ]
     )
@@ -93,6 +135,12 @@ def generate_launch_description():
         arm_type_arg,
         port_name_arg,
         max_velocity_arg,
+        enable_velocity_feedforward_arg,
+        velocity_feedforward_gain_arg,
+        position_feedback_tau_arg,
+        feedback_velocity_limit_arg,
+        enable_acceleration_limit_arg,
+        max_acceleration_arg,
         use_rviz_arg,
         student_arm_node,
         robot_state_publisher_node,

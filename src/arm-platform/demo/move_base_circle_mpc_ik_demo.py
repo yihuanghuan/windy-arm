@@ -23,6 +23,7 @@ JOINT_LIMIT_WARN_MARGIN_DEG = 5.0
 MAX_MARKER_POINTS = 2000
 RESET_TOLERANCE_RAD = math.radians(2.0)
 RESET_HOLD_SEC = 1.0
+RECOMMENDED_CONTROLLER_MAX_VELOCITY_RAD_S = 1.0
 
 WORLD_FRAME = traj.WORLD_FRAME
 BASE_FRAME = traj.BASE_FRAME
@@ -33,11 +34,19 @@ class MoveBaseCircleMpcIkDemo(Node):
         super().__init__('move_base_circle_mpc_ik_demo')
         self.declare_parameter('solver_backend', 'acados')
         self.declare_parameter('horizon_steps', 8)
-        self.declare_parameter('max_joint_step', 0.08)
+        self.declare_parameter('max_joint_step', 0.02)
         self.declare_parameter('terminal_tolerance', 0.01)
         self.declare_parameter('orientation_weight', 0.2)
         self.declare_parameter('terminal_orientation_weight', 5.0)
         self.declare_parameter('acados_rti_iterations', 3)
+        self.declare_parameter('position_weight', 50.0)
+        self.declare_parameter('terminal_position_weight', 500.0)
+        self.declare_parameter('joint_delta_weight', 0.08)
+        self.declare_parameter('joint_delta_change_weight', 0.25)
+        self.declare_parameter('current_posture_weight', 0.01)
+        self.declare_parameter('center_posture_weight', 0.002)
+        self.declare_parameter('use_feedback_state', False)
+        self.declare_parameter('command_fk_step_warn_m', 0.006)
 
         self.solver_backend = self.get_parameter('solver_backend').value
         self.horizon_steps = int(self.get_parameter('horizon_steps').value)
@@ -47,6 +56,19 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.terminal_orientation_weight = float(
             self.get_parameter('terminal_orientation_weight').value)
         self.acados_rti_iterations = int(self.get_parameter('acados_rti_iterations').value)
+        self.position_weight = float(self.get_parameter('position_weight').value)
+        self.terminal_position_weight = float(
+            self.get_parameter('terminal_position_weight').value)
+        self.joint_delta_weight = float(self.get_parameter('joint_delta_weight').value)
+        self.joint_delta_change_weight = float(
+            self.get_parameter('joint_delta_change_weight').value)
+        self.current_posture_weight = float(
+            self.get_parameter('current_posture_weight').value)
+        self.center_posture_weight = float(
+            self.get_parameter('center_posture_weight').value)
+        self.use_feedback_state = bool(self.get_parameter('use_feedback_state').value)
+        self.command_fk_step_warn_m = float(
+            self.get_parameter('command_fk_step_warn_m').value)
 
         if self.solver_backend not in ('acados', 'casadi', 'scipy'):
             raise ValueError("solver_backend must be 'acados', 'casadi' or 'scipy'")
@@ -68,8 +90,14 @@ class MoveBaseCircleMpcIkDemo(Node):
             max_joint_step=self.max_joint_step,
             success_tolerance=self.terminal_tolerance,
             solver_backend=self.solver_backend,
+            position_weight=self.position_weight,
+            terminal_position_weight=self.terminal_position_weight,
             orientation_weight=self.orientation_weight,
             terminal_orientation_weight=self.terminal_orientation_weight,
+            joint_delta_weight=self.joint_delta_weight,
+            joint_delta_change_weight=self.joint_delta_change_weight,
+            current_posture_weight=self.current_posture_weight,
+            center_posture_weight=self.center_posture_weight,
             acados_rti_iterations=self.acados_rti_iterations,
             acados_build_dir='/tmp/windylab_acados_moving_base_mpc_ik',
         )
@@ -86,6 +114,7 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.phase = 'reset'
         self.reset_hold_time = 0.0
         self.trajectory_start_time_sec = None
+        self.last_command_fk_world = None
 
         self.ee_traj_marker = self._create_marker(
             topic_ns='ee_traj_mpc', marker_id=10, color=(1.0, 0.2, 0.2), scale=0.005)
@@ -120,7 +149,16 @@ class MoveBaseCircleMpcIkDemo(Node):
             f'基座晃动 ACADOS MPC demo 启动: solver={self.solver_backend}, '
             f'horizon={self.horizon_steps}, max_joint_step={self.max_joint_step:.3f}, '
             f'orientation_weight={self.orientation_weight:.3f}, '
-            f'terminal_orientation_weight={self.terminal_orientation_weight:.3f}')
+            f'terminal_orientation_weight={self.terminal_orientation_weight:.3f}, '
+            f'use_feedback_state={self.use_feedback_state}, '
+            f'command_fk_step_warn={self.command_fk_step_warn_m * 1000.0:.1f}mm')
+        recommended_max_step = RECOMMENDED_CONTROLLER_MAX_VELOCITY_RAD_S * self.dt
+        if self.max_joint_step > recommended_max_step + 1e-9:
+            self.get_logger().warn(
+                'MPC max_joint_step 应与控制器 max_velocity 匹配: '
+                'max_joint_step <= max_velocity * dt。'
+                f'当前 dt={self.dt:.3f}s, max_joint_step={self.max_joint_step:.3f}rad; '
+                '若 student_arm max_velocity:=1.0，建议 max_joint_step:=0.02。')
 
     def _joint_states_callback(self, msg: JointState):
         name_to_pos = dict(zip(msg.name, msg.position))
@@ -210,6 +248,33 @@ class MoveBaseCircleMpcIkDemo(Node):
         self._append_point_and_publish(self.ee_traj_marker, self.actual_marker_pub, ee_pos_world)
         self._append_point_and_publish(self.ee_target_traj_marker, self.target_marker_pub, ee_target_pos_world)
 
+    def _command_fk_world(self, q: np.ndarray, t: float) -> np.ndarray:
+        base_pos_world = self._base_pose(t)
+        base_rot_world = self._base_rotation(t)
+        ee_pos_base, _ = self.mpc_ik.forward(q)
+        return base_pos_world + base_rot_world @ ee_pos_base
+
+    def _command_fk_step(self, q: np.ndarray) -> float:
+        command_fk_world = self._command_fk_world(q, self.t)
+        if self.last_command_fk_world is None:
+            return 0.0
+        return float(np.linalg.norm(command_fk_world - self.last_command_fk_world))
+
+    def _update_command_fk_monitor(self, q: np.ndarray):
+        if self.phase != 'track':
+            return
+        command_fk_world = self._command_fk_world(q, self.t)
+        if self.last_command_fk_world is not None:
+            step = float(np.linalg.norm(command_fk_world - self.last_command_fk_world))
+            if step > self.command_fk_step_warn_m:
+                phase_deg = (360.0 * self.t / traj.EE_PERIOD_SEC) % 360.0
+                self.get_logger().warn(
+                    'Command FK 单步变化偏大: '
+                    f'step={step * 1000.0:.2f} mm, phase={phase_deg:.1f} deg',
+                    throttle_duration_sec=1.0,
+                )
+        self.last_command_fk_world = command_fk_world
+
     def _warn_joint_limits(self, q: np.ndarray):
         margin = np.deg2rad(JOINT_LIMIT_WARN_MARGIN_DEG)
         lower_gap = q - self.mpc_ik.q_lower
@@ -253,7 +318,15 @@ class MoveBaseCircleMpcIkDemo(Node):
         if dq is None:
             msg.velocity = [0.0] * JOINT_COUNT
         else:
-            msg.velocity = np.asarray(dq, dtype=float).reshape(JOINT_COUNT).tolist()
+            dq_arr = np.asarray(dq, dtype=float).reshape(JOINT_COUNT)
+            if not np.all(np.isfinite(dq_arr)):
+                self.get_logger().warn(
+                    'MPC 发布速度包含 NaN/Inf，非法项改为 0',
+                    throttle_duration_sec=2.0,
+                )
+                dq_arr = np.where(np.isfinite(dq_arr), dq_arr, 0.0)
+            velocity_limit = self.max_joint_step / self.dt
+            msg.velocity = np.clip(dq_arr, -velocity_limit, velocity_limit).tolist()
         self.pub.publish(msg)
 
     def _trajectory_stamp(self, trajectory_time_sec: float) -> Time:
@@ -294,12 +367,16 @@ class MoveBaseCircleMpcIkDemo(Node):
                 self.t = 0.0
                 self.trajectory_start_time_sec = None
                 self.warm_start = None
+                self.last_command_fk_world = None
                 self.get_logger().info('机械臂已到达轨迹起始点，开始 MPC 轨迹跟踪')
         else:
             self.reset_hold_time = 0.0
 
     def _run_tracking_phase(self):
-        q_current = (self.q_measured if self.q_measured is not None else self.q_last).copy()
+        if self.use_feedback_state and self.q_measured is not None:
+            q_current = self.q_measured.copy()
+        else:
+            q_current = self.q_last.copy()
         targets, rotations = self._target_horizon_base()
         q_next, ok, info = self.mpc_ik.step(
             targets,
@@ -307,14 +384,28 @@ class MoveBaseCircleMpcIkDemo(Node):
             warm_start=self.warm_start,
             target_rotation=rotations,
         )
-        self.warm_start = info['trajectory']
 
         command_usable = bool(info.get('command_usable', ok))
         tracking_ok = bool(info.get('tracking_ok', ok))
         dq_cmd = np.zeros(JOINT_COUNT)
         if command_usable:
-            self.q_last = q_next
-            dq_cmd = (q_next - q_current) / self.dt
+            command_fk_step = self._command_fk_step(q_next)
+            if (
+                self.last_command_fk_world is not None
+                and command_fk_step > self.command_fk_step_warn_m
+            ):
+                phase_deg = (360.0 * self.t / traj.EE_PERIOD_SEC) % 360.0
+                self.get_logger().warn(
+                    'MPC 命令会造成 command FK 突变，保持上一帧: '
+                    f'step={command_fk_step * 1000.0:.2f} mm, phase={phase_deg:.1f} deg',
+                    throttle_duration_sec=1.0,
+                )
+                dq_cmd = np.zeros(JOINT_COUNT)
+                self.warm_start = None
+            else:
+                self.q_last = q_next
+                dq_cmd = (q_next - q_current) / self.dt
+                self.warm_start = info['trajectory']
             if not tracking_ok:
                 ori_text = ''
                 if info.get('terminal_orientation_error') is not None:
@@ -335,8 +426,10 @@ class MoveBaseCircleMpcIkDemo(Node):
                 f"message={info['message']}, plan_feasible={info.get('plan_feasible')}{ori_text}",
                 throttle_duration_sec=2.0,
             )
+            self.warm_start = None
 
         self._warn_joint_limits(self.q_last)
+        self._update_command_fk_monitor(self.q_last)
         self._publish_joint_positions(self.q_last, dq_cmd)
         self._print_joint_angles()
         self._publish_world_markers()

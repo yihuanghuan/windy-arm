@@ -20,6 +20,7 @@ PUBLISH_RATE_HZ = 50.0
 SUPPORTED_PATH_MODES = (
     "lower_obstacle_circle",
     "avoidance_sweep",
+    "front_wing_arc",
     "front_propeller_line",
     "circle",
     "windylab",
@@ -29,6 +30,14 @@ SUPPORTED_PATH_MODES = (
 # plane; _build_path() adds the forward offset explicitly.
 _FRONT_PROP_LEFT_CENTER = np.array([0.0, 0.230, 0.0], dtype=float)
 _FRONT_PROP_RIGHT_CENTER = np.array([0.0, -0.230, 0.0], dtype=float)
+LL100_CIRCLE_CENTER = np.array([0.70, 0.0, 0.10], dtype=float)
+LL100_CIRCLE_RADIUS = 0.08
+LL100_LOWER_OBSTACLE_CIRCLE_CENTER = np.array([0.70, 0.02, -0.21], dtype=float)
+LL100_LOWER_OBSTACLE_CIRCLE_RADIUS = 0.08
+LL100_FRONT_WING_ARC_LEFT = np.array([0.64, -0.30, -0.20], dtype=float)
+LL100_FRONT_WING_ARC_RIGHT = np.array([0.64, 0.30, -0.20], dtype=float)
+LL100_FRONT_WING_ARC_DROP = 0.08
+LL100_FRONT_WING_ARC_FORWARD = 0.06
 
 
 def _lerp(a: np.ndarray, b: np.ndarray, alpha: float) -> np.ndarray:
@@ -92,21 +101,36 @@ def _stroke_text_points(text: str, x: float, y0: float, z0: float, height: float
 
 def _build_path(mode: str, count: int) -> np.ndarray:
     if mode == "circle":
-        center = np.array([0.7, 0.0, 0.10], dtype=float)
-        radius_y = 0.08
-        radius_z = 0.06
         points = []
         for i in range(count):
             theta = 2.0 * math.pi * i / count
-            points.append(center + np.array([0.0, radius_y * math.cos(theta), radius_z * math.sin(theta)]))
+            points.append(
+                LL100_CIRCLE_CENTER
+                + np.array(
+                    [
+                        0.0,
+                        LL100_CIRCLE_RADIUS * math.cos(theta),
+                        LL100_CIRCLE_RADIUS * math.sin(theta),
+                    ],
+                    dtype=float,
+                )
+            )
         return np.array(points, dtype=float)
     if mode == "lower_obstacle_circle":
-        center = np.array([0.7, 0.02, -0.21], dtype=float)
-        radius = 0.08
         points = []
         for i in range(count):
             theta = 2.0 * math.pi * i / count
-            points.append(center + np.array([radius * math.cos(theta), radius * math.sin(theta), 0.0]))
+            points.append(
+                LL100_LOWER_OBSTACLE_CIRCLE_CENTER
+                + np.array(
+                    [
+                        LL100_LOWER_OBSTACLE_CIRCLE_RADIUS * math.cos(theta),
+                        LL100_LOWER_OBSTACLE_CIRCLE_RADIUS * math.sin(theta),
+                        0.0,
+                    ],
+                    dtype=float,
+                )
+            )
         return np.array(points, dtype=float)
     if mode == "windylab":
         points = _stroke_text_points("windylab", x=0.52, y0=-0.22, z0=0.04, height=0.10, spacing=0.018)
@@ -124,6 +148,19 @@ def _build_path(mode: str, count: int) -> np.ndarray:
             [0.48, -0.20, 0.12],
         ]
         return _resample_polyline(points, count)
+    if mode == "front_wing_arc":
+        points = []
+        for i in range(count):
+            s = i / max(1, count - 1)
+            theta = math.pi * s
+            base = _lerp(LL100_FRONT_WING_ARC_LEFT, LL100_FRONT_WING_ARC_RIGHT, s)
+            # A relaxed arc below the two front wing/propeller areas.  The
+            # midpoint is pushed down and forward so obstacle avoidance has a
+            # visible side-effect without demanding a near-contact maneuver.
+            base[0] += LL100_FRONT_WING_ARC_FORWARD * math.sin(theta)
+            base[2] -= LL100_FRONT_WING_ARC_DROP * math.sin(theta)
+            points.append(base)
+        return np.array(points, dtype=float)
     if mode == "front_propeller_line":
         left_center = _FRONT_PROP_LEFT_CENTER
         right_center = _FRONT_PROP_RIGHT_CENTER

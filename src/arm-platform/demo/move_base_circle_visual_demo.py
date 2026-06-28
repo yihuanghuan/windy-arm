@@ -22,6 +22,7 @@ JOINT_LIMIT_WARN_MARGIN_DEG = 5.0
 MAX_MARKER_POINTS = 2000
 RESET_TOLERANCE_RAD = math.radians(2.0)
 RESET_HOLD_SEC = 1.0
+MAX_PUBLISHED_JOINT_SPEED_RAD_S = 1.0
 
 WORLD_FRAME = traj.WORLD_FRAME
 BASE_FRAME = traj.BASE_FRAME
@@ -47,6 +48,7 @@ class MoveBaseCircleVisualDemo(Node):
         self.phase = 'reset'
         self.reset_hold_time = 0.0
         self.trajectory_start_time_sec = None
+        self.last_tracking_command_time_sec = None
         self.ee_traj_marker = self._create_marker(
             topic_ns='ee_traj', marker_id=0, color=(1.0, 0.2, 0.2), scale=0.005)
         self.ee_target_traj_marker = self._create_marker(
@@ -189,7 +191,33 @@ class MoveBaseCircleVisualDemo(Node):
         )
         self.get_logger().info(f'当前关节角: {joint_text}')
 
-    def _publish_joint_positions(self, q: np.ndarray):
+    def _now_sec(self) -> float:
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def _sanitize_joint_velocity(self, dq: np.ndarray = None) -> np.ndarray:
+        if dq is None:
+            return np.zeros(JOINT_COUNT)
+        try:
+            dq_arr = np.asarray(dq, dtype=float).reshape(JOINT_COUNT)
+        except ValueError:
+            self.get_logger().warn(
+                '关节速度维度非法，改为发布零速度',
+                throttle_duration_sec=2.0,
+            )
+            return np.zeros(JOINT_COUNT)
+        if not np.all(np.isfinite(dq_arr)):
+            self.get_logger().warn(
+                '关节速度包含 NaN/Inf，非法项改为 0',
+                throttle_duration_sec=2.0,
+            )
+            dq_arr = np.where(np.isfinite(dq_arr), dq_arr, 0.0)
+        return np.clip(
+            dq_arr,
+            -MAX_PUBLISHED_JOINT_SPEED_RAD_S,
+            MAX_PUBLISHED_JOINT_SPEED_RAD_S,
+        )
+
+    def _publish_joint_positions(self, q: np.ndarray, dq: np.ndarray = None):
         msg = JointState()
         if self.phase == 'track':
             msg.header.stamp = self._trajectory_stamp(self.t)
@@ -199,7 +227,7 @@ class MoveBaseCircleVisualDemo(Node):
             msg.header.frame_id = 'moving_base_reset'
         msg.name = [f'joint{i + 1}' for i in range(JOINT_COUNT)]
         msg.position = q.tolist()
-        msg.velocity = [0.0] * JOINT_COUNT
+        msg.velocity = self._sanitize_joint_velocity(dq).tolist()
         self.pub.publish(msg)
 
     def _trajectory_stamp(self, trajectory_time_sec: float) -> Time:
@@ -229,12 +257,13 @@ class MoveBaseCircleVisualDemo(Node):
                 self.q_last = self.reset_q_target.copy()
                 self.t = 0.0
                 self.trajectory_start_time_sec = None
+                self.last_tracking_command_time_sec = self._now_sec()
                 self.get_logger().info('机械臂已到达轨迹起始点，开始轨迹跟踪')
         else:
             self.reset_hold_time = 0.0
 
     def _warn_missing_joint_states(self):
-        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        now_sec = self._now_sec()
         if now_sec - self.last_feedback_warn_time < 2.0:
             return
         self.last_feedback_warn_time = now_sec
@@ -245,18 +274,32 @@ class MoveBaseCircleVisualDemo(Node):
         )
 
     def _run_tracking_phase(self):
+        now_sec = self._now_sec()
+        q_prev = self.q_last.copy()
         q, ok = self.ik.solve(
             self._ee_target_base(self.t),
             target_rotation=self._target_rotation_base(self.t),
-            q_init=self.q_last,
+            q_init=q_prev,
             rot_weight=ROT_WEIGHT,
         )
         if not ok:
             self.get_logger().warn('末端 IK 未收敛，跳过本帧', throttle_duration_sec=0.2)
             return
+        if not np.all(np.isfinite(q)):
+            self.get_logger().warn('IK 结果包含 NaN/Inf，跳过本帧', throttle_duration_sec=0.2)
+            return
+        elapsed = self.dt
+        if self.last_tracking_command_time_sec is not None:
+            elapsed = now_sec - self.last_tracking_command_time_sec
+        if not math.isfinite(elapsed) or elapsed <= 1e-6:
+            dq_cmd = np.zeros(JOINT_COUNT)
+        else:
+            dq_cmd = (q - q_prev) / elapsed
+        dq_cmd = self._sanitize_joint_velocity(dq_cmd)
         self.q_last = q
+        self.last_tracking_command_time_sec = now_sec
         self._warn_joint_limits(q)
-        self._publish_joint_positions(q)
+        self._publish_joint_positions(q, dq_cmd)
 
         self._print_joint_angles()
         self._publish_world_markers()

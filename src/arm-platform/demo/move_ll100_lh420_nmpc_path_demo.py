@@ -13,6 +13,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from visualization_msgs.msg import Marker, MarkerArray
 
+from ll100_traj_pub import SUPPORTED_PATH_MODES, _build_path as _build_ll100_path
 from move_ll100_lh420_nmpc_demo import (
     BASE_FRAME,
     DEFAULT_LL100_BODY_OBSTACLE_BOXES,
@@ -30,6 +31,7 @@ from mpc_pinocchio_ik import (
 PUBLISH_RATE_HZ = 50.0
 MAX_TRAIL_POINTS = 2500
 DEFAULT_MAX_JOINT_STEP = 0.01
+DEFAULT_PATH_PREVIEW_STRIDE = 4
 
 
 def _lerp(a: np.ndarray, b: np.ndarray, alpha: float) -> np.ndarray:
@@ -93,42 +95,8 @@ def _stroke_text_points(text: str, x: float, y0: float, z0: float, height: float
 
 def _build_path(mode: str, period: float, dt: float, obstacle_disks: np.ndarray = None) -> np.ndarray:
     count = max(20, int(round(period / dt)))
-    if mode == "circle":
-        center = np.array([0.56, 0.02, -0.18], dtype=float)
-        radius_y = 0.08
-        radius_z = 0.06
-        points = []
-        for i in range(count):
-            theta = 2.0 * math.pi * i / count
-            points.append(center + np.array([0.0, radius_y * math.cos(theta), radius_z * math.sin(theta)]))
-        return np.array(points, dtype=float)
-    if mode == "lower_obstacle_circle":
-        # A slow horizontal circle under the front-propeller/body avoidance area.
-        # It is deliberately close enough to show obstacle avoidance, but not at
-        # the straight-arm workspace boundary.
-        center = np.array([0.56, 0.02, -0.21], dtype=float)
-        radius = 0.08
-        points = []
-        for i in range(count):
-            theta = 2.0 * math.pi * i / count
-            points.append(center + np.array([radius * math.cos(theta), radius * math.sin(theta), 0.0]))
-        return np.array(points, dtype=float)
-    if mode == "windylab":
-        points = _stroke_text_points("windylab", x=0.52, y0=-0.22, z0=0.04, height=0.10, spacing=0.018)
-        return _resample_polyline(points, count)
-    if mode == "avoidance_sweep":
-        points = [
-            [0.48, -0.20, 0.12],
-            [0.42, -0.08, 0.02],
-            [0.36, 0.00, -0.02],
-            [0.42, 0.08, 0.02],
-            [0.48, 0.20, 0.12],
-            [0.56, 0.12, 0.16],
-            [0.58, 0.00, 0.18],
-            [0.56, -0.12, 0.16],
-            [0.48, -0.20, 0.12],
-        ]
-        return _resample_polyline(points, count)
+    if mode in ("circle", "lower_obstacle_circle", "windylab", "avoidance_sweep", "front_wing_arc"):
+        return _build_ll100_path(mode, count)
     if mode == "front_propeller_line":
         if obstacle_disks is None or len(obstacle_disks) < 2:
             raise ValueError("front_propeller_line 需要先生成前桨避障圆盘")
@@ -147,8 +115,7 @@ def _build_path(mode: str, period: float, dt: float, obstacle_disks: np.ndarray 
         end = np.array([x, right_center[1] + y_extension, z], dtype=float)
         return _resample_polyline([start, end, start], count)
     raise ValueError(
-        "path_mode 必须是 'lower_obstacle_circle'、'avoidance_sweep'、"
-        "'front_propeller_line'、'circle' 或 'windylab'"
+        f"path_mode 必须是 {SUPPORTED_PATH_MODES}"
     )
 
 
@@ -160,35 +127,44 @@ class MoveLL100LH420NmpcPathDemo(Node):
         self.declare_parameter("terminal_tolerance", 0.025)
         self.declare_parameter("horizon_steps", 8)
         self.declare_parameter("max_joint_step", DEFAULT_MAX_JOINT_STEP)
+        self.declare_parameter("path_preview_stride", DEFAULT_PATH_PREVIEW_STRIDE)
+        self.declare_parameter("position_weight", 120.0)
+        self.declare_parameter("terminal_position_weight", 1200.0)
         self.declare_parameter("lock_orientation", True)
         self.declare_parameter("orientation_target", "vertical_down")
-        self.declare_parameter("orientation_weight", 1.0)
-        self.declare_parameter("terminal_orientation_weight", 10.0)
+        self.declare_parameter("orientation_weight", 0.3)
+        self.declare_parameter("terminal_orientation_weight", 3.0)
+        self.declare_parameter("obstacle_avoidance_enabled", True)
         self.declare_parameter("obstacle_weight", 2e4)
         self.declare_parameter("obstacle_safety_margin", 0.04)
         self.declare_parameter("obstacle_disk_half_thickness", 0.02)
         self.declare_parameter("body_obstacle_enabled", True)
-        self.declare_parameter("body_obstacle_weight", 3e4)
-        self.declare_parameter("body_obstacle_margin", 0.03)
-        self.declare_parameter("capsule_radius", 0.045)
-        self.declare_parameter("capsule_samples_per_segment", 3)
+        self.declare_parameter("body_obstacle_weight", 1e4)
+        self.declare_parameter("body_obstacle_margin", 0.015)
+        self.declare_parameter("capsule_radius", 0.018)
+        self.declare_parameter("capsule_samples_per_segment", 1)
         self.declare_parameter("advance_on_feedback", True)
-        self.declare_parameter("target_switch_tolerance", 0.05)
+        self.declare_parameter("start_from_nearest_path_point", True)
+        self.declare_parameter("target_switch_tolerance", 0.025)
         self.declare_parameter("stuck_error_epsilon", 0.002)
-        self.declare_parameter("stuck_steps_before_advance", 80)
-        self.declare_parameter("stuck_advance_points", 50)
-        self.declare_parameter("current_posture_weight", 0.02)
-        self.declare_parameter("center_posture_weight", 0.04)
+        self.declare_parameter("stuck_steps_before_advance", 120)
+        self.declare_parameter("stuck_advance_points", 10)
+        self.declare_parameter("current_posture_weight", 0.005)
+        self.declare_parameter("center_posture_weight", 0.01)
 
         self.path_mode = str(self.get_parameter("path_mode").value)
         self.period_sec = float(self.get_parameter("period_sec").value)
         self.terminal_tolerance = float(self.get_parameter("terminal_tolerance").value)
         self.horizon_steps = int(self.get_parameter("horizon_steps").value)
         self.max_joint_step = float(self.get_parameter("max_joint_step").value)
+        self.path_preview_stride = int(self.get_parameter("path_preview_stride").value)
+        self.position_weight = float(self.get_parameter("position_weight").value)
+        self.terminal_position_weight = float(self.get_parameter("terminal_position_weight").value)
         self.lock_orientation = bool(self.get_parameter("lock_orientation").value)
         self.orientation_target = str(self.get_parameter("orientation_target").value)
         self.orientation_weight = float(self.get_parameter("orientation_weight").value)
         self.terminal_orientation_weight = float(self.get_parameter("terminal_orientation_weight").value)
+        self.obstacle_avoidance_enabled = bool(self.get_parameter("obstacle_avoidance_enabled").value)
         self.obstacle_weight = float(self.get_parameter("obstacle_weight").value)
         self.obstacle_safety_margin = float(self.get_parameter("obstacle_safety_margin").value)
         self.obstacle_disk_half_thickness = float(self.get_parameter("obstacle_disk_half_thickness").value)
@@ -198,6 +174,7 @@ class MoveLL100LH420NmpcPathDemo(Node):
         self.capsule_radius = float(self.get_parameter("capsule_radius").value)
         self.capsule_samples_per_segment = int(self.get_parameter("capsule_samples_per_segment").value)
         self.advance_on_feedback = bool(self.get_parameter("advance_on_feedback").value)
+        self.start_from_nearest_path_point = bool(self.get_parameter("start_from_nearest_path_point").value)
         self.target_switch_tolerance = float(self.get_parameter("target_switch_tolerance").value)
         self.stuck_error_epsilon = float(self.get_parameter("stuck_error_epsilon").value)
         self.stuck_steps_before_advance = int(self.get_parameter("stuck_steps_before_advance").value)
@@ -209,6 +186,10 @@ class MoveLL100LH420NmpcPathDemo(Node):
             raise ValueError("period_sec 必须 > 0")
         if self.horizon_steps < 1:
             raise ValueError("horizon_steps 必须 >= 1")
+        if self.max_joint_step <= 0.0:
+            raise ValueError("max_joint_step 必须 > 0")
+        if self.path_preview_stride < 1:
+            raise ValueError("path_preview_stride 必须 >= 1")
         if self.orientation_target not in ("initial", "vertical_down"):
             raise ValueError("orientation_target 必须是 'initial' 或 'vertical_down'")
         if not Path(LL100_NMPC_URDF).exists():
@@ -222,9 +203,11 @@ class MoveLL100LH420NmpcPathDemo(Node):
             success_tolerance=self.terminal_tolerance,
             solver_backend="acados",
             acados_build_dir=f"/tmp/windylab_acados_ll100_lh420_path_{self.path_mode}",
+            position_weight=self.position_weight,
+            terminal_position_weight=self.terminal_position_weight,
             orientation_weight=self.orientation_weight if self.lock_orientation else 0.0,
             terminal_orientation_weight=self.terminal_orientation_weight if self.lock_orientation else 0.0,
-            obstacle_avoidance_enabled=True,
+            obstacle_avoidance_enabled=self.obstacle_avoidance_enabled,
             obstacle_weight=self.obstacle_weight,
             obstacle_safety_margin=self.obstacle_safety_margin,
             obstacle_disk_half_thickness=self.obstacle_disk_half_thickness,
@@ -245,6 +228,7 @@ class MoveLL100LH420NmpcPathDemo(Node):
         self.path = _build_path(self.path_mode, self.period_sec, self.dt, self.mpc_ik.obstacle_disks())
         self.q_last = np.clip(pin.neutral(self.mpc_ik.model), self.mpc_ik.q_lower, self.mpc_ik.q_upper)
         self.q_feedback = None
+        self.path_index_initialized = False
         self.locked_rotation = self._orientation_target_rotation(self.q_last)
         self.warm_start = None
         self.t = 0.0
@@ -262,8 +246,10 @@ class MoveLL100LH420NmpcPathDemo(Node):
             "LL100 路径避障 NMPC 启动: "
             f"path_mode={self.path_mode}, period={self.period_sec:.2f}s, "
             f"horizon={self.horizon_steps}, max_joint_step={self.max_joint_step:.4f}, "
+            f"path_preview_stride={self.path_preview_stride}, "
             f"lock_orientation={self.lock_orientation}, orientation_target={self.orientation_target}, "
-            f"advance_on_feedback={self.advance_on_feedback}, body_obstacle={self.body_obstacle_enabled}"
+            f"advance_on_feedback={self.advance_on_feedback}, start_nearest={self.start_from_nearest_path_point}, "
+            f"front_obstacle={self.obstacle_avoidance_enabled}, body_obstacle={self.body_obstacle_enabled}"
         )
 
     def _orientation_target_rotation(self, q0: np.ndarray) -> np.ndarray:
@@ -291,10 +277,12 @@ class MoveLL100LH420NmpcPathDemo(Node):
 
     def _target_sequence(self) -> np.ndarray:
         if self.advance_on_feedback:
-            indices = (self.path_index + np.arange(self.horizon_steps)) % len(self.path)
+            offsets = self.path_preview_stride * np.arange(self.horizon_steps)
+            indices = (self.path_index + offsets) % len(self.path)
             return self.path[indices]
         start = int(round((self.t % self.period_sec) / self.dt)) % len(self.path)
-        indices = (start + np.arange(self.horizon_steps)) % len(self.path)
+        offsets = self.path_preview_stride * np.arange(self.horizon_steps)
+        indices = (start + offsets) % len(self.path)
         return self.path[indices]
 
     def _advance_to_next_path_index(self, steps: int = 1):
@@ -308,6 +296,17 @@ class MoveLL100LH420NmpcPathDemo(Node):
     def _advance_path_index_if_ready(self, actual_pos: np.ndarray):
         if not self.advance_on_feedback:
             return
+        if self.start_from_nearest_path_point and not self.path_index_initialized:
+            distances = np.linalg.norm(self.path - actual_pos.reshape(1, 3), axis=1)
+            self.path_index = int(np.argmin(distances))
+            self.best_current_target_error = float(distances[self.path_index])
+            self.path_index_initialized = True
+            self.get_logger().info(
+                "从距离当前末端最近的路径点开始: "
+                f"path_index={self.path_index}, error={self.best_current_target_error:.4f}"
+            )
+            return
+        self.path_index_initialized = True
         target = self.path[self.path_index]
         error = float(np.linalg.norm(actual_pos - target))
         if error <= self.target_switch_tolerance:

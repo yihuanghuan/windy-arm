@@ -176,6 +176,7 @@ RViz 中添加 `MarkerArray`,topic 选择:
 |---|---|
 | `lower_obstacle_circle` | 默认模式,末端朝下,在避障区域下方慢速画圆 |
 | `avoidance_sweep` | 靠近机身/安装架约束的演示轨迹 |
+| `front_wing_arc` | 前端左右机翼/前桨下方两点之间的宽松避障弧线 |
 | `front_propeller_line` | 前桨外侧直线演示 |
 | `circle` | 在 `base_link` 的 y-z 平面画圆 |
 | `windylab` | 在 `base_link` 的 y-z 平面写简化 `windylab` |
@@ -192,13 +193,25 @@ python3 move_ll100_lh420_nmpc_path_demo.py
 |---|---:|---|
 | `period_sec` | `60.0` | 轨迹周期,s;默认很慢,方便实际模型跟上 |
 | `max_joint_step` | `0.01` | 每周期最大关节步长,rad |
+| `path_preview_stride` | `4` | 预测时域内相邻目标点间隔,避免时域只盯住当前点 |
+| `position_weight` | `120.0` | 位置跟踪权重 |
+| `terminal_position_weight` | `1200.0` | 终端位置跟踪权重 |
 | `lock_orientation` | `True` | 默认锁定末端姿态 |
 | `orientation_target` | `vertical_down` | 末端 x 轴朝 `-Z` |
+| `orientation_weight` | `0.3` | 姿态软约束权重 |
+| `terminal_orientation_weight` | `3.0` | 终端姿态软约束权重 |
+| `obstacle_avoidance_enabled` | `True` | 是否启用前桨圆盘避障代价 |
 | `advance_on_feedback` | `True` | 实际末端接近当前路径点后再推进 |
-| `target_switch_tolerance` | `0.05` | 路径点切换距离阈值,m |
-| `stuck_steps_before_advance` | `80` | 当前点误差长时间不下降时自动推进 |
-| `current_posture_weight` | `0.02` | 抑制相对当前姿态突变 |
-| `center_posture_weight` | `0.04` | 抑制机械臂拉到近奇异伸直姿态 |
+| `start_from_nearest_path_point` | `True` | 启动时从距离当前末端最近的路径点并入 |
+| `target_switch_tolerance` | `0.025` | 路径点切换距离阈值,m |
+| `stuck_steps_before_advance` | `120` | 当前点误差长时间不下降时自动推进 |
+| `stuck_advance_points` | `10` | 卡住时一次跳过的路径点数 |
+| `body_obstacle_weight` | `10000.0` | 机身/安装架 box 避障权重 |
+| `body_obstacle_margin` | `0.015` | 机身 box 额外安全距离,m |
+| `capsule_radius` | `0.018` | 连杆 capsule 半径,m |
+| `capsule_samples_per_segment` | `1` | 每段连杆中间采样点数量 |
+| `current_posture_weight` | `0.005` | 抑制相对当前姿态突变 |
+| `center_posture_weight` | `0.01` | 抑制机械臂拉到近奇异伸直姿态 |
 
 路径版 demo 使用 `/joint_states` 中的 `A_Joint`~`F_Joint` 作为 NMPC 当前状态和 capsule marker 姿态来源。不要用 `/student/joint_command` 假装实际反馈。
 
@@ -212,6 +225,15 @@ max_joint_step ~= max_velocity * 0.02
 
 ```bash
 python3 move_ll100_lh420_nmpc_path_demo.py --ros-args -p max_joint_step:=0.02
+```
+
+纯跟踪调试时,可以先关闭前桨和机身避障,确认 command FK 自身能画圆:
+
+```bash
+python3 move_ll100_lh420_nmpc_path_demo.py --ros-args \
+  -p path_mode:=circle \
+  -p obstacle_avoidance_enabled:=false \
+  -p body_obstacle_enabled:=false
 ```
 
 ## 6. 解耦目标跟随 NMPC
@@ -319,6 +341,7 @@ RViz 中再添加一个 `MarkerArray`,topic 选择:
 |---|---|
 | `lower_obstacle_circle` | 默认模式,在避障区域下方慢速画圆 |
 | `avoidance_sweep` | 靠近机身/安装架约束的演示轨迹 |
+| `front_wing_arc` | 前端左右机翼/前桨下方两点之间的宽松避障弧线 |
 | `front_propeller_line` | 前桨外侧直线演示 |
 | `circle` | 在 `base_link` 的 y-z 平面画圆 |
 | `windylab` | 在 `base_link` 的 y-z 平面写简化 `windylab` |
@@ -444,6 +467,8 @@ RViz 里需要手动添加 `MarkerArray`。
 ### 轨迹跟踪滞后或实际轨迹绕圈
 
 优先检查 `max_joint_step` 是否大于底层 `max_velocity * 0.02`。上层 NMPC 走得比底层限速快时,实际机械臂会滞后。路径版默认启用 `advance_on_feedback`,可以避免目标按时间跑太快。
+
+如果 command FK 也明显落后或变形,优先调大 `path_preview_stride` 到 `6` 或 `8`,并保持 `max_joint_step` 不超过底层实际速度能力。`circle` 模式的期望轨迹是半径 `0.08 m` 的真圆;如果图上不是圆,先确认控制节点和 `ll100_trajectory_visualizer_demo.py` 使用相同的 `trajectory_mode` 和 `period_sec`。
 
 ### 进入近奇异姿态后不动
 

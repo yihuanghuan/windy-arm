@@ -67,11 +67,38 @@ void StudentArmNode::SetArmPlatform() {
   // 学生模式默认限低速，保证安全
   double max_velocity = GetParam<double>("max_velocity", 0.5);
   controller->SetMaxVelocity(max_velocity);
+  controller->SetJointLimits(joint_lower_limits_, joint_upper_limits_);
+  controller::VelocityFeedforwardConfig velocity_feedforward_config;
+  velocity_feedforward_config.enable_velocity_feedforward =
+      GetParam<bool>("enable_velocity_feedforward", false);
+  velocity_feedforward_config.velocity_feedforward_gain =
+      GetParam<double>("velocity_feedforward_gain", 0.7);
+  velocity_feedforward_config.position_feedback_tau =
+      GetParam<double>("position_feedback_tau", 0.15);
+  velocity_feedforward_config.feedback_velocity_limit =
+      GetParam<double>("feedback_velocity_limit", 0.4);
+  velocity_feedforward_config.enable_acceleration_limit =
+      GetParam<bool>("enable_acceleration_limit", true);
+  velocity_feedforward_config.max_acceleration =
+      GetParam<double>("max_acceleration", 5.0);
+  controller->SetVelocityFeedforwardConfig(velocity_feedforward_config);
   std::vector<double> p_gain = GetParam<std::vector<double>>(
       "p_gain", {30, 30, 30, 5, 5, 5, 1});
   std::vector<double> d_gain = GetParam<std::vector<double>>(
       "d_gain", {1, 1, 1, 0.1, 0.1, 0.1, 0.1});
   controller->SetKpKd(p_gain, d_gain);
+  RCLCPP_INFO(
+      this->get_logger(),
+      "SmoothPositionController: max_velocity=%.3f, velocity_feedforward=%s, "
+      "ff_gain=%.3f, fb_tau=%.3f, fb_vel_limit=%.3f, acceleration_limit=%s, "
+      "max_acceleration=%.3f",
+      max_velocity,
+      velocity_feedforward_config.enable_velocity_feedforward ? "true" : "false",
+      velocity_feedforward_config.velocity_feedforward_gain,
+      velocity_feedforward_config.position_feedback_tau,
+      velocity_feedforward_config.feedback_velocity_limit,
+      velocity_feedforward_config.enable_acceleration_limit ? "true" : "false",
+      velocity_feedforward_config.max_acceleration);
   arm_platform_->SetController(std::move(controller));
 }
 

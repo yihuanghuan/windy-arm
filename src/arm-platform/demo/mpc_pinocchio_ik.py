@@ -97,7 +97,11 @@ class MpcPinocchioIK:
             and self.config.solver_backend != "acados"
         ):
             raise ValueError("第一版避障 NMPC 只支持 solver_backend='acados'; CasADi/SciPy 后端暂不接入避障代价。")
-        self._obstacle_keypoint_frame_ids = self._resolve_obstacle_keypoint_frames()
+        self._obstacle_keypoint_frame_ids = (
+            self._resolve_obstacle_keypoint_frames()
+            if self.config.obstacle_avoidance_enabled
+            else {}
+        )
         self._obstacle_disks = self._build_front_propeller_disks() if self.config.obstacle_avoidance_enabled else np.zeros((0, 7))
         self._body_obstacle_boxes = self._resolve_body_obstacle_boxes()
         self._capsule_frame_ids = self._resolve_capsule_frames()
@@ -556,8 +560,9 @@ class MpcPinocchioIK:
         x0 = np.concatenate([q0, np.zeros(self.nq)])
 
         for stage in range(cfg.horizon_steps + 1):
-            target = targets[min(stage, cfg.horizon_steps - 1)]
-            rotation = rotations[min(stage, cfg.horizon_steps - 1)]
+            target_index = min(max(stage - 1, 0), cfg.horizon_steps - 1)
+            target = targets[target_index]
+            rotation = rotations[target_index]
             p = np.concatenate([target, rotation.reshape(-1), q0, self.q_center])
             solver.set(stage, "p", p)
             solver.set(stage, "x", np.concatenate([initial_plan[min(stage, cfg.horizon_steps - 1)], np.zeros(self.nq)]))

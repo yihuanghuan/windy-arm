@@ -15,13 +15,12 @@ import pinocchio as pin
 WORLD_FRAME = 'world'
 BASE_FRAME = 'base_link'
 
-# Current experiment: fixed base. To restore moving-base motion, set radius to
-# 0.02, height to 0.01, and attitude amplitude to 0.1 deg.
+# Moving-base experiment: small base motion around the world-frame origin.
 BASE_CIRCLE_CENTER = np.array([0.0, 0.0, 0.0])
-BASE_CIRCLE_RADIUS = 0.0
+BASE_CIRCLE_RADIUS = 0.02
 BASE_PERIOD_SEC = 8.0
-BASE_HEIGHT = 0.0
-BASE_ATTITUDE_AMPLITUDE_DEG = 0.0
+BASE_HEIGHT = 0.01
+BASE_ATTITUDE_AMPLITUDE_DEG = 0.1  # deg
 
 BASE_ROLL_AMPLITUDE = math.radians(BASE_ATTITUDE_AMPLITUDE_DEG)
 BASE_PITCH_AMPLITUDE = math.radians(BASE_ATTITUDE_AMPLITUDE_DEG)

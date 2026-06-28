@@ -65,8 +65,8 @@ class LL100TrajectoryVisualizerDemo(Node):
         self.record_command_fk = bool(self.declare_parameter("record_command_fk", True).value)
         self.obstacle_safety_margin = float(self.declare_parameter("obstacle_safety_margin", 0.04).value)
         self.obstacle_disk_half_thickness = float(self.declare_parameter("obstacle_disk_half_thickness", 0.02).value)
-        self.body_obstacle_margin = float(self.declare_parameter("body_obstacle_margin", 0.03).value)
-        self.capsule_radius = float(self.declare_parameter("capsule_radius", 0.045).value)
+        self.body_obstacle_margin = float(self.declare_parameter("body_obstacle_margin", 0.015).value)
+        self.capsule_radius = float(self.declare_parameter("capsule_radius", 0.018).value)
         self.data_dir = Path(str(self.declare_parameter(
             "data_dir",
             "/home/windylab/code/windylab_ws/src/arm-platform/demo/data").value))
