@@ -37,19 +37,7 @@ ACADOS 求解器按 `{horizon_steps, max_joint_step, orientation_weight,
 terminal_orientation_weight}` 签名缓存到 `/tmp/windylab_acados_unified_tune/`，重复参数组合
 会直接复用，不再重新编译。
 
-### 两种模式（`--mode`）
-
-| 模式 | 行为 | 输出 |
-|---|---|---|
-| `unified`（默认） | 搜出**一套统一参数**，同时满足全部场景；聚合分 = `mean + max(各场景分)`，强调最差场景 | 一份 CSV + 一套推荐参数（每个场景对应一条运行命令） |
-| `separate` | **每个场景各自独立**跑一遍粗到细，得到各自最优参数 | 一份 CSV（含 `scenario_set` 列区分）+ 末尾各场景最优参数汇总 |
-
-两种模式共用同一套场景定义、闭环 plant、评分和硬约束，只是搜索的“目标集合”不同。CSV 文件名
-带模式后缀：`unified_mpc_tuning_<mode>_<时间戳>.csv`。
-
-## 2. 评估的场景
-
-一套参数会在以下 4 个场景上逐一闭环 roll-out（在脚本顶部 `build_scenarios` 可调整）：
+## 2. 评估的场景（可自行扩展）
 
 | 场景 | demo | 锁姿态 | 说明 |
 |---|---|---|---|
@@ -58,30 +46,7 @@ terminal_orientation_weight}` 签名缓存到 `/tmp/windylab_acados_unified_tune
 | `line` | `move_arm_mpc_ik_demo.py` | 否 | 固定臂直线往返 |
 | `moving_base_circle` | `move_base_circle_mpc_ik_demo.py` | 是（base 系目标姿态） | 浮动基座臂 |
 
-固定臂 circle/line 不锁姿态 → 姿态权重为 0；horizontal_circle / moving_base 锁姿态 → 使用
-搜索到的 `orientation_weight` / `terminal_orientation_weight`。两类共享同一套 `horizon_steps`
-和 `max_joint_step`。
-
-## 3. 闭环 plant 模型
-
-复刻 `smooth_position_controller.cc` 的**速度前馈分支**（角速度控制默认开启后的唯一模式），
-逐关节、每个 50Hz MPC 周期跑 2 个 10ms 控制子步：
-
-```text
-v_ff  = clip(dq_cmd, ±max_velocity)
-v_fb  = clip((q_cmd - q_actual)/position_feedback_tau, ±feedback_velocity_limit)
-v_raw = clip(gain*v_ff + v_fb, ±max_velocity)
-v_cmd = clip(v_raw, v_last ± max_acceleration*dt_ctrl)
-q_actual = clip_to_limits(q_actual + v_cmd*dt_ctrl)
-```
-
-plant 参数取 `student_arm.launch.py` 默认：`gain=0.7, position_feedback_tau=0.15,
-feedback_velocity_limit=0.4, max_acceleration=5.0, max_velocity=1.0`。
-
-> **重要约束**：`max_joint_step <= max_velocity * control_dt = 1.0 * 0.02 = 0.02`。
-> 否则 MPC 命令超出控制器可执行速度，闭环必然滞后。脚本会自动过滤越界的 `max_joint_step`。
-
-## 4. 命令行参数
+## 3. 命令行参数
 
 所有命令行参数（`python3 tune_unified_mpc_params.py -h` 可查）：
 
@@ -98,6 +63,16 @@ feedback_velocity_limit=0.4, max_acceleration=5.0, max_velocity=1.0`。
 | `--quiet-build` / `--no-quiet-build` | flag | `True`（静音） | 是否静音 ACADOS 代码生成/编译输出；排查构建问题用 `--no-quiet-build` |
 | `--max-combinations` | int | `None`（不限） | 每阶段最多评估多少组，用于 smoke test |
 
+两种模式：
+
+| 模式 | 行为 | 输出 |
+|---|---|---|
+| `unified`（默认） | 搜出一套统一参数，同时满足全部场景；聚合分 = `mean + max(各场景分)`，强调最差场景 | 一份 CSV + 一套推荐参数（每个场景对应一条运行命令） |
+| `separate` | 每个场景各自独立跑一遍粗到细，得到各自最优参数 | 一份 CSV（含 `scenario_set` 列区分）+ 末尾各场景最优参数汇总 |
+
+两种模式共用同一套场景定义、闭环 plant、评分和硬约束，只是搜索的“目标集合”不同。CSV 文件名
+带模式后缀：`unified_mpc_tuning_<mode>_<时间戳>.csv`。
+
 常用组合示例：
 
 ```bash
@@ -108,21 +83,9 @@ python3 tune_unified_mpc_params.py --mode separate --scenario circle    # 只单
 python3 tune_unified_mpc_params.py --scenario circle,line --skip-fine   # 只粗调 circle 和 line
 ```
 
-内部搜索维度（不在命令行，在脚本顶部常量里改）：
+被搜索的参数本身见第 5 节。
 
-```text
-COARSE_HORIZON_STEPS               = [4, 8, 12]
-COARSE_MAX_JOINT_STEP              = [0.012, 0.016, 0.020]   # 受 0.02 上限约束
-COARSE_ORIENTATION_WEIGHT          = [0.5, 1.0, 2.0]
-COARSE_TERMINAL_ORIENTATION_WEIGHT = [5.0, 10.0, 20.0]
-```
-
-细搜索在粗搜索 Top 邻域内细化 horizon ±2、step ±0.004、姿态权重 ×[0.75, 1.0, 1.25]。
-其它可在脚本顶部常量调整的量：闭环 plant 参数（`PLANT_*`，见第 3 节）、奇异阈值
-`SINGULAR_SIGMA_THRESHOLD=0.05`、求解时间硬上限 `MAX_SOLVE_TIME_MS_HARD=15`（按 p95 判）、
-求解时间预热步数 `SOLVE_TIME_WARMUP_STEPS=5`。
-
-## 5. 评分与硬约束
+## 4. 评分与硬约束
 
 每个场景在真实 `q_actual` 上统计，按以下口径打分，并设硬约束：
 
@@ -132,13 +95,47 @@ COARSE_TERMINAL_ORIENTATION_WEIGHT = [5.0, 10.0, 20.0]
 - **聚合分** = `mean(各场景分) + max(各场景分)`，强调最差场景，确保一套参数在所有场景都好。
 - 单场景分 = 位置 RMS/最大误差 + 姿态 RMS/最大误差 + 控制平滑 + 求解时间，越低越好。
 
-> 奇异性用**平移雅可比 (3×N) 最小奇异值**衡量末端定位能力（健康值约 0.14~0.17），不用全
+> 奇异性用平移雅可比 (3×N) 最小奇异值衡量末端定位能力（健康值约 0.14~0.17），不用全
 > 6×N：这些 demo 轨迹锁姿态时本就靠近腕部/姿态奇异（全 6D σ≈1e-3，理想 IK 跟随也无法避免），
 > 但平移雅可比始终健康。位置奇异才是会导致关节速度发散、定位失效的“奇异位姿”。
 
 CSV 字段：`aggregate_score`、`scenario`、`scenario_score`、`rms/max_position_error`、
 `rms/max_orientation_error`、`rms_control_delta`、`min_sigma`、`singular_count`、
 `fallback_count`、`solver_failure_count`、`mean/p95/max_solve_time_ms` 等。
+
+## 5. 被调的参数（搜索维度）
+
+调参器实际**搜索**的，只有 `ParamSet`（`tune_unified_mpc_params.py` 顶部）的 4 个字段；其余
+权重/阈值都固定为 `MpcIkConfig` 默认值或脚本常量，不参与搜索。
+
+| 被调参数 | 含义 | 粗搜索候选 | 约束 / 备注 |
+|---|---|---|---|
+| `horizon_steps` | MPC 预测步数 | `[4, 8, 12]` | 越大看得越远但越慢；闭环下短时域往往更稳 |
+| `max_joint_step` | 每控制周期最大关节步长 (rad) | `[0.012, 0.016, 0.020]` | 必须 `≤ max_velocity × control_dt = 0.02`，越界自动过滤 |
+| `orientation_weight` | 时域内姿态软约束权重 | `[0.5, 1.0, 2.0]` | 仅锁姿态场景（horizontal_circle / moving_base）生效 |
+| `terminal_orientation_weight` | 终端姿态软约束权重 | `[5.0, 10.0, 20.0]` | 仅锁姿态场景生效 |
+
+> **重要约束**：`max_joint_step <= max_velocity × control_dt = 1.0 × 0.02 = 0.02`。否则 MPC
+> 命令超出控制器可执行速度，闭环必然滞后；脚本会自动过滤越界候选。
+
+**两阶段搜索**：先按上表粗网格做笛卡尔积（`coarse_candidates`）；再取每个 set 评分 Top
+`--fine-top` 的参数，在其邻域细化（`fine_candidates`）：
+
+```text
+horizon_steps               : 当前值 ± 2（最小 1）
+max_joint_step              : 当前值 ± 0.004（不超过 0.02 上限）
+orientation_weight          : 当前值 × [0.75, 1.0, 1.25]
+terminal_orientation_weight : 当前值 × [0.75, 1.0, 1.25]
+```
+
+粗/细网格都在脚本顶部常量里（`COARSE_*` / `FINE_*`），直接改数值即可。
+
+**不参与搜索、但可在脚本顶部常量调的量**（改了对所有候选统一生效）：闭环 plant 参数
+（`PLANT_*`：`max_velocity` / `gain` / `tau` / 限速 / 加速度限）、奇异阈值
+`SINGULAR_SIGMA_THRESHOLD=0.05`、求解时间硬上限 `MAX_SOLVE_TIME_MS_HARD=15`（按 p95 判）、
+求解时间预热步数 `SOLVE_TIME_WARMUP_STEPS=5`。
+
+> 想把这些固定量也变成"被搜索"的维度，或增删上面 4 个被调参数，见第 8 节的增删教程（§8.3）。
 
 ## 6. 当前已测推荐（统一参数）
 
@@ -186,59 +183,116 @@ python3 move_base_circle_mpc_ik_demo.py
 - 求解时间偏高：降低 `horizon_steps`。
 - 出现奇异判废：该轨迹几何在当前姿态约束下接近位置奇异，需调整轨迹或姿态目标，而非调权重。
 
-## 8. 扩展：增加运动场景 / 更换求解算法
+## 8. 扩展教程
 
-脚本预留了两个扩展点，顶部 docstring 也有对应注释（“扩展点①/②”）。
+### 8.1 增加一个运动场景（让调参器多评估一种轨迹）
 
-### 8.1 增加一个运动场景
+"场景"就是让机械臂末端走的一条轨迹（圆、直线等）。新增一种,一共 **3 步**,都在
+`tune_unified_mpc_params.py` 这一个文件里改。
 
-在 `tune_unified_mpc_params.py` 的 `build_scenarios()` 里的 `SCENARIO` 列表加一条
-`Scenario(...)`，并把轨迹写成模块级普通函数（参考 `_vertical_circle` /
-`_moving_base_position`）。`Scenario` 字段：
-
-| 字段 | 含义 |
-|---|---|
-| `name` | 场景名（也是 `separate` 模式的 CSV/输出标识） |
-| `demo` | 该场景对应的 demo 文件名（仅用于打印可直接运行的推荐命令） |
-| `period_sec` | 轨迹一圈/一程周期(秒)，roll-out 时长 = `periods * period_sec` |
-| `lock_orientation` | 是否锁末端姿态（锁则用 `orientation_weight`/`terminal_orientation_weight`） |
-| `position_fn(t)` | 返回 `(3,)` 目标末端位置（base 系） |
-| `rotation_fn(t)` | 返回 `(3,3)` 目标姿态；不锁姿态填 `None`；想“锁起点姿态”填 `None` 且 `lock_orientation=True`（自动锁起点 IK 解的姿态） |
-| `demo_extra_args` | 推荐命令里额外的 `-p` 参数，如 `["trajectory_mode:=circle"]` |
-
-加完即可，`unified` 和 `separate` 模式都会自动带上新场景，无需改其它任何地方。例如加一个
-固定臂方形轨迹：
+**第 1 步:写这条轨迹的"位置函数"。**
+加一个普通函数:输入时间 `t`(秒),输出末端此刻应该到的位置 `[x, y, z]`(米,基座坐标系)。
+照着文件里已有的 `_vertical_circle` / `_line` 抄改最快。
+*效果:* 这就定义了"末端在每个时刻该到哪",是新轨迹的本体。
 
 ```python
-def _square(t: float) -> np.ndarray:
-    ...  # 返回 base 系目标位置 (3,)
+def _square(t):
+    ...            # 算出这一时刻的目标位置
+    return [x, y, z]   # 米,基座坐标系
+```
 
-# build_scenarios() 的 SCENARIO 列表里追加：
+**第 2 步:在场景清单里登记这条轨迹。**
+在 `build_scenarios()` 的 `SCENARIO` 列表里加一行 `Scenario(...)`,按顺序填这几样:
+
+| 要填的 | 怎么填 |
+|---|---|
+| 名字 | 起个英文名,如 `"square"`(也是结果/CSV 里这条场景的标识) |
+| 对应 demo | 跑这条轨迹的 demo 文件名,只用于最后打印"推荐运行命令" |
+| 周期(秒) | 轨迹走一圈/一趟的时间,决定这条场景仿真跑多久 |
+| 是否锁姿态 | 末端要不要保持朝向:不锁填 `False`,锁填 `True` |
+| 位置函数 | 第 1 步写的函数名 |
+| 姿态函数 | 不锁就填 `None`(锁的话填一个返回朝向的函数) |
+| 额外命令参数 | 推荐命令里要带的参数,如 `["trajectory_mode:=square"]` |
+
+```python
+# 在 build_scenarios() 的 SCENARIO 列表里追加一行:
 Scenario("square", "move_arm_mpc_ik_demo.py", 8.0, False, _square, None,
          ["trajectory_mode:=square"]),
 ```
+*效果:* 调参器从此就知道有这条场景了。
 
-### 8.2 更换求解算法（把 MPC 换成别的 IK/规划器）
+**第 3 步:直接跑,别的不用动。**
+`unified`(一套参数管所有场景)和 `separate`(每条单独调)两种模式都会自动把新场景算进去。
+*效果:* 新场景立刻参与评分和搜索,其它代码一行都不用改。
 
-只改 `build_solver(params, lock_orientation)` 这一个工厂函数，让它返回你的求解器对象。该对象
-只需实现 `step()` 合约：
+### 8.2 更换求解算法（把内置 MPC 换成你自己的求解器）
 
-```text
-step(targets(H,3), q_current(N,), warm_start=None, target_rotation=None) -> (q_next(N,), ok, info)
-  targets         : (horizon, 3) 目标位置序列(base 系)
-  q_current       : (N,) 当前关节角（闭环下为实测反馈）
-  target_rotation : None / (3,3) / (horizon,3,3)
-  返回 q_next(N,) 下一拍关节命令; ok(bool); info(dict)
-  info 尽量含: "trajectory"(下一拍 warm start)、"solve_time"(秒,可选)、
-              "status"(int,0=正常)、"success"(bool)、"command_usable"(bool)、"tracking_ok"(bool)
-```
+想用自己写的逆解/规划算法替换内置 MPC,一共 **3 步**(第 3 步可选)。
 
-评估侧用的正运动学/雅可比/奇异性都走独立的 pinocchio 模型（`Context`），与求解器内部无关，
-所以换算法**不必再提供 FK**。若新算法的可调参数不同（不再是 horizon/step/姿态权重），同时改
-`ParamSet` 与 `coarse_candidates` / `fine_candidates` 即可，其余评分/模式/输出逻辑不用动。
+**第 1 步:把你的算法包成一个"求解器对象",只需实现一个 `step()` 方法。**
+不用懂 MPC 内部,只按下面这个输入/输出约定写:
+- **输入**:未来一小段时间的目标位置序列、当前关节角(闭环时是真实反馈回来的角度)、(可选)目标朝向。
+- **输出**:三样东西 —— ①下一拍要发的关节角;②本次有没有算成功(`True`/`False`);③一个信息字典。
+- **信息字典**里尽量带上几项给调参器用:本次求解耗时、是否成功、命令是否可用。
 
-> 若只是想换 ACADOS/CasADi/SciPy 求解后端（同一套 MPC），改 `_build_config` 里的
-> `solver_backend` 即可，不必动 `build_solver` 结构。
+*效果:* 只要满足这个约定,调参器就能像调用内置 MPC 一样调用你的算法,不用关心它内部怎么算。
+
+**第 2 步:把"造求解器"的入口 `build_solver()` 改成返回你的对象。**
+脚本里所有需要求解器的地方都只从 `build_solver()` 这一个函数拿,所以只改这一处。
+
+*效果:* 粗搜索、细搜索、两种模式全自动换成你的算法,其它代码不用动。
+
+**第 3 步(可选):如果你的算法可调的旋钮变了,改一下被调参数清单。**
+内置 MPC 调的是 4 个量(预测步数、关节步长、两个姿态权重)。如果你的算法要调的是别的(比如增益、迭代次数),
+按 §8.3 的方法把"被调参数"换成你的。
+
+*效果:* 调参器就改成搜索你算法的参数了。
+
+> 两个省事提示:
+> - 评估用的正运动学、奇异性判断都用一套**独立的**机器人模型算,跟你的算法内部无关 ——
+>   所以换算法**不用**自己再提供正运动学。
+> - 如果你只是想在内置 MPC 自带的三种后端(acados / casadi / scipy)之间切换,**不用**动
+>   `build_solver`,改 `_build_config()` 里的 `solver_backend` 一个字段就行。
+
+### 8.3 增加 / 减少"被调的参数"
+
+"被调参数"就是调参器会去帮你搜最优值的那几个量(默认是预测步数、关节步长、两个姿态权重,见第 5 节)。
+下面以改其中一个为例,所有改动都在 `tune_unified_mpc_params.py` 顶部那几个函数里。
+
+#### A. 增加一个被调参数（示例:让"平滑权重 `joint_delta_weight`"也参与搜索),共 4 步
+
+**第 1 步:把它登记成一个被调参数。**
+在参数集合 `ParamSet` 里加上 `joint_delta_weight` 这一项。
+*效果:* 它现在被算作"待搜索的旋钮"之一。
+
+**第 2 步:让这个值真正传进求解器。**
+在 `_build_config()` 里把它填进求解器配置(写 `joint_delta_weight=params.joint_delta_weight`)。
+*效果:* 关键的一步 —— 不做的话,值变了但求解器收不到,等于白搜。
+
+**第 3 步:给它几个候选值。**
+在 `coarse_candidates()` 里列出想试的值(比如 `[0.05, 0.1, 0.2]`);想再精细就在 `fine_candidates()` 里给它一个"在最优值附近微调"的规则。
+*效果:* 调参器会把这些值和别的参数排列组合,逐一评估。
+
+**第 4 步:给它在缓存目录名里留个位置。**
+在 `_build_dir()` 拼出的目录名里,把这个参数的值也带上。
+*效果:* 让每个不同取值有自己的编译缓存目录,避免"不同取值用了同一份旧缓存"导致结果对不上。
+
+#### B. 减少一个被调参数（示例:固定终端姿态权重、不再搜它),共 3 步
+
+**第 1 步:从被调清单里删掉它。**
+在 `ParamSet` 里去掉这一项。
+*效果:* 它不再是一个搜索维度。
+
+**第 2 步:给它定一个固定值。**
+在 `_build_config()` 里写死(比如 `terminal_orientation_weight=5.0`)。
+*效果:* 求解器照常拿到这个量,只是它从此不再变化。
+
+**第 3 步:清掉它的候选和命名。**
+从 `coarse_candidates()` / `fine_candidates()` 里删掉它,再把 `_build_dir()` 目录名里相关部分去掉。
+*效果:* 参数组合变少,整轮搜索更快。
+
+> **为什么增减参数会影响速度:** 每多一个被调参数、或每个参数多几个候选值,要试的组合数就成倍变多,
+> 而每个新组合(第一次跑时)都要现编译一次求解器。所以**减参数 = 更快**,**加参数 = 更慢但搜得更全**。
 
 ## 9. LL100 避障调参(`tune_ll100_nmpc.py`)
 
