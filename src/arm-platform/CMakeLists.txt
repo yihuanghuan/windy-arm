@@ -255,7 +255,7 @@ install(PROGRAMS
   demo/move_base_circle_mpc_ik_demo.py
   demo/ll100_lh420_zero_joint_state_publisher.py
   demo/ll100_lh420_rotor_joint_state_publisher.py
-  demo/tune_mpc_params.py
+  demo/tune_unified_mpc_params.py
   demo/tune_ll100_nmpc.py
   demo/trajectory_visualizer_demo.py
   DESTINATION lib/${PROJECT_NAME}

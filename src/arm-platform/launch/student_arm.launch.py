@@ -41,12 +41,7 @@ def generate_launch_description():
         description='Max joint velocity (rad/s) safety limit for students'
     )
 
-    enable_velocity_feedforward_arg = DeclareLaunchArgument(
-        'enable_velocity_feedforward',
-        default_value='false',
-        description='Enable velocity feedforward plus position feedback tracking'
-    )
-
+    # 角速度控制(关节速度前馈)默认开启,不再保留开关。
     velocity_feedforward_gain_arg = DeclareLaunchArgument(
         'velocity_feedforward_gain',
         default_value='0.7',
@@ -98,7 +93,8 @@ def generate_launch_description():
             {'motor_config_path': motor_config_path},
             {'arm_config_path': arm_config_path},
             {'max_velocity': LaunchConfiguration('max_velocity')},
-            {'enable_velocity_feedforward': LaunchConfiguration('enable_velocity_feedforward')},
+            # 角速度控制默认开启,硬编码为 true。
+            {'enable_velocity_feedforward': True},
             {'velocity_feedforward_gain': LaunchConfiguration('velocity_feedforward_gain')},
             {'position_feedback_tau': LaunchConfiguration('position_feedback_tau')},
             {'feedback_velocity_limit': LaunchConfiguration('feedback_velocity_limit')},
@@ -135,7 +131,6 @@ def generate_launch_description():
         arm_type_arg,
         port_name_arg,
         max_velocity_arg,
-        enable_velocity_feedforward_arg,
         velocity_feedforward_gain_arg,
         position_feedback_tau_arg,
         feedback_velocity_limit_arg,

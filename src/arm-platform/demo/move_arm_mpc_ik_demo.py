@@ -20,6 +20,9 @@ from pinocchio_ik import PinocchioIK
 
 JOINT_COUNT = 7
 PUBLISH_RATE_HZ = 50.0
+# 闭环复位阶段:先把真实臂驱动到轨迹起点,确认到位后再开始 MPC 跟踪。
+RESET_TOLERANCE_RAD = math.radians(2.0)
+RESET_HOLD_SEC = 1.0
 
 CIRCLE_CENTER = np.array([0.35, 0.0, 0.15])
 CIRCLE_RADIUS = 0.08
@@ -37,15 +40,18 @@ LINE_PERIOD_SEC = 6.0
 class MoveArmMpcIkDemo(Node):
     def __init__(self, default_trajectory_mode: str = "circle", node_name: str = "move_arm_mpc_ik_demo"):
         super().__init__(node_name)
+        # 默认值取自 tune_unified_mpc_params.py 的统一闭环调参结果
+        # (固定臂+浮动基座臂四场景统一): h=2, step=0.02, ow=0.375, tow=5.0。
+        # 注意 max_joint_step <= max_velocity*dt = 1.0*0.02 = 0.02 (角速度控制默认开启)。
         self.declare_parameter("trajectory_mode", default_trajectory_mode)
         self.declare_parameter("terminal_tolerance", 0.01)
         self.declare_parameter("solver_backend", "acados")
-        self.declare_parameter("horizon_steps", 8)
-        self.declare_parameter("max_joint_step", 0.08)
+        self.declare_parameter("horizon_steps", 2)
+        self.declare_parameter("max_joint_step", 0.02)
         self.declare_parameter("lock_orientation", False)
         self.declare_parameter("orientation_target", "initial")
-        self.declare_parameter("orientation_weight", 2.0)
-        self.declare_parameter("terminal_orientation_weight", 20.0)
+        self.declare_parameter("orientation_weight", 0.375)
+        self.declare_parameter("terminal_orientation_weight", 5.0)
 
         self.trajectory_mode = self.get_parameter("trajectory_mode").value
         self.terminal_tolerance = float(self.get_parameter("terminal_tolerance").value)
@@ -68,6 +74,8 @@ class MoveArmMpcIkDemo(Node):
             raise ValueError("max_joint_step must be > 0")
 
         self.pub = self.create_publisher(JointState, "/student/joint_command", 10)
+        # 闭环:始终用 /joint_states 实测关节角作为求解起点。
+        self.create_subscription(JointState, "/joint_states", self._joint_states_callback, 10)
         self.dt = 1.0 / PUBLISH_RATE_HZ
         self.t = 0.0
         self.trajectory_start_time_sec = None
@@ -107,13 +115,21 @@ class MoveArmMpcIkDemo(Node):
                     f"orientation_error={pose_info.get('terminal_orientation_error')}"
                 )
 
+        # 闭环状态:reset 阶段把臂驱动到轨迹起点,到位后切 track 用实测反馈跟踪。
+        self.q_measured = None
+        self.phase = "reset"
+        self.reset_q_target = q0.copy()
+        self.reset_hold_time = 0.0
+        self.last_feedback_warn_time = 0.0
+
         self.timer = self.create_timer(self.dt, self.tick)
         self.get_logger().info(
             f"MPC IK {self.trajectory_mode} trajectory, solver={config.solver_backend}, "
             f"horizon={config.horizon_steps}, "
             f"dt={config.control_dt:.3f}s, max step={config.max_joint_step:.3f} rad, "
             f"lock_orientation={self.lock_orientation}, "
-            f"orientation_target={self.orientation_target}"
+            f"orientation_target={self.orientation_target}, "
+            f"closed_loop=True"
         )
 
     def _orientation_target_rotation(self, q0: np.ndarray) -> np.ndarray:
@@ -151,10 +167,68 @@ class MoveArmMpcIkDemo(Node):
         times = self.t + self.dt * np.arange(self.mpc_ik.config.horizon_steps)
         return np.array([self._target(float(t)) for t in times])
 
+    def _joint_states_callback(self, msg: JointState):
+        name_to_pos = dict(zip(msg.name, msg.position))
+        joint_names = [f"joint{i + 1}" for i in range(JOINT_COUNT)]
+        if not all(name in name_to_pos for name in joint_names):
+            return
+        self.q_measured = np.array([name_to_pos[name] for name in joint_names], dtype=float)
+
+    def _publish_command(self, q: np.ndarray, dq: np.ndarray, use_trajectory_stamp: bool):
+        msg = JointState()
+        # Stamp the command with the trajectory time it represents, not merely
+        # the wall-clock callback time. The visualizer can then compare expected
+        # and actual at the same trajectory timestamp instead of inheriting ROS
+        # callback jitter as apparent tracking error.
+        if use_trajectory_stamp:
+            msg.header.stamp = self._trajectory_stamp(self.t)
+        else:
+            msg.header.stamp = self.get_clock().now().to_msg()
+        msg.name = [f"joint{i + 1}" for i in range(JOINT_COUNT)]
+        msg.position = q.tolist()
+        msg.velocity = dq.tolist()
+        self.pub.publish(msg)
+
+    def _warn_missing_feedback(self):
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        if now_sec - self.last_feedback_warn_time < 2.0:
+            return
+        self.last_feedback_warn_time = now_sec
+        self.get_logger().warn(
+            "尚未收到包含 joint1~joint7 的 /joint_states 反馈, 复位阶段等待中。",
+            throttle_duration_sec=2.0,
+        )
+
     def tick(self):
+        if self.phase == "reset":
+            self._run_reset_phase()
+            return
+        self._run_tracking_phase()
+
+    def _run_reset_phase(self):
+        # 持续发布轨迹起点, 把真实臂驱动到位; 到位并保持后切换到跟踪。
+        self._publish_command(self.reset_q_target, np.zeros(JOINT_COUNT), use_trajectory_stamp=False)
+        if self.q_measured is None:
+            self._warn_missing_feedback()
+            return
+        if np.all(np.abs(self.q_measured - self.reset_q_target) <= RESET_TOLERANCE_RAD):
+            self.reset_hold_time += self.dt
+            if self.reset_hold_time >= RESET_HOLD_SEC:
+                self.phase = "track"
+                self.q_last = self.reset_q_target.copy()
+                self.t = 0.0
+                self.trajectory_start_time_sec = None
+                self.get_logger().info("机械臂已到达轨迹起始点, 开始闭环 MPC 跟踪")
+        else:
+            self.reset_hold_time = 0.0
+
+    def _run_tracking_phase(self):
+        if self.q_measured is None:
+            self._warn_missing_feedback()
+            return
         targets = self._target_horizon()
         target_rotation = self.locked_rotation if self.lock_orientation else None
-        q_current = self.q_last.copy()
+        q_current = self.q_measured.copy()
         q_next, ok, info = self.mpc_ik.step(
             targets,
             q_current,
@@ -190,16 +264,7 @@ class MoveArmMpcIkDemo(Node):
                 throttle_duration_sec=2.0,
             )
 
-        msg = JointState()
-        # Stamp the command with the trajectory time it represents, not merely
-        # the wall-clock callback time. The visualizer can then compare expected
-        # and actual at the same trajectory timestamp instead of inheriting ROS
-        # callback jitter as apparent tracking error.
-        msg.header.stamp = self._trajectory_stamp(self.t)
-        msg.name = [f"joint{i + 1}" for i in range(JOINT_COUNT)]
-        msg.position = self.q_last.tolist()
-        msg.velocity = dq_cmd.tolist()
-        self.pub.publish(msg)
+        self._publish_command(self.q_last, dq_cmd, use_trajectory_stamp=True)
         self.t += self.dt
 
     def _trajectory_stamp(self, trajectory_time_sec: float) -> Time:

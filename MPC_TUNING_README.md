@@ -1,14 +1,17 @@
-# MPC 参数粗到细搜索说明
+# MPC 统一参数闭环调参说明（固定臂 + 浮动基座臂）
 
-本文说明 `tune_mpc_params.py` 的用途、运行方法、参数含义和结果解读。这个脚本用于离线调节 MPC IK 参数,默认针对的场景:
+本文说明 `tune_unified_mpc_params.py` 的用途、运行方法、参数含义和结果解读。该脚本用于
+离线搜出一套统一参数，同时覆盖固定基座 7 自由度臂和浮动基座 7 自由度臂的所有轨迹场景
+（不含 LL100 空中操作臂，后者用独立的 `tune_ll100_nmpc.py`，见第 8 节）。
 
-```text
-水平圆轨迹 + 锁定初始末端姿态
-```
+它不启动 ROS、不画图，而是直接调用 `MpcPinocchioIK.step()` 做闭环 roll-out：把 MPC
+命令喂给一个复刻底层 `SmoothPositionController` 速度前馈控制器的 plant，用 plant 的真实
+`q_actual` 作为下一拍 MPC 的求解起点，误差也在 `q_actual` 上统计。把多组参数在全部场景跑完
+后排序，输出 CSV 和终端 Top 列表。
 
-脚本不启动 ROS、不画图,而是直接调用 `MpcPinocchioIK.step()` 模拟一圈轨迹。它会把多组参数跑完后排序,输出一个 CSV 和终端 Top 列表。
+> 旧的单场景开环调参器 `tune_mpc_params.py` 已被本脚本取代并删除。
 
-运行本文命令前,请先按 `NMPC_README.md` 完成 ACADOS 安装,并确认:
+运行前请先按 `NMPC_README.md` 完成 ACADOS 安装，并配置环境：
 
 ```bash
 cd ~/code/windylab_ws/src/arm-platform
@@ -18,358 +21,228 @@ scripts/check_nmpc_env.sh
 
 ## 1. 快速运行
 
-默认使用 ACADOS 后端。运行前先配置 ACADOS 环境:
-
 ```bash
 cd ~/code/windylab_ws/src/arm-platform/demo
 source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
-python3 tune_mpc_params.py
+
+# smoke test：少量组合验证闭环+多场景跑通
+python3 tune_unified_mpc_params.py --skip-fine --max-combinations 3
+
+# 完整粗到细搜索（首次每个参数组合都要编译 ACADOS 求解器，较慢）
+python3 tune_unified_mpc_params.py                 # 默认 unified 模式
+python3 tune_unified_mpc_params.py --mode separate # 每个场景单独调参
 ```
 
-第一次运行某些参数组合时,ACADOS 会生成并编译求解器,因此会比较慢。想先确认脚本能跑通,可以限制组合数量:
+ACADOS 求解器按 `{horizon_steps, max_joint_step, orientation_weight,
+terminal_orientation_weight}` 签名缓存到 `/tmp/windylab_acados_unified_tune/`，重复参数组合
+会直接复用，不再重新编译。
 
-```bash
-python3 tune_mpc_params.py --skip-fine --max-combinations 3
-```
+### 两种模式（`--mode`）
 
-## 2. 输出文件
-
-脚本会生成:
-
-```text
-demo/data/mpc_tuning_<时间戳>.csv
-```
-
-终端会打印 Top 参数组合,例如:
-
-```text
-rank score h step ow tow rms_pos max_pos rms_ori max_ori bad fallback mean_ms max_ms
-```
-
-最后还会打印一条推荐运行命令,可直接复制运行水平圆 demo。
-
-## 3. 参数含义
-
-命令行参数
-
-| 参数 | 默认值 | 说明 |
+| 模式 | 行为 | 输出 |
 |---|---|---|
-| `--backend` | `acados` | 求解器后端:`acados` / `casadi` / `scipy` |
-| `--orientation-target` | `initial` | 锁姿态目标:`initial` 锁定起始 IK 姿态 / `vertical_down` 末端 x 轴竖直朝下 |
-| `--periods` | `1.0` | 仿真水平圆周期数 |
-| `--top-k` | `10` | 终端打印排名前 K 的参数组合 |
-| `--output-dir` | `/home/windylab/code/windylab_ws/src/arm-platform/demo/data` | 调参 CSV 保存目录 |
-| `--skip-fine` | `False` | 是否跳过细搜索。Ture：跳过，False：不跳过 |
-| `--fine-from-csv` | `None` | 从已有粗搜索 CSV 的 Top 参数继续细搜索,不重复粗搜索 |
-| `--fine-top` | `5` | 用 Top 几名生成细搜索邻域 |
-| `--no-quiet-build` | `False` | 是否静音 ACADOS 代码生成和编译输出;默认静音（False）,只保留每组参数摘要 |
-| `--max-combinations` | `None` | 限制每个搜索阶段最多评估多少组参数,适合快速测试 |
+| `unified`（默认） | 搜出**一套统一参数**，同时满足全部场景；聚合分 = `mean + max(各场景分)`，强调最差场景 | 一份 CSV + 一套推荐参数（每个场景对应一条运行命令） |
+| `separate` | **每个场景各自独立**跑一遍粗到细，得到各自最优参数 | 一份 CSV（含 `scenario_set` 列区分）+ 末尾各场景最优参数汇总 |
 
-内部搜索的 MPC 参数
+两种模式共用同一套场景定义、闭环 plant、评分和硬约束，只是搜索的“目标集合”不同。CSV 文件名
+带模式后缀：`unified_mpc_tuning_<mode>_<时间戳>.csv`。
 
-| 参数 | 粗搜索默认候选值 | 说明 |
-|---|---|---|
-| `horizon_steps` | `[8, 12, 16]` | MPC 预测步数 |
-| `max_joint_step` | `[0.08, 0.10]` | 每个控制周期最大关节步长,单位 rad |
-| `orientation_weight` | `[0.5, 1.0, 2.0]` | 姿态误差权重 |
-| `terminal_orientation_weight` | `[5.0, 10.0, 20.0]` | 终端姿态误差权重 |
+## 2. 评估的场景
 
-细搜索会基于粗搜索 Top 结果生成邻域：
+一套参数会在以下 4 个场景上逐一闭环 roll-out（在脚本顶部 `build_scenarios` 可调整）：
 
-| 参数 | 细搜索变化方式 |
-|---|---|
-| `horizon_steps` | 当前值加 `[-2, 0, 2]`,最小为 1 |
-| `max_joint_step` | 当前值加 `[-0.01, 0.0, 0.01]` |
-| `orientation_weight` | 当前值乘 `[0.75, 1.0, 1.25]` |
-| `terminal_orientation_weight` | 当前值乘 `[0.75, 1.0, 1.25]` |
+| 场景 | demo | 锁姿态 | 说明 |
+|---|---|---|---|
+| `circle` | `move_arm_mpc_ik_demo.py` | 否 | 固定臂竖直圆 |
+| `horizontal_circle` | `move_arm_horizontal_circle_mpc_ik_demo.py` | 是（锁起点姿态） | 固定臂水平圆 |
+| `line` | `move_arm_mpc_ik_demo.py` | 否 | 固定臂直线往返 |
+| `moving_base_circle` | `move_base_circle_mpc_ik_demo.py` | 是（base 系目标姿态） | 浮动基座臂 |
 
-内部搜索的参数可以在 src/arm-platform/demo/tune_mpc_params.py 内调整。
+固定臂 circle/line 不锁姿态 → 姿态权重为 0；horizontal_circle / moving_base 锁姿态 → 使用
+搜索到的 `orientation_weight` / `terminal_orientation_weight`。两类共享同一套 `horizon_steps`
+和 `max_joint_step`。
 
-### `horizon_steps`
+## 3. 闭环 plant 模型
 
-MPC 每次向未来看的步数。当前控制周期是:
+复刻 `smooth_position_controller.cc` 的**速度前馈分支**（角速度控制默认开启后的唯一模式），
+逐关节、每个 50Hz MPC 周期跑 2 个 10ms 控制子步：
 
 ```text
-control_dt = 0.02 s
+v_ff  = clip(dq_cmd, ±max_velocity)
+v_fb  = clip((q_cmd - q_actual)/position_feedback_tau, ±feedback_velocity_limit)
+v_raw = clip(gain*v_ff + v_fb, ±max_velocity)
+v_cmd = clip(v_raw, v_last ± max_acceleration*dt_ctrl)
+q_actual = clip_to_limits(q_actual + v_cmd*dt_ctrl)
 ```
 
-所以:
+plant 参数取 `student_arm.launch.py` 默认：`gain=0.7, position_feedback_tau=0.15,
+feedback_velocity_limit=0.4, max_acceleration=5.0, max_velocity=1.0`。
+
+> **重要约束**：`max_joint_step <= max_velocity * control_dt = 1.0 * 0.02 = 0.02`。
+> 否则 MPC 命令超出控制器可执行速度，闭环必然滞后。脚本会自动过滤越界的 `max_joint_step`。
+
+## 4. 命令行参数
+
+所有命令行参数（`python3 tune_unified_mpc_params.py -h` 可查）：
+
+| 参数 | 类型/取值 | 默认值 | 说明 |
+|---|---|---|---|
+| `--mode` | `unified` / `separate` | `unified` | `unified` 搜一套参数满足所有(选中)场景；`separate` 每个场景各自单独调参 |
+| `--scenario` | 逗号分隔场景名 | 全部 | 只调指定场景，如 `--scenario circle` 或 `--scenario circle,line`。配合 `--mode separate` 即“手动单独调某个场景” |
+| `--list-scenarios` | flag | `False` | 打印所有可选场景名后退出（不调参） |
+| `--periods` | float | `1.0` | 每个场景闭环 roll-out 的周期数（时长 = `periods × 场景 period_sec`） |
+| `--top-k` | int | `10` | 终端每个 set 打印排名前 K 的参数组 |
+| `--output-dir` | 路径 | `demo/data` | 调参 CSV 保存目录 |
+| `--skip-fine` | flag | `False` | 只跑粗搜索，不做细搜索 |
+| `--fine-top` | int | `5` | 取粗搜索 Top 几名生成细搜索邻域 |
+| `--quiet-build` / `--no-quiet-build` | flag | `True`（静音） | 是否静音 ACADOS 代码生成/编译输出；排查构建问题用 `--no-quiet-build` |
+| `--max-combinations` | int | `None`（不限） | 每阶段最多评估多少组，用于 smoke test |
+
+常用组合示例：
+
+```bash
+python3 tune_unified_mpc_params.py --list-scenarios                      # 先看有哪些场景
+python3 tune_unified_mpc_params.py                                       # unified: 一套参数满足所有场景
+python3 tune_unified_mpc_params.py --mode separate                      # separate: 所有场景各自调
+python3 tune_unified_mpc_params.py --mode separate --scenario circle    # 只单独调 circle 场景
+python3 tune_unified_mpc_params.py --scenario circle,line --skip-fine   # 只粗调 circle 和 line
+```
+
+内部搜索维度（不在命令行，在脚本顶部常量里改）：
 
 ```text
-horizon_steps = 8  -> 看未来 0.16 s
-horizon_steps = 12 -> 看未来 0.24 s
-horizon_steps = 16 -> 看未来 0.32 s
+COARSE_HORIZON_STEPS               = [4, 8, 12]
+COARSE_MAX_JOINT_STEP              = [0.012, 0.016, 0.020]   # 受 0.02 上限约束
+COARSE_ORIENTATION_WEIGHT          = [0.5, 1.0, 2.0]
+COARSE_TERMINAL_ORIENTATION_WEIGHT = [5.0, 10.0, 20.0]
 ```
 
-通常:
+细搜索在粗搜索 Top 邻域内细化 horizon ±2、step ±0.004、姿态权重 ×[0.75, 1.0, 1.25]。
+其它可在脚本顶部常量调整的量：闭环 plant 参数（`PLANT_*`，见第 3 节）、奇异阈值
+`SINGULAR_SIGMA_THRESHOLD=0.05`、求解时间硬上限 `MAX_SOLVE_TIME_MS_HARD=15`（按 p95 判）、
+求解时间预热步数 `SOLVE_TIME_WARMUP_STEPS=5`。
 
-- 增大 `horizon_steps` 会让 MPC 看得更远
-- 但优化变量更多,求解更慢
-- 对当前“水平圆 + 锁姿态”数据,短时域反而更稳,已测推荐优先试 `4`
+## 5. 评分与硬约束
 
-### `max_joint_step`
+每个场景在真实 `q_actual` 上统计，按以下口径打分，并设硬约束：
 
-每个控制周期内,单个关节允许变化的最大角度,单位 rad。
+- **硬判废（score=inf）**：任一场景出现 `fallback>0`（命令不可用回退）、`solver_failure>0`
+  （求解状态失败）、`singular_count>0`（平移雅可比最小奇异值 < 0.05）或 `p95 求解时间 > 15ms`。
+  这保证“无奇异位姿、无失败解算、解算快”。
+- **聚合分** = `mean(各场景分) + max(各场景分)`，强调最差场景，确保一套参数在所有场景都好。
+- 单场景分 = 位置 RMS/最大误差 + 姿态 RMS/最大误差 + 控制平滑 + 求解时间，越低越好。
+
+> 奇异性用**平移雅可比 (3×N) 最小奇异值**衡量末端定位能力（健康值约 0.14~0.17），不用全
+> 6×N：这些 demo 轨迹锁姿态时本就靠近腕部/姿态奇异（全 6D σ≈1e-3，理想 IK 跟随也无法避免），
+> 但平移雅可比始终健康。位置奇异才是会导致关节速度发散、定位失效的“奇异位姿”。
+
+CSV 字段：`aggregate_score`、`scenario`、`scenario_score`、`rms/max_position_error`、
+`rms/max_orientation_error`、`rms_control_delta`、`min_sigma`、`singular_count`、
+`fallback_count`、`solver_failure_count`、`mean/p95/max_solve_time_ms` 等。
+
+## 6. 当前已测推荐（统一参数）
+
+2026-06-30 的一轮完整粗到细 ACADOS 闭环搜索（四场景，305/305 组均满足硬约束），冠军：
 
 ```text
-max_joint_step = 0.08 rad 约等于 4.58 deg
-```
-
-因为周期是 0.02 s,粗略对应关节速度:
-
-```text
-0.08 / 0.02 = 4 rad/s
-```
-
-通常:
-
-- 增大 `max_joint_step` 会提升跟踪能力
-- 但关节命令会更激进
-- 对当前“水平圆 + 锁姿态”数据,`0.06` 比 `0.07/0.08/0.10` 综合评分更好
-
-### `orientation_weight`
-
-预测时域内每一步的末端姿态误差权重。
-
-通常:
-
-- 越大,越努力保持姿态
-- 太大可能牺牲位置跟踪
-- 太小会让姿态漂移更多
-
-### `terminal_orientation_weight`
-
-预测时域最后一步的姿态误差权重。
-
-通常:
-
-- 比 `orientation_weight` 更影响时域末端姿态
-- 当前默认搜索范围是 `[5, 10, 20]`
-- 如果位置误差偏大,可以降低它
-
-## 4. 搜索流程
-
-脚本默认做两阶段搜索。
-
-### 粗搜索
-
-默认组合:
-
-```text
-horizon_steps = [8, 12, 16]
-max_joint_step = [0.08, 0.10]
-orientation_weight = [0.5, 1.0, 2.0]
-terminal_orientation_weight = [5.0, 10.0, 20.0]
-```
-
-共 54 组。
-
-### 细搜索
-
-脚本会取粗搜索 Top 5,然后在附近继续搜索:
-
-```text
-horizon_steps: 当前值 ± 2
-max_joint_step: 当前值 ± 0.01
-orientation_weight: 当前值 * [0.75, 1.0, 1.25]
-terminal_orientation_weight: 当前值 * [0.75, 1.0, 1.25]
-```
-
-如果只想快速粗扫:
-
-```bash
-python3 tune_mpc_params.py --skip-fine
-```
-
-如果担心运行太久:
-
-```bash
-python3 tune_mpc_params.py --max-combinations 10
-```
-
-`--max-combinations` 会限制每个阶段最多评估多少组。
-
-如果已经有一份粗搜索 CSV,可以不重复粗搜索,直接从 Top 参数继续细搜索:
-
-```bash
-python3 tune_mpc_params.py \
-  --fine-from-csv demo/data/mpc_tuning_<时间戳>.csv \
-  --fine-top 5 \
-  --max-combinations 60
-```
-
-这个模式会把 CSV 中评分最好的 `--fine-top` 组作为中心,生成附近邻域继续搜索。
-
-如果用旧 CSV 给新的姿态目标生成邻域,脚本只会借用旧参数,不会把旧评分混入新结果。
-
-如果想切换为水平圆轨迹 + 锁定垂直末端姿态：
-
-```bash
-python3 tune_mpc_params.py \
-  --orientation-target vertical_down \
-  --fine-from-csv demo/data/mpc_tuning_<时间戳>.csv \
-  --fine-top 5 \
-  --max-combinations 60
-```
-
-## 5. 评分指标怎么看
-
-CSV 和终端 Top 表里常用字段:
-
-- `score`: 总评分,越低越好
-- `rms_position_error`: 位置 RMS 误差,单位 m
-- `max_position_error`: 最大位置误差,单位 m
-- `rms_orientation_error`: 姿态 RMS 误差
-- `max_orientation_error`: 最大姿态误差
-- `tracking_bad_count`: 超过 `terminal_tolerance=0.01 m` 的次数
-- `fallback_count`: 命令不可用并回退的次数
-- `solver_failure_count`: 求解器状态失败次数
-- `rms_control_delta`: 相邻关节命令变化 RMS
-- `mean_solve_time_ms`: 平均求解时间,单位 ms
-- `max_solve_time_ms`: 最大求解时间,单位 ms
-
-当前评分是“位置和姿态均衡”。选择结果时建议按这个顺序看:
-
-1. `fallback_count` 必须为 0
-2. `max_position_error` 不要过大
-3. `rms_position_error` 越小越好
-4. `rms_orientation_error` / `max_orientation_error` 不要明显恶化
-5. `mean_solve_time_ms` 和 `max_solve_time_ms` 不能超过实时需求太多
-6. `rms_control_delta` 不要明显高于其他候选
-
-## 6. 推荐使用流程
-
-先跑一个小测试:
-
-```bash
-python3 tune_mpc_params.py --skip-fine --max-combinations 3
-```
-
-确认环境没问题后跑完整粗搜索:
-
-```bash
-python3 tune_mpc_params.py --skip-fine
-```
-
-如果粗搜索结果里 Top 组合明显集中在某个区域,再跑完整粗到细:
-
-```bash
-python3 tune_mpc_params.py
-```
-
-得到推荐命令后,用真实 demo 和可视化器验证:
-
-```bash
-python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
-  -p horizon_steps:=4 \
-  -p max_joint_step:=0.06 \
-  -p lock_orientation:=true \
-  -p orientation_weight:=0.9375 \
-  -p terminal_orientation_weight:=25.0
-```
-
-末端竖直朝下版本:
-
-```bash
-python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
-  -p horizon_steps:=8 \
-  -p max_joint_step:=0.1100 \
-  -p lock_orientation:=true \
-  -p orientation_target:=vertical_down \
-  -p orientation_weight:=0.2000 \
-  -p terminal_orientation_weight:=5.0000
-```
-
-同时建议开控制信号记录:
-
-```bash
-ros2 run manipulator trajectory_visualizer_demo.py --ros-args \
-  -p trajectory_mode:=horizontal_circle \
-  -p actual_topic:=/student/joint_command \
-  -p record_control_signal:=true
-```
-
-## 7. 调参经验
-
-- 如果位置误差大,先看 `max_joint_step` 是否太小或姿态权重是否过强
-- 如果轨迹速度不快但误差/抖动明显,可以尝试减小 `horizon_steps`
-- 如果位置误差大但姿态误差很小,说明姿态锁太强,降低姿态权重
-- 如果姿态漂移明显,提高 `terminal_orientation_weight`
-- 如果控制信号抖动变大,降低 `max_joint_step` 或提高平滑代价项
-- 如果 ACADOS 求解时间太长,降低 `horizon_steps`
-
-## 8. 当前已测推荐
-
-2026-06-24 的两轮 ACADOS 离线搜索结果,锁定起始姿态:
-
-```text
-horizon_steps = 4
-max_joint_step = 0.06
-orientation_weight = 0.9375
-terminal_orientation_weight = 25.0
-```
-
-离线评估指标:
-
-```text
-score = 8.668
-rms_position_error = 0.0013 m
-max_position_error = 0.0025 m
-rms_orientation_error = 0.0128
-max_orientation_error = 0.0225
-tracking_bad_count = 0
-fallback_count = 0
-mean_solve_time_ms = 0.24 ms
-```
-
-可直接运行:
-
-```bash
-python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
-  -p horizon_steps:=4 \
-  -p max_joint_step:=0.0600 \
-  -p lock_orientation:=true \
-  -p orientation_weight:=0.9375 \
-  -p terminal_orientation_weight:=25.0000
-```
-
-末端竖直朝下的一圈 ACADOS 离线测试结果:
-
-```text
-horizon_steps = 8
-max_joint_step = 0.11
-orientation_weight = 0.2
+horizon_steps               = 2
+max_joint_step              = 0.020
+orientation_weight          = 0.375
 terminal_orientation_weight = 5.0
 ```
 
-离线评估指标:
+各场景离线评估（plant max_velocity=1.0，角速度控制开启）：
 
 ```text
-score = 87.572
-rms_position_error = 0.0017 m
-max_position_error = 0.0089 m
-rms_orientation_error = 0.0749
-max_orientation_error = 0.6804
-tracking_bad_count = 0
-fallback_count = 0
-mean_solve_time_ms = 0.47 ms
+scenario           rms_pos  max_pos  rms_ori  min_sigma  fallback solver_fail mean_ms
+circle             0.5 mm   0.9 mm   -        0.155      0         0           0.33
+horizontal_circle  1.0 mm   1.7 mm   0.024    0.140      0         0           0.16
+line               0.9 mm   1.3 mm   -        0.169      0         0           0.16
+moving_base_circle 1.2 mm   3.8 mm   0.008    0.155      0         0           0.35
 ```
 
-可直接运行:
+这套参数已写入三个 demo 的参数默认值，直接运行即可：
 
 ```bash
-python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
-  -p horizon_steps:=8 \
-  -p max_joint_step:=0.1100 \
-  -p lock_orientation:=true \
-  -p orientation_target:=vertical_down \
-  -p orientation_weight:=0.2000 \
-  -p terminal_orientation_weight:=5.0000
+# 固定臂竖直圆 / 直线
+python3 move_arm_mpc_ik_demo.py --ros-args -p trajectory_mode:=circle   # 或 line
+
+# 固定臂水平圆（锁姿态）
+python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args -p lock_orientation:=true
+
+# 浮动基座臂
+python3 move_base_circle_mpc_ik_demo.py
 ```
+
+> 注：搜索最优是短时域 `horizon_steps=2`。若真机上希望更强的预测平滑裕度，`horizon_steps=4`
+> 在本搜索中同样可行（聚合分略高，各项指标仍达标），可作为更保守的备选。
+
+## 7. 调参经验
+
+- 位置误差大：先确认 `max_joint_step` 是否顶满 `max_velocity*dt` 上限（闭环下越大跟踪越紧）。
+- 闭环滞后明显：检查 `max_joint_step <= max_velocity*dt` 是否被违反。
+- 姿态漂移：提高 `terminal_orientation_weight`；姿态太僵导致位置误差大：降低姿态权重。
+- 控制抖动变大：降低 `max_joint_step` 或提高平滑代价项（脚本默认沿用 `MpcIkConfig` 平滑权重）。
+- 求解时间偏高：降低 `horizon_steps`。
+- 出现奇异判废：该轨迹几何在当前姿态约束下接近位置奇异，需调整轨迹或姿态目标，而非调权重。
+
+## 8. 扩展：增加运动场景 / 更换求解算法
+
+脚本预留了两个扩展点，顶部 docstring 也有对应注释（“扩展点①/②”）。
+
+### 8.1 增加一个运动场景
+
+在 `tune_unified_mpc_params.py` 的 `build_scenarios()` 里的 `SCENARIO` 列表加一条
+`Scenario(...)`，并把轨迹写成模块级普通函数（参考 `_vertical_circle` /
+`_moving_base_position`）。`Scenario` 字段：
+
+| 字段 | 含义 |
+|---|---|
+| `name` | 场景名（也是 `separate` 模式的 CSV/输出标识） |
+| `demo` | 该场景对应的 demo 文件名（仅用于打印可直接运行的推荐命令） |
+| `period_sec` | 轨迹一圈/一程周期(秒)，roll-out 时长 = `periods * period_sec` |
+| `lock_orientation` | 是否锁末端姿态（锁则用 `orientation_weight`/`terminal_orientation_weight`） |
+| `position_fn(t)` | 返回 `(3,)` 目标末端位置（base 系） |
+| `rotation_fn(t)` | 返回 `(3,3)` 目标姿态；不锁姿态填 `None`；想“锁起点姿态”填 `None` 且 `lock_orientation=True`（自动锁起点 IK 解的姿态） |
+| `demo_extra_args` | 推荐命令里额外的 `-p` 参数，如 `["trajectory_mode:=circle"]` |
+
+加完即可，`unified` 和 `separate` 模式都会自动带上新场景，无需改其它任何地方。例如加一个
+固定臂方形轨迹：
+
+```python
+def _square(t: float) -> np.ndarray:
+    ...  # 返回 base 系目标位置 (3,)
+
+# build_scenarios() 的 SCENARIO 列表里追加：
+Scenario("square", "move_arm_mpc_ik_demo.py", 8.0, False, _square, None,
+         ["trajectory_mode:=square"]),
+```
+
+### 8.2 更换求解算法（把 MPC 换成别的 IK/规划器）
+
+只改 `build_solver(params, lock_orientation)` 这一个工厂函数，让它返回你的求解器对象。该对象
+只需实现 `step()` 合约：
+
+```text
+step(targets(H,3), q_current(N,), warm_start=None, target_rotation=None) -> (q_next(N,), ok, info)
+  targets         : (horizon, 3) 目标位置序列(base 系)
+  q_current       : (N,) 当前关节角（闭环下为实测反馈）
+  target_rotation : None / (3,3) / (horizon,3,3)
+  返回 q_next(N,) 下一拍关节命令; ok(bool); info(dict)
+  info 尽量含: "trajectory"(下一拍 warm start)、"solve_time"(秒,可选)、
+              "status"(int,0=正常)、"success"(bool)、"command_usable"(bool)、"tracking_ok"(bool)
+```
+
+评估侧用的正运动学/雅可比/奇异性都走独立的 pinocchio 模型（`Context`），与求解器内部无关，
+所以换算法**不必再提供 FK**。若新算法的可调参数不同（不再是 horizon/step/姿态权重），同时改
+`ParamSet` 与 `coarse_candidates` / `fine_candidates` 即可，其余评分/模式/输出逻辑不用动。
+
+> 若只是想换 ACADOS/CasADi/SciPy 求解后端（同一套 MPC），改 `_build_config` 里的
+> `solver_backend` 即可，不必动 `build_solver` 结构。
 
 ## 9. LL100 避障调参(`tune_ll100_nmpc.py`)
 
-LL100 整机避障用**独立脚本 `tune_ll100_nmpc.py`**(与独立臂的 `tune_mpc_params.py` 分开,互不影响)。它复用 `move_ll100_lh420_nmpc_demo.py` 的同一套 `MpcIkConfig` + `ll100_traj_pub` 的路径模式,离线 roll 出**闭环**轨迹,用避障 `violation` 做安全硬门。
+LL100 整机避障用**独立脚本 `tune_ll100_nmpc.py`**(与独立臂的 `tune_unified_mpc_params.py` 分开,互不影响)。它复用 `move_ll100_lh420_nmpc_demo.py` 的同一套 `MpcIkConfig` + `ll100_traj_pub` 的路径模式,离线 roll 出**闭环**轨迹,用避障 `violation` 做安全硬门。
 
 ### 9.1 闭环模型(复刻 SmoothPositionController)
 
