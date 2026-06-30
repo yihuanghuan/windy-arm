@@ -248,8 +248,6 @@ install(PROGRAMS
   demo/move_arm_horizontal_circle_mpc_ik_demo.py
   demo/move_arm_obstacle_mpc_demo.py
   demo/move_ll100_lh420_nmpc_demo.py
-  demo/move_ll100_lh420_nmpc_path_demo.py
-  demo/move_ll100_lh420_nmpc_goal_demo.py
   demo/ll100_traj_pub.py
   demo/ll100_trajectory_visualizer_demo.py
   demo/moving_base_trajectory_config.py
@@ -258,6 +256,7 @@ install(PROGRAMS
   demo/ll100_lh420_zero_joint_state_publisher.py
   demo/ll100_lh420_rotor_joint_state_publisher.py
   demo/tune_mpc_params.py
+  demo/tune_ll100_nmpc.py
   demo/trajectory_visualizer_demo.py
   DESTINATION lib/${PROJECT_NAME}
 )

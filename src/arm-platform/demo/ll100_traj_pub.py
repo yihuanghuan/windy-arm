@@ -34,14 +34,26 @@ LL100_CIRCLE_CENTER = np.array([0.70, 0.0, 0.10], dtype=float)
 LL100_CIRCLE_RADIUS = 0.08
 LL100_LOWER_OBSTACLE_CIRCLE_CENTER = np.array([0.70, 0.02, -0.21], dtype=float)
 LL100_LOWER_OBSTACLE_CIRCLE_RADIUS = 0.08
-LL100_FRONT_WING_ARC_LEFT = np.array([0.64, -0.30, -0.20], dtype=float)
-LL100_FRONT_WING_ARC_RIGHT = np.array([0.64, 0.30, -0.20], dtype=float)
+LL100_FRONT_WING_ARC_LEFT = np.array([0.67, -0.20, -0.19], dtype=float)
+LL100_FRONT_WING_ARC_RIGHT = np.array([0.67, 0.20, -0.19], dtype=float)
 LL100_FRONT_WING_ARC_DROP = 0.08
-LL100_FRONT_WING_ARC_FORWARD = 0.06
+LL100_FRONT_WING_ARC_FORWARD = 0.04
 
 
 def _lerp(a: np.ndarray, b: np.ndarray, alpha: float) -> np.ndarray:
     return (1.0 - alpha) * a + alpha * b
+
+
+def _front_wing_arc_point(s: float) -> np.ndarray:
+    s = float(np.clip(s, 0.0, 1.0))
+    theta = math.pi * s
+    point = _lerp(LL100_FRONT_WING_ARC_LEFT, LL100_FRONT_WING_ARC_RIGHT, s)
+    # A relaxed arc below the two front wing/propeller areas.  The midpoint is
+    # pushed down and forward so obstacle avoidance has a visible side-effect
+    # without demanding a near-contact maneuver.
+    point[0] += LL100_FRONT_WING_ARC_FORWARD * math.sin(theta)
+    point[2] -= LL100_FRONT_WING_ARC_DROP * math.sin(theta)
+    return point
 
 
 def _resample_polyline(points, count: int) -> np.ndarray:
@@ -136,30 +148,27 @@ def _build_path(mode: str, count: int) -> np.ndarray:
         points = _stroke_text_points("windylab", x=0.52, y0=-0.22, z0=0.04, height=0.10, spacing=0.018)
         return _resample_polyline(points, count)
     if mode == "avoidance_sweep":
+        # 抬高前部下沉段,远离机身/安装架 box(原最低点 z=-0.02 紧贴 lower deck box 顶 z=-0.03)。
+        # 前沉段同时把 x 略往回收,降低前伸+下沉带来的连杆贴近。
         points = [
-            [0.48, -0.20, 0.12],
-            [0.42, -0.08, 0.02],
-            [0.36, 0.00, -0.02],
-            [0.42, 0.08, 0.02],
-            [0.48, 0.20, 0.12],
+            [0.48, -0.20, 0.14],
+            [0.44, -0.08, 0.10],
+            [0.40, 0.00, 0.08],
+            [0.44, 0.08, 0.10],
+            [0.48, 0.20, 0.14],
             [0.56, 0.12, 0.16],
             [0.58, 0.00, 0.18],
             [0.56, -0.12, 0.16],
-            [0.48, -0.20, 0.12],
+            [0.48, -0.20, 0.14],
         ]
         return _resample_polyline(points, count)
     if mode == "front_wing_arc":
         points = []
         for i in range(count):
-            s = i / max(1, count - 1)
-            theta = math.pi * s
-            base = _lerp(LL100_FRONT_WING_ARC_LEFT, LL100_FRONT_WING_ARC_RIGHT, s)
-            # A relaxed arc below the two front wing/propeller areas.  The
-            # midpoint is pushed down and forward so obstacle avoidance has a
-            # visible side-effect without demanding a near-contact maneuver.
-            base[0] += LL100_FRONT_WING_ARC_FORWARD * math.sin(theta)
-            base[2] -= LL100_FRONT_WING_ARC_DROP * math.sin(theta)
-            points.append(base)
+            phase = 2.0 * i / max(1, count)
+            tau = phase if phase <= 1.0 else 2.0 - phase
+            s = 0.5 * (1.0 - math.cos(math.pi * tau))
+            points.append(_front_wing_arc_point(s))
         return np.array(points, dtype=float)
     if mode == "front_propeller_line":
         left_center = _FRONT_PROP_LEFT_CENTER
@@ -274,8 +283,6 @@ class LL100TrajPub(Node):
         line.color.g = 1.0
         line.color.a = 0.8
         line.points = [Point(x=float(p[0]), y=float(p[1]), z=float(p[2])) for p in self.path]
-        if line.points:
-            line.points.append(line.points[0])
         markers.markers.append(line)
 
         pt = self.path[self.path_index]

@@ -35,6 +35,7 @@ def generate_launch_description():
         parameters=[
             {'arm_type': 'll100_sim'},
             {'arm_version': 'll100_lh420'},
+            {'enable_velocity_feedforward': True},
             {'max_velocity': LaunchConfiguration('max_velocity')},
             {'command_timeout_sec': 1.0},
             {'joint_lower_limits': [-4.0, -3.1415, -1.5708, -4.0, -2.0, -4.0]},

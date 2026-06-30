@@ -366,3 +366,41 @@ python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
   -p orientation_weight:=0.2000 \
   -p terminal_orientation_weight:=5.0000
 ```
+
+## 9. LL100 避障调参(`tune_ll100_nmpc.py`)
+
+LL100 整机避障用**独立脚本 `tune_ll100_nmpc.py`**(与独立臂的 `tune_mpc_params.py` 分开,互不影响)。它复用 `move_ll100_lh420_nmpc_demo.py` 的同一套 `MpcIkConfig` + `ll100_traj_pub` 的路径模式,离线 roll 出**闭环**轨迹,用避障 `violation` 做安全硬门。
+
+### 9.1 闭环模型(复刻 SmoothPositionController)
+
+被控对象复刻 LL100 底层的 `SmoothPositionController`。LL100 **固定开启速度前馈(velocity feedforward),无开关**:速度前馈 `v_ff` + 位置反馈 `v_fb`(`τ=0.15`、限速 `0.4`)+ 加速度限(`5.0`),再积分。`ll100_lh420_control.launch.py` 已设 `{'enable_velocity_feedforward': True}`,与调参器 plant 一致(LL100 与独立臂相互独立)。
+
+MPC 每拍从 `q_plant` 反馈重解;`violation` / `margin` 在被控对象**实际经过的状态**上量(不是 MPC 预测 plan)。`--max-velocity` 应与 `student_arm` 的 `max_velocity` 一致(默认 `0.5`)。
+
+### 9.2 运行
+
+```bash
+cd ~/code/windylab_ws/src/arm-platform/demo
+# 需先 source ROS + 工作空间 + ACADOS(导入 demo 模块和求解器);不起 ROS、不起仿真(被控对象在脚本里建模)
+source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
+python3 tune_ll100_nmpc.py --path-mode avoidance_sweep
+# 快速冒烟:--max-combinations 2 --periods 0.5
+```
+
+### 9.3 搜索的参数 + 安全门
+
+| 参数 | 粗搜索候选 | 说明 |
+|---|---|---|
+| `capsule_samples_per_segment` | `[1, 2, 3]` | 连杆胶囊采样密度,越密避障越保守 |
+| `max_joint_step` | `[0.008, 0.01, 0.015, 0.02]` | MPC 每周期关节步长;> `max_velocity*dt` 会滞后 |
+| `path_preview_stride` | `[4, 6]` | 预测时域内目标点间隔 |
+| `body_obstacle_margin` | `[0.015, 0.02]` | 机身 box 的 NMPC 硬约束余量 |
+
+打分先按**安全分层**:`violation_max ≤ 0.1mm 且 fallback=0` 才 `safe=True`,不安全的直接排到所有安全候选之后;安全候选之间再按 `violation + 跟踪误差` 排序。
+
+### 9.4 输出
+
+- CSV:`demo/data/mpc_tuning_ll100_<path_mode>_<时间戳>.csv`
+- 终端打印 Top-K(先看 `safe`,再看 `rms_pos`)+ 一条可直接跑的 `move_ll100_lh420_nmpc_demo.py` 命令
+
+`--path-mode` 支持 `ll100_traj_pub` 的模式(`avoidance_sweep` / `lower_obstacle_circle` / `circle` / `windylab` / `front_wing_arc` / `front_propeller_line`);`single_target` 不支持(没有连续路径)。
