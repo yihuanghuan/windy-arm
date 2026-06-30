@@ -32,11 +32,13 @@ BASE_FRAME = traj.BASE_FRAME
 class MoveBaseCircleMpcIkDemo(Node):
     def __init__(self):
         super().__init__('move_base_circle_mpc_ik_demo')
+        # 默认值取自 tune_unified_mpc_params.py 统一闭环调参结果
+        # (固定臂+浮动基座臂四场景统一): h=2, step=0.02, ow=0.375, tow=5.0。
         self.declare_parameter('solver_backend', 'acados')
-        self.declare_parameter('horizon_steps', 8)
+        self.declare_parameter('horizon_steps', 2)
         self.declare_parameter('max_joint_step', 0.02)
         self.declare_parameter('terminal_tolerance', 0.01)
-        self.declare_parameter('orientation_weight', 0.2)
+        self.declare_parameter('orientation_weight', 0.375)
         self.declare_parameter('terminal_orientation_weight', 5.0)
         self.declare_parameter('acados_rti_iterations', 3)
         self.declare_parameter('position_weight', 50.0)
@@ -45,7 +47,6 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.declare_parameter('joint_delta_change_weight', 0.25)
         self.declare_parameter('current_posture_weight', 0.01)
         self.declare_parameter('center_posture_weight', 0.002)
-        self.declare_parameter('use_feedback_state', False)
         self.declare_parameter('command_fk_step_warn_m', 0.006)
 
         self.solver_backend = self.get_parameter('solver_backend').value
@@ -66,7 +67,6 @@ class MoveBaseCircleMpcIkDemo(Node):
             self.get_parameter('current_posture_weight').value)
         self.center_posture_weight = float(
             self.get_parameter('center_posture_weight').value)
-        self.use_feedback_state = bool(self.get_parameter('use_feedback_state').value)
         self.command_fk_step_warn_m = float(
             self.get_parameter('command_fk_step_warn_m').value)
 
@@ -150,7 +150,7 @@ class MoveBaseCircleMpcIkDemo(Node):
             f'horizon={self.horizon_steps}, max_joint_step={self.max_joint_step:.3f}, '
             f'orientation_weight={self.orientation_weight:.3f}, '
             f'terminal_orientation_weight={self.terminal_orientation_weight:.3f}, '
-            f'use_feedback_state={self.use_feedback_state}, '
+            f'closed_loop=True, '
             f'command_fk_step_warn={self.command_fk_step_warn_m * 1000.0:.1f}mm')
         recommended_max_step = RECOMMENDED_CONTROLLER_MAX_VELOCITY_RAD_S * self.dt
         if self.max_joint_step > recommended_max_step + 1e-9:
@@ -373,10 +373,8 @@ class MoveBaseCircleMpcIkDemo(Node):
             self.reset_hold_time = 0.0
 
     def _run_tracking_phase(self):
-        if self.use_feedback_state and self.q_measured is not None:
-            q_current = self.q_measured.copy()
-        else:
-            q_current = self.q_last.copy()
+        # 纯闭环:reset 阶段已确保 q_measured 到位,这里始终用实测反馈作为求解起点。
+        q_current = self.q_measured.copy()
         targets, rotations = self._target_horizon_base()
         q_next, ok, info = self.mpc_ik.step(
             targets,

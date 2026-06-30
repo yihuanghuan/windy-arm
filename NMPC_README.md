@@ -162,9 +162,7 @@ ros2 launch manipulator student_arm.launch.py
 ```bash
 source /opt/ros/humble/setup.bash && source ~/code/windylab_ws/install/setup.bash
 ros2 run manipulator trajectory_visualizer_demo.py --ros-args \
-  -p trajectory_mode:=circle \
-  -p actual_topic:=/student/joint_command \
-  -p ignore_initial_sec:=2.0
+  -p trajectory_mode:=circle 
 
 # 另开一个终端
 cd ~/code/windylab_ws/src/arm-platform/demo
@@ -183,7 +181,6 @@ python3 move_arm_mpc_ik_demo.py
 source /opt/ros/humble/setup.bash && source ~/code/windylab_ws/install/setup.bash
 ros2 run manipulator trajectory_visualizer_demo.py --ros-args \
   -p trajectory_mode:=line \
-  -p actual_topic:=/student/joint_command \
   -p ignore_initial_sec:=2.0
 
 # 另开一个终端
@@ -213,7 +210,6 @@ python3 move_arm_mpc_ik_demo.py --ros-args -p trajectory_mode:=horizontal_circle
 source /opt/ros/humble/setup.bash && source ~/code/windylab_ws/install/setup.bash
 ros2 run manipulator trajectory_visualizer_demo.py --ros-args \
   -p trajectory_mode:=horizontal_circle \
-  -p actual_topic:=/student/joint_command \
   -p ignore_initial_sec:=2.0
 
 # 另开一个终端
@@ -231,18 +227,13 @@ python3 move_arm_mpc_ik_demo.py --ros-args -p trajectory_mode:=horizontal_circle
 source /opt/ros/humble/setup.bash && source ~/code/windylab_ws/install/setup.bash
 ros2 run manipulator trajectory_visualizer_demo.py --ros-args \
   -p trajectory_mode:=horizontal_circle \
-  -p actual_topic:=/student/joint_command \
   -p ignore_initial_sec:=2.0
 
 # 另开一个终端
 cd ~/code/windylab_ws/src/arm-platform/demo
 source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
 python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
-  -p horizon_steps:=4 \
-  -p max_joint_step:=0.0600 \
-  -p lock_orientation:=true \
-  -p orientation_weight:=0.9375 \
-  -p terminal_orientation_weight:=25.0000
+  -p lock_orientation:=true
 ```
 
 水平圆并约束末端 x 轴竖直朝下:
@@ -251,22 +242,95 @@ python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
 source /opt/ros/humble/setup.bash && source ~/code/windylab_ws/install/setup.bash
 ros2 run manipulator trajectory_visualizer_demo.py --ros-args \
   -p trajectory_mode:=horizontal_circle \
-  -p actual_topic:=/student/joint_command \
   -p ignore_initial_sec:=2.0
 
 # 另开一个终端
 cd ~/code/windylab_ws/src/arm-platform/demo
 source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
 python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
-  -p horizon_steps:=8 \
-  -p max_joint_step:=0.1100 \
   -p lock_orientation:=true \
-  -p orientation_target:=vertical_down \
-  -p orientation_weight:=0.2000 \
-  -p terminal_orientation_weight:=5.0000
+  -p orientation_target:=vertical_down
 ```
 
 其中 `vertical_down` 定义为:末端坐标系 x 轴对齐世界坐标 `-Z`,y 轴对齐世界坐标 `+Y`,z 轴对齐世界坐标 `+X`。
+
+### 6.5 基座运动下的 world 系末端跟踪
+
+`move_base_circle_visual_demo.py` 和 `move_base_circle_mpc_ik_demo.py` 都使用 `demo/moving_base_trajectory_config.py` 里的同一套轨迹参数。如果要修改轨迹,只改这个共享配置文件里的 `BASE_CIRCLE_RADIUS`、`BASE_HEIGHT`、`BASE_ATTITUDE_AMPLITUDE_DEG`,然后重新 build。
+
+末端目标定义在 `world` 坐标系下。控制脚本会把 world 系末端目标变换到当前 `base_link` 系,再用普通 IK 或 MPC 求关节角。作图程序也从同一个共享配置读取 `p_wb(t)` / `R_wb(t)` / `p_ref_world(t)`,避免控制和作图参数不一致。
+
+启动机械臂和 RViz:
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/code/windylab_ws/install/setup.bash
+ros2 launch manipulator student_arm.launch.py \
+  max_velocity:=1.0 \
+  velocity_feedforward_gain:=0.7 \
+  position_feedback_tau:=0.15 \
+  feedback_velocity_limit:=0.4
+```
+
+> 角速度控制(关节速度前馈)已默认开启,`enable_velocity_feedforward` 开关已移除,无需也不能再传。
+
+RViz 左侧 `Global Options -> Fixed Frame` 建议切成 `world`。如果 Fixed Frame 仍是 `base_link`,视觉上会像是 `world`/网格在动,其实是观察坐标系固定在晃动基座上造成的相对运动效果。
+
+另开终端启动控制 demo:
+
+```bash
+cd ~/code/windylab_ws/src/arm-platform/demo
+source /opt/ros/humble/setup.bash
+source ~/code/windylab_ws/install/setup.bash
+source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
+python3 move_base_circle_mpc_ik_demo.py
+```
+
+再开一个终端用现有作图程序记录 world 系末端误差和控制信号:
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/code/windylab_ws/install/setup.bash
+ros2 run manipulator trajectory_visualizer_demo.py --ros-args \
+  -p trajectory_mode:=moving_base_circle \
+  -p frame_id:=world \
+  -p actual_topic:=/joint_states \
+  -p command_topic:=/student/joint_command \
+  -p record_command_fk:=true \
+  -p record_control_signal:=true \
+  -p ignore_initial_sec:=3.0
+```
+
+MPC 版本可调参数:
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `solver_backend` | `acados` | 求解后端:`acados` / `casadi` / `scipy` |
+| `horizon_steps` | `8` | MPC 预测步数 |
+| `max_joint_step` | `0.08` | 单步最大关节变化量(rad) |
+| `terminal_tolerance` | `0.01` | 终端位置误差 warning 阈值(m) |
+| `orientation_weight` | `0.2` | 时域内姿态软约束权重 |
+| `terminal_orientation_weight` | `5.0` | 终端姿态软约束权重 |
+| `acados_rti_iterations` | `3` | 每帧 SQP_RTI 重复次数 |
+
+MPC 版本会向 `/student/joint_command` 同时发布 `position` 和 `velocity`。速度由本帧 MPC 结果计算:
+
+```text
+dq_cmd = (q_next - q_current) / control_dt
+```
+
+`student_arm_node` 里的 `SmoothPositionController` 会继续对位置做平滑限速,并把 velocity 作为速度前馈传到底层,但速度会按 launch 参数 `max_velocity` 限幅。因此比较 IK/MPC 时,要让 `max_joint_step` 与底层 `max_velocity * control_dt` 大致匹配。
+
+`moving_base_circle` 模式下作图程序使用:
+
+```text
+actual_world(t) = p_wb(t) + R_wb(t) @ FK_base(q)
+expected_world(t) = p_ref_world(t)
+```
+
+因此 CSV 和曲线里的误差是 world 系末端误差。如果图里记录到了复位阶段,把 `ignore_initial_sec` 调大一点。
+控制 demo 会在 `/student/joint_command` 的 `header.frame_id` 中标记 `moving_base_reset` / `moving_base_track`;作图程序在 `moving_base_circle` 模式下只从 `moving_base_track` 开始记录。
+`record_command_fk:=true` 会额外保存 `*_command_fk.csv/png`,用于对比“命令关节角对应的末端轨迹”和 `/joint_states` 反馈轨迹。
 
 ## 7. 作图模块 — `trajectory_visualizer_demo.py`
 
@@ -274,7 +338,7 @@ python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
 |---|---|---|
 | `trajectory_mode` | `circle` | 期望轨迹模式:`circle` / `horizontal_circle` / `line`,要和运动 demo 保持一致 |
 | `frame_id` | `base_link` | RViz Marker 使用的坐标系 |
-| `actual_topic` | `/joint_states` | 实际关节状态输入 topic,MPC 使用 `/student/joint_command` |
+| `actual_topic` | `/joint_states` | 实际关节状态输入 topic |
 | `command_topic` | `/student/joint_command` | 轨迹命令 topic,用来判断轨迹开始 |
 | `control_signal_topic` | `/student/joint_command` | 控制信号记录 topic |
 | `record_control_signal` | `False` | 是否记录控制信号 CSV/图 |
@@ -324,18 +388,12 @@ python3 move_arm_mpc_ik_demo.py --ros-args -p solver_backend:=scipy
 
 ## 9. 调参
 
-离线调参脚本:
+统一参数闭环离线调参脚本(固定臂 + 浮动基座臂四场景, 一套参数):
 
 ```bash
 cd ~/code/windylab_ws/src/arm-platform/demo
 source ../scripts/setup_acados_env.sh
-python3 tune_mpc_params.py
-```
-
-末端 x 轴竖直朝下:
-
-```bash
-python3 tune_mpc_params.py --orientation-target vertical_down
+python3 tune_unified_mpc_params.py
 ```
 
 详细说明见 `MPC_TUNING_README.md`。

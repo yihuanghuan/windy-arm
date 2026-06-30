@@ -380,7 +380,7 @@ python3 -c "import acados_template; print('acados ok')" #这个只是检查acado
 ACADOS 求解器会按配置缓存:
 - 第一次运行某个配置时,程序会 `generate=True, build=True`,生成并编译 C 求解器。
 - 后续同配置运行时,如果检测到 `libacados_ocp_solver_*.so`、`acados_ocp.json` 和 `acados_solver_metadata.json` 都存在且配置指纹一致,程序会 `generate=False, build=False`,直接复用已编译求解器。
-- 如果配置变了,例如 `horizon_steps`、`max_joint_step`、姿态权重、前桨避障开关、关键点数量、避障球数量、机身 box 数量、capsule 半径或 capsule 采样点数量变化,配置指纹会不一致,程序会自动重新生成并编译。
+- 如果配置变了,例如 `horizon_steps`、`max_joint_step`、姿态权重、前桨/机身 soft/hard 约束模式、关键点数量、避障球数量、机身 box 数量、capsule 半径或 capsule 采样点数量变化,配置指纹会不一致,程序会自动重新生成并编译。
 
 环境变量配置完成后直接运行默认 ACADOS 版本:
 
@@ -511,29 +511,23 @@ python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
   -p terminal_orientation_weight:=5.0000
 ```
 
-### 5.13 进阶:MPC 软锁姿态水平圆批量调参 — `tune_mpc_params.py`
+### 5.13 进阶:MPC 统一参数闭环批量调参 — `tune_unified_mpc_params.py`
 
-批量调参可以使用 `demo/tune_mpc_params.py`,详细说明见 `demo/MPC_TUNING_README.md`。
-
-针对末端竖直朝下姿态做离线调参:
+批量调参用 `demo/tune_unified_mpc_params.py`,它在固定臂(竖直圆/水平圆/直线)和浮动基座臂
+四个场景上做**闭环** roll-out,搜出一套统一参数,详细说明见 `MPC_TUNING_README.md`。
 
 ```bash
 cd ~/code/windylab_ws/src/arm-platform/demo
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
-python3 tune_mpc_params.py --orientation-target vertical_down
+
+# 先 smoke test, 再跑完整粗到细搜索
+python3 tune_unified_mpc_params.py --skip-fine --max-combinations 3
+python3 tune_unified_mpc_params.py
 ```
 
-如果已有一份调参 CSV,可以从它的 Top 参数继续细搜索:
-
-```bash
-python3 tune_mpc_params.py \
-  --orientation-target vertical_down \
-  --fine-from-csv data/mpc_tuning_<时间戳>.csv \
-  --fine-top 5 \
-  --max-combinations 60
-```
+搜出的统一参数已写入各 demo 的参数默认值,直接运行 demo 即可生效。
 
 ## 6. 模型文件
 
