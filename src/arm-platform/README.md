@@ -30,7 +30,7 @@ python3 mpc_pinocchio_ik.py
 python3 move_arm_mpc_ik_demo.py
 ```
 
-See [demo/NMPC_README.md](demo/NMPC_README.md) for the full ACADOS installation
+See [7DOF_ARM_NMPC_README.md](../../7DOF_ARM_NMPC_README.md) for the full ACADOS installation
 guide, verification commands, demo launch steps, fallback backends, and common
 troubleshooting.
 

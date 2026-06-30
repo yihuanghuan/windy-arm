@@ -276,7 +276,7 @@ install(PROGRAMS
 )
 
 install(FILES
-  ../../NMPC_README.md
+  ../../7DOF_ARM_NMPC_README.md
   ../../LL100_LH420_MPC_README.md
   ../../MPC_TUNING_README.md
   DESTINATION share/${PROJECT_NAME}/demo

@@ -11,7 +11,7 @@
 
 > 旧的单场景开环调参器 `tune_mpc_params.py` 已被本脚本取代并删除。
 
-运行前请先按 `NMPC_README.md` 完成 ACADOS 安装，并配置环境：
+运行前请先按 `7DOF_ARM_NMPC_README.md` 完成 ACADOS 安装，并配置环境：
 
 ```bash
 cd ~/code/windylab_ws/src/arm-platform

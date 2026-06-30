@@ -306,10 +306,10 @@ MPC 版本可调参数:
 | 参数 | 默认值 | 说明 |
 |---|---|---|
 | `solver_backend` | `acados` | 求解后端:`acados` / `casadi` / `scipy` |
-| `horizon_steps` | `8` | MPC 预测步数 |
-| `max_joint_step` | `0.08` | 单步最大关节变化量(rad) |
+| `horizon_steps` | `2` | MPC 预测步数 |
+| `max_joint_step` | `0.02` | 单步最大关节变化量(rad) |
 | `terminal_tolerance` | `0.01` | 终端位置误差 warning 阈值(m) |
-| `orientation_weight` | `0.2` | 时域内姿态软约束权重 |
+| `orientation_weight` | `0.375` | 时域内姿态软约束权重 |
 | `terminal_orientation_weight` | `5.0` | 终端姿态软约束权重 |
 | `acados_rti_iterations` | `3` | 每帧 SQP_RTI 重复次数 |
 
@@ -336,12 +336,13 @@ expected_world(t) = p_ref_world(t)
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `trajectory_mode` | `circle` | 期望轨迹模式:`circle` / `horizontal_circle` / `line`,要和运动 demo 保持一致 |
+| `trajectory_mode` | `circle` | 期望轨迹模式:`circle` / `horizontal_circle` / `line` / `moving_base_circle`,要和运动 demo 保持一致 |
 | `frame_id` | `base_link` | RViz Marker 使用的坐标系 |
 | `actual_topic` | `/joint_states` | 实际关节状态输入 topic |
 | `command_topic` | `/student/joint_command` | 轨迹命令 topic,用来判断轨迹开始 |
 | `control_signal_topic` | `/student/joint_command` | 控制信号记录 topic |
 | `record_control_signal` | `False` | 是否记录控制信号 CSV/图 |
+| `record_command_fk` | `True` | 是否把 `/student/joint_command` 的关节角做 FK,记录命令末端轨迹 CSV/图 |
 | `publish_rate_hz` | `10.0` | RViz Marker 发布频率 |
 | `max_actual_points` | `2000` | 最多保留的实际轨迹点数 |
 | `expected_path_points` | `240` | 期望轨迹离散点数 |
@@ -359,32 +360,33 @@ expected_world(t) = p_ref_world(t)
 
 ## 8. MPC IK 模块 — `move_arm_mpc_ik_demo.py/move_arm_horizontal_circle_mpc_ik_demo.py`
 
-`move_arm_mpc_ik_demo.py` 和 `move_arm_horizontal_circle_mpc_ik_demo.py` 使用同一个节点类,参数一致，默认值不同:`move_arm_mpc_ik_demo.py` 默认为 `circle`,`move_arm_horizontal_circle_mpc_ik_demo.py` 默认为 `horizontal_circle`。
+参数介绍：
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
 | `trajectory_mode` | `circle` | 运动轨迹:`circle` 垂直圆 / `horizontal_circle` 水平圆 / `line` 直线 |
 | `terminal_tolerance` | `0.01` | MPC IK 末端位置误差容忍值,单位 m |
 | `solver_backend` | `acados` | 求解器后端:`acados` / `casadi` / `scipy` |
-| `horizon_steps` | `8` | MPC 预测步数 |
-| `max_joint_step` | `0.08` | 每个控制周期最大关节步长,单位 rad |
+| `horizon_steps` | `2` | MPC 预测步数 |
+| `max_joint_step` | `0.02` | 每个控制周期最大关节步长,单位 rad |
 | `lock_orientation` | `False` | 是否启用末端姿态软约束 |
 | `orientation_target` | `initial` | 姿态目标:`initial` 保持初始姿态 / `vertical_down` 末端朝下 |
-| `orientation_weight` | `2.0` | 姿态约束权重,仅 `lock_orientation:=true` 时生效 |
-| `terminal_orientation_weight` | `20.0` | 终端姿态约束权重,仅 `lock_orientation:=true` 时生效 |
+| `orientation_weight` | `0.375` | 姿态约束权重,仅 `lock_orientation:=true` 时生效 |
+| `terminal_orientation_weight` | `5.0` | 终端姿态约束权重,仅 `lock_orientation:=true` 时生效 |
 
-端载设备算力较弱时,优先尝试降低:
+### 8.1 核心文件介绍
 
-```bash
--p horizon_steps:=4
-```
+- `move_arm_mpc_ik_demo.py`:核心启动 demo —— 内部生成期望末端轨迹、按 50 Hz 调用 MPC 求解、把关节命令发布到 `/student/joint_command`,并负责 reset→track 切换与求解失败降级。
+- `move_arm_horizontal_circle_mpc_ik_demo.py`:上面那个节点类的水平圆封装(同一个类,仅把默认 `trajectory_mode` 设为 `horizontal_circle`)。
+- `MpcPinocchioIK`(`mpc_pinocchio_ik.py`):NMPC 公式与求解器调用(Pinocchio 从 URDF 建模 + acados/casadi/scipy 后端)。
+- 期望轨迹:固定臂没有单独的轨迹发布节点,`circle`/`horizontal_circle`/`line` 由 demo 内部的 `_target()` 直接生成。
 
-如果 ACADOS 环境暂时不可用,可以切换回退后端:
 
-```bash
-python3 move_arm_mpc_ik_demo.py --ros-args -p solver_backend:=casadi
-python3 move_arm_mpc_ik_demo.py --ros-args -p solver_backend:=scipy
-```
+### 8.2 话题的使用
+
+- **MPC 接受的当前状态话题**:订阅 `/joint_states` 中的 `joint1`~`joint7`,作为 NMPC 闭环求解的当前状态(求解起点)。
+- **MPC 接收的期望状态话题**:无 —— demo 内部直接生成笛卡尔轨迹(`circle`/`horizontal_circle`/`line`),不订阅外部期望话题。
+- **MPC 输出的控制量话题**:发布 `/student/joint_command`(`sensor_msgs/JointState`,`position` = 下一拍关节角 `q_next`,`velocity` = 关节速度前馈 `dq_cmd`)。
 
 ## 9. 调参
 
