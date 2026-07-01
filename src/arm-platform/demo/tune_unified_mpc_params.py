@@ -319,20 +319,17 @@ def _build_config(params: ParamSet, lock_orientation: bool) -> MpcIkConfig:
         solver_backend="acados",
         orientation_weight=params.orientation_weight if lock_orientation else 0.0,
         terminal_orientation_weight=params.terminal_orientation_weight if lock_orientation else 0.0,
-        acados_build_dir=str(_build_dir(params, lock_orientation)),
+        acados_build_dir=str(_build_dir(params)),
     )
 
 
-def _build_dir(params: ParamSet, lock_orientation: bool) -> Path:
+def _build_dir(params: ParamSet) -> Path:
+    # mpc_pinocchio_ik 已把代价权重移出 acados 签名(改成运行时 cost_set 设置),同一
+    # (horizon_steps, max_joint_step) 下不管锁不锁姿态、ow/tow 多少,求解器结构/签名都相同,
+    # 可复用同一份编译产物。因此编译目录只按 (h, step) 区分:锁姿态场景与不锁场景共用一个,
+    # 权重差异由各自 MpcPinocchioIK 实例在运行时套用。
     step_mm = int(round(params.max_joint_step * 1000.0))
-    if lock_orientation:
-        name = (f"on_h{params.horizon_steps}_s{step_mm}"
-                f"_ow{int(round(params.orientation_weight * 1000.0))}"
-                f"_tow{int(round(params.terminal_orientation_weight * 1000.0))}")
-    else:
-        # off-solver 与 ow/tow 无关, 复用 build dir 减少重复编译
-        name = f"off_h{params.horizon_steps}_s{step_mm}"
-    return BUILD_ROOT / name
+    return BUILD_ROOT / f"h{params.horizon_steps}_s{step_mm}"
 
 
 # ======================================================================
