@@ -54,8 +54,61 @@ def _quat_from_z_axis(normal: np.ndarray):
 
 PUBLISH_RATE_HZ = 50.0
 MAX_TRAIL_POINTS = 2500
-DEFAULT_MAX_JOINT_STEP = 0.01
+DEFAULT_MAX_JOINT_STEP = 0.010  # 硬件派生 = max_velocity(0.5)·control_dt(0.02),非自由调参项
 DEFAULT_PATH_PREVIEW_STRIDE = 4
+# 分段避障半径:关节(电机)粗、连杆(杆身)细。数值来自各连杆 STL 网格绕真实杆轴(相邻 frame 原点
+# 连线)的最大垂距(=包络上界),再留 ~1-2mm 缓冲。frame 链 = A,B,C,D,E,F(6 个 → 6 关节半径/5 段半径)。
+DEFAULT_CAPSULE_JOINT_RADII = [0.052, 0.062, 0.058, 0.050, 0.049, 0.040]  # A,B,C,D,E,F 关节(电机)
+DEFAULT_CAPSULE_LINK_RADII = [0.045, 0.035, 0.043, 0.016, 0.035]          # A→B,B→C,C→D,D→E,E→F 杆身
+# 中心线胶囊点(最精确的臂避障模型,优先于上面的关节连线采样)。每条 = (frame, x, y, z, radius):
+# (x,y,z) 是球心在该 frame 局部坐标下的位置——取自连杆 STL 网格沿关节轴的横截面质心,使圆心贴住真实
+# 杆中心线(不再落在关节连线上);radius = 覆盖该处网格的球半径(细杆细/电机粗,含无缝覆盖膨胀,
+# 采样间距 30mm、R=√(局部粗细²+15²)+6mm)。共 38 点、全程无缝。由网格离线生成(见 scratchpad 脚本)。
+CAPSULE_CENTERLINE_POINTS = (
+    # A_Link
+    # ("A_Link", -0.00042, -0.00101, -0.04925, 0.0298),
+    # ("A_Link", -0.00037, -0.00416, -0.00308, 0.0592),
+    ("A_Link", +0.01171, -0.00023, +0.00756, 0.0693),
+    # ("A_Link", +0.02404, +0.01110, +0.01370, 0.0781),
+    # ("A_Link", +0.03001, +0.04512, +0.03552, 0.0732),
+    # ("A_Link", +0.03129, +0.06386, +0.05199, 0.0636),
+    # ("A_Link", +0.03375, +0.06799, +0.05483, 0.0650),
+    # B_Link
+    # ("B_Link", +0.00067, -0.01710, -0.00594, 0.0619),
+    ("B_Link", +0.00044, -0.00245, -0.00858, 0.0620),
+    # ("B_Link", -0.00015, +0.01696, -0.01146, 0.0644),
+    # ("B_Link", -0.00059, +0.04107, -0.00659, 0.0646),
+    ("B_Link", -0.00111, +0.08214, +0.00228, 0.0405),
+    ("B_Link", -0.00012, +0.12458, +0.00194, 0.0295),
+    # ("B_Link", -0.00012, +0.12519, +0.00188, 0.0296),
+    ("B_Link", +0.00004, +0.18057, -0.00091, 0.0770),
+    # ("B_Link", -0.00007, +0.21268, +0.00177, 0.0311),
+    # ("B_Link", +0.00064, +0.23314, -0.00994, 0.0555),
+    # ("B_Link", +0.00045, +0.24989, -0.01431, 0.0520),
+    # ("B_Link", -0.00008, +0.26489, -0.01675, 0.0507),
+    # C_Link
+    # ("C_Link", -0.00036, -0.00477, -0.00080, 0.0557),
+    # ("C_Link", +0.00021, +0.00855, -0.00178, 0.0586),
+    ("C_Link", -0.00708, +0.04951, -0.01685, 0.0729),
+    # ("C_Link", -0.00919, +0.05994, -0.01908, 0.0493),
+    # ("C_Link", -0.01335, +0.07643, -0.02116, 0.0505),
+    # D_Link
+    # ("D_Link", +0.00003, +0.00001, -0.00111, 0.0319),
+    # ("D_Link", +0.00014, +0.00033, -0.00097, 0.0319),
+    ("D_Link", -0.00005, -0.00001, +0.06566, 0.0248),
+    ("D_Link", +0.00000, +0.00068, +0.12460, 0.0389),
+    # ("D_Link", -0.00901, -0.00534, +0.14562, 0.0564),
+    # ("D_Link", -0.00519, -0.00016, +0.15930, 0.0546),
+    # ("D_Link", -0.00219, +0.00389, +0.16926, 0.0474),
+    # E_Link
+    # ("E_Link", -0.00391, +0.00023, +0.01097, 0.0309),
+    ("E_Link", +0.01872, +0.00203, +0.00453, 0.0457),
+    # ("E_Link", +0.04022, +0.00498, -0.02285, 0.0562),
+    ("E_Link", +0.06485, +0.00128, -0.02248, 0.0516),
+    # ("E_Link", +0.07330, -0.00012, -0.02188, 0.0478),
+    # F_Link
+    ("F_Link", +0.00004, -0.00001, -0.00189, 0.0223),
+)
 
 
 def _lerp(a: np.ndarray, b: np.ndarray, alpha: float) -> np.ndarray:
@@ -131,25 +184,8 @@ def _build_path(
         # 单点路径:整个时域参考退化成同一个固定目标点,到点后保持。
         return point.reshape(1, 3)
     count = max(20, int(round(period / dt)))
-    if mode in ("circle", "lower_obstacle_circle", "windylab", "avoidance_sweep", "front_wing_arc"):
+    if mode in ("circle", "lower_obstacle_circle", "avoidance_sweep", "front_wing_arc"):
         return _build_ll100_path(mode, count)
-    if mode == "front_propeller_line":
-        if obstacle_disks is None or len(obstacle_disks) < 2:
-            raise ValueError("front_propeller_line 需要先生成前桨避障圆盘")
-        sorted_disks = obstacle_disks[np.argsort(obstacle_disks[:, 1])]
-        left_center = sorted_disks[0, :3]
-        right_center = sorted_disks[-1, :3]
-        prop_center = 0.5 * (left_center + right_center)
-        # Do not place the demo line at the absolute front of the safety disks:
-        # that drives this 6-DoF arm close to a straight-arm singularity.
-        # These offsets keep the line outside the front-propeller disks while
-        # leaving enough elbow bend for a stable visual demo.
-        x = float(prop_center[0] + 0.315)
-        z = float(prop_center[2] + 0.22)
-        y_extension = 0.02
-        start = np.array([x, left_center[1] - y_extension, z], dtype=float)
-        end = np.array([x, right_center[1] + y_extension, z], dtype=float)
-        return _resample_polyline([start, end, start], count)
     raise ValueError(
         f"path_mode 必须是 {SUPPORTED_PATH_MODES} 或 'single_target'"
     )
@@ -160,7 +196,7 @@ class MoveLL100LH420NmpcDemo(Node):
         super().__init__("move_ll100_lh420_nmpc_demo")
         self.declare_parameter("path_mode", "lower_obstacle_circle")
         self.declare_parameter("single_target_position", [0.50, 0.0, 0.10])
-        self.declare_parameter("period_sec", 60.0)
+        self.declare_parameter("period_sec", 20.0)  # 调参定稿:20s/圈达 ~5mm
         self.declare_parameter("terminal_tolerance", 0.025)
         self.declare_parameter("horizon_steps", 8)
         self.declare_parameter("max_joint_step", DEFAULT_MAX_JOINT_STEP)
@@ -172,22 +208,33 @@ class MoveLL100LH420NmpcDemo(Node):
         self.declare_parameter("orientation_weight", 0.3)
         self.declare_parameter("terminal_orientation_weight", 3.0)
         self.declare_parameter("obstacle_avoidance_enabled", True)
-        self.declare_parameter("obstacle_safety_margin", 0.04)
+        self.declare_parameter("obstacle_safety_margin", 0.005)  # 桨叶:小正余量,保证实际不接触
         self.declare_parameter("obstacle_disk_half_thickness", 0.02)
         self.declare_parameter("body_obstacle_enabled", True)
-        self.declare_parameter("body_obstacle_margin", 0.015)
-        self.declare_parameter("capsule_radius", 0.018)
-        self.declare_parameter("capsule_samples_per_segment", 1)
+        self.declare_parameter("body_obstacle_margin", 0.005)  # 机身:小正余量,保证实际不接触
+        self.declare_parameter("capsule_radius", 0.018)  # 分段半径留空时的回退标量;默认走下面分段半径
+        self.declare_parameter("capsule_joint_radii", DEFAULT_CAPSULE_JOINT_RADII)  # 各 frame 关节(电机)半径
+        self.declare_parameter("capsule_link_radii", DEFAULT_CAPSULE_LINK_RADII)    # 各段连杆(杆身)半径
+        self.declare_parameter("capsule_samples_per_segment", 3)  # 每段点数=此值+2 → 5 点/段,减小长杆采样缝
+        self.declare_parameter("front_obstacle_capsule", True)      # 前桨按连杆 capsule 建模(含粗细),非仅关键点
+        self.declare_parameter("obstacle_repulsion_margin", 0.03)   # 斥力场阈值 m;>0 启用,进此距离内被推离障碍
+        self.declare_parameter("obstacle_repulsion_weight", 1.0e4)  # 斥力强度;默认打开(NMPC 主动留净空、不贴墙)
         self.declare_parameter("advance_on_feedback", False)
         self.declare_parameter("start_from_nearest_path_point", True)
         self.declare_parameter("hold_start_until_reached", True)
-        self.declare_parameter("target_switch_tolerance", 0.025)
+        self.declare_parameter("target_switch_tolerance", 0.005)  # 启动贴紧首点(5mm)
         self.declare_parameter("stuck_error_epsilon", 0.002)
         self.declare_parameter("stuck_steps_before_advance", 120)
         self.declare_parameter("stuck_advance_points", 10)
         self.declare_parameter("current_posture_weight", 0.005)
         self.declare_parameter("center_posture_weight", 0.01)
+        self.declare_parameter("joint_delta_weight", 0.08)         # 一阶平滑(惩罚 Δq),NMPC 代价权重
+        self.declare_parameter("joint_delta_change_weight", 0.25)  # 二阶平滑(惩罚 ΔΔq/抑抖),NMPC 代价权重
         self.declare_parameter("metrics_log_sec", 0.0)
+        # 求解器选择(用于求解器对比;默认与原行为一致)。
+        self.declare_parameter("solver_backend", "acados")
+        self.declare_parameter("acados_nlp_solver_type", "SQP_RTI")
+        self.declare_parameter("acados_qp_solver", "PARTIAL_CONDENSING_HPIPM")
 
         self.path_mode = str(self.get_parameter("path_mode").value)
         self.single_target_position = np.array(
@@ -210,7 +257,12 @@ class MoveLL100LH420NmpcDemo(Node):
         self.body_obstacle_enabled = bool(self.get_parameter("body_obstacle_enabled").value)
         self.body_obstacle_margin = float(self.get_parameter("body_obstacle_margin").value)
         self.capsule_radius = float(self.get_parameter("capsule_radius").value)
+        self.capsule_joint_radii = [float(x) for x in self.get_parameter("capsule_joint_radii").value]
+        self.capsule_link_radii = [float(x) for x in self.get_parameter("capsule_link_radii").value]
         self.capsule_samples_per_segment = int(self.get_parameter("capsule_samples_per_segment").value)
+        self.front_obstacle_capsule = bool(self.get_parameter("front_obstacle_capsule").value)
+        self.obstacle_repulsion_margin = float(self.get_parameter("obstacle_repulsion_margin").value)
+        self.obstacle_repulsion_weight = float(self.get_parameter("obstacle_repulsion_weight").value)
         self.advance_on_feedback = bool(self.get_parameter("advance_on_feedback").value)
         self.start_from_nearest_path_point = bool(self.get_parameter("start_from_nearest_path_point").value)
         self.hold_start_until_reached = bool(self.get_parameter("hold_start_until_reached").value)
@@ -220,7 +272,12 @@ class MoveLL100LH420NmpcDemo(Node):
         self.stuck_advance_points = int(self.get_parameter("stuck_advance_points").value)
         self.current_posture_weight = float(self.get_parameter("current_posture_weight").value)
         self.center_posture_weight = float(self.get_parameter("center_posture_weight").value)
+        self.joint_delta_weight = float(self.get_parameter("joint_delta_weight").value)
+        self.joint_delta_change_weight = float(self.get_parameter("joint_delta_change_weight").value)
         self.metrics_log_sec = float(self.get_parameter("metrics_log_sec").value)
+        self.solver_backend = str(self.get_parameter("solver_backend").value)
+        self.acados_nlp_solver_type = str(self.get_parameter("acados_nlp_solver_type").value)
+        self.acados_qp_solver = str(self.get_parameter("acados_qp_solver").value)
 
         if self.period_sec <= 0.0:
             raise ValueError("period_sec 必须 > 0")
@@ -243,30 +300,52 @@ class MoveLL100LH420NmpcDemo(Node):
             control_dt=self.dt,
             max_joint_step=self.max_joint_step,
             success_tolerance=self.terminal_tolerance,
-            solver_backend="acados",
+            solver_backend=self.solver_backend,
             acados_build_dir=f"/tmp/windylab_acados_ll100_lh420_path_{self.path_mode}",
+            acados_nlp_solver_type=self.acados_nlp_solver_type,
+            acados_qp_solver=self.acados_qp_solver,
             position_weight=self.position_weight,
             terminal_position_weight=self.terminal_position_weight,
             orientation_weight=self.orientation_weight if self.lock_orientation else 0.0,
             terminal_orientation_weight=self.terminal_orientation_weight if self.lock_orientation else 0.0,
             obstacle_avoidance_enabled=self.obstacle_avoidance_enabled,
-            obstacle_hard_constraint=True,  # 安全第一:桨叶避障只用硬约束,不保留软约束
+            # 安全第一:桨叶避障只走硬约束(共享求解器已定为 hard-only,不再传 hard/soft 开关)
             obstacle_safety_margin=self.obstacle_safety_margin,
             obstacle_disk_half_thickness=self.obstacle_disk_half_thickness,
             obstacle_ll100_urdf_path=DEFAULT_LL100_URDF,
             obstacle_coordinate_mode="ll100_base",
             obstacle_keypoint_frames=("A_Link", "B_Link", "C_Link", "D_Link", "E_Link", "F_Link"),
             body_obstacle_enabled=self.body_obstacle_enabled,
-            body_obstacle_hard_constraint=True,  # 安全第一:机身避障只用硬约束,不保留软约束
+            # 安全第一:机身避障只走硬约束(共享求解器已定为 hard-only,不再传 hard/soft 开关)
             body_obstacle_margin=self.body_obstacle_margin,
             body_obstacle_boxes=DEFAULT_LL100_BODY_OBSTACLE_BOXES,
             capsule_radius=self.capsule_radius,
+            capsule_joint_radii=tuple(self.capsule_joint_radii),
+            capsule_link_radii=tuple(self.capsule_link_radii),
+            capsule_points=CAPSULE_CENTERLINE_POINTS,
             capsule_samples_per_segment=self.capsule_samples_per_segment,
+            front_obstacle_capsule=self.front_obstacle_capsule,
+            obstacle_repulsion_margin=self.obstacle_repulsion_margin,
+            obstacle_repulsion_weight=self.obstacle_repulsion_weight,
             capsule_frame_sequence=("A_Link", "B_Link", "C_Link", "D_Link", "E_Link", "F_Link"),
             current_posture_weight=self.current_posture_weight,
             center_posture_weight=self.center_posture_weight,
+            joint_delta_weight=self.joint_delta_weight,
+            joint_delta_change_weight=self.joint_delta_change_weight,
         )
-        self.mpc_ik = MpcPinocchioIK(urdf_path=LL100_NMPC_URDF, ee_frame="F_Link", config=cfg)
+        # 三种成功求解器:acados(HPIPM 默认 / qpOASES,走 MpcPinocchioIK)、GRAMPC(GrampcRunner)。
+        # IPOPT(casadi)/SLSQP(scipy)为已弃置的回退求解器,保留但不推荐(慢、不进实时回路)。
+        if self.solver_backend == "grampc":
+            from grampc_ll100 import GrampcRunner
+            self.mpc_ik = GrampcRunner(urdf_path=LL100_NMPC_URDF, ee_frame="F_Link", config=cfg)
+        else:
+            self.mpc_ik = MpcPinocchioIK(urdf_path=LL100_NMPC_URDF, ee_frame="F_Link", config=cfg)
+            if self.solver_backend in ("casadi", "scipy"):
+                self.get_logger().warn(
+                    f"solver_backend='{self.solver_backend}' 是已弃置的回退求解器"
+                    "(IPOPT/SLSQP,慢、不进实时回路),仅供离线参照;"
+                    "推荐 acados(HPIPM 默认 / qpOASES)或 grampc。"
+                )
         self.path = _build_path(
             self.path_mode,
             self.period_sec,
@@ -523,22 +602,27 @@ class MoveLL100LH420NmpcDemo(Node):
         markers.markers.append(self._sphere_marker("current_target", 1100, current_target, (0.0, 1.0, 0.2, 1.0), 0.045, now))
         markers.markers.append(self._sphere_marker("current_actual", 1101, actual_pos, (0.1, 0.45, 1.0, 1.0), 0.04, now))
 
+        # 逐采样点画球:每个点用它自己的避障半径(关节粗/连杆细),SPHERE_LIST 只能统一 scale,故用独立球。
         capsule_samples = self.mpc_ik.capsule_sample_positions(q_actual)
-        capsule_marker = Marker()
-        capsule_marker.header.frame_id = BASE_FRAME
-        capsule_marker.header.stamp = now
-        capsule_marker.ns = "capsule_samples"
-        capsule_marker.id = 1500
-        capsule_marker.type = Marker.SPHERE_LIST
-        capsule_marker.action = Marker.ADD
-        capsule_marker.pose.orientation.w = 1.0
-        capsule_marker.scale.x = capsule_marker.scale.y = capsule_marker.scale.z = float(2.0 * self.capsule_radius)
-        capsule_marker.color.r = 0.1
-        capsule_marker.color.g = 0.8
-        capsule_marker.color.b = 1.0
-        capsule_marker.color.a = 0.25
-        capsule_marker.points = [Point(x=float(p[0]), y=float(p[1]), z=float(p[2])) for p in capsule_samples]
-        markers.markers.append(capsule_marker)
+        capsule_radii = self.mpc_ik.capsule_sample_radii()
+        for idx, (p, r) in enumerate(zip(capsule_samples, capsule_radii)):
+            sphere = Marker()
+            sphere.header.frame_id = BASE_FRAME
+            sphere.header.stamp = now
+            sphere.ns = "capsule_samples"
+            sphere.id = 1500 + idx
+            sphere.type = Marker.SPHERE
+            sphere.action = Marker.ADD
+            sphere.pose.position.x = float(p[0])
+            sphere.pose.position.y = float(p[1])
+            sphere.pose.position.z = float(p[2])
+            sphere.pose.orientation.w = 1.0
+            sphere.scale.x = sphere.scale.y = sphere.scale.z = float(2.0 * r)
+            sphere.color.r = 0.1
+            sphere.color.g = 0.8
+            sphere.color.b = 1.0
+            sphere.color.a = 0.25
+            markers.markers.append(sphere)
         self.marker_pub.publish(markers)
 
     def _line_marker(self, ns, marker_id, points, color, width, stamp):

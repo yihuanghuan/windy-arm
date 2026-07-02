@@ -8,10 +8,7 @@ __pycache__/
 # Python / plotting outputs
 demo/__pycache__/
 launch/__pycache__/
-demo/data/*.csv
-demo/data/*.png
-demo/data/*.npy
-demo/data/*.npz
+demo/data/
 
 # ACADOS generated solvers and local caches
 acados_ocp*.json

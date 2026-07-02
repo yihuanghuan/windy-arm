@@ -246,7 +246,6 @@ install(PROGRAMS
   demo/mpc_pinocchio_ik.py
   demo/move_arm_mpc_ik_demo.py
   demo/move_arm_horizontal_circle_mpc_ik_demo.py
-  demo/move_arm_obstacle_mpc_demo.py
   demo/move_ll100_lh420_nmpc_demo.py
   demo/ll100_traj_pub.py
   demo/ll100_trajectory_visualizer_demo.py

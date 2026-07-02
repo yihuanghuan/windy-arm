@@ -249,7 +249,8 @@ Scenario("square", "move_arm_mpc_ik_demo.py", 8.0, False, _square, None,
 > 两个省事提示:
 > - 评估用的正运动学、奇异性判断都用一套**独立的**机器人模型算,跟你的算法内部无关 ——
 >   所以换算法**不用**自己再提供正运动学。
-> - 如果你只是想在内置 MPC 自带的三种后端(acados / casadi / scipy)之间切换,**不用**动
+> - 如果你只是想在内置 MPC 自带的后端(acados / casadi / scipy;casadi/scipy 已弃置为回退,另有 GRAMPC,
+>   详见 [LL100_LH420_NMPC_Solver_README.md](LL100_LH420_NMPC_Solver_README.md))之间切换,**不用**动
 >   `build_solver`,改 `_build_config()` 里的 `solver_backend` 一个字段就行。
 
 #### 8.3 增加 / 减少"被调的参数"
@@ -318,8 +319,8 @@ python3 tune_ll100_nmpc.py --path-mode avoidance_sweep --max-combinations 2 --pe
 | 模式 | 说明 |
 |---|---|
 | `lower_obstacle_circle` | 默认,末端朝下在避障区下方画圆 |
-| `avoidance_sweep` | 机身/安装架前方扫掠(已重塑,远离奇异区) |
-| `front_wing_arc` | 前端余弦往返弧线 |
+| `avoidance_sweep` | 机身/安装架前方扫掠 |
+| `front_wing_arc` | 右桨盘下方扫掠弧避障演示 |
 | `circle` | `base_link` y-z 平面画圆 |
 
 `--path-mode` 选一个评估(`single_target` 等无连续路径的模式不参与调参)。
@@ -362,16 +363,15 @@ python3 tune_ll100_nmpc.py --path-mode avoidance_sweep --max-combinations 2 --pe
 | `current_posture_weight` | `[0.002, 0.005, 0.01]` | 贴近当前姿态 |
 | `center_posture_weight` | `[0.005, 0.01, 0.03]` | 贴关节中位,抗奇异 |
 
-**固定·不搜**:`max_joint_step = max_velocity·control_dt`(硬件速度约束的 OCP 镜像,派生量);避障 `obstacle_safety_margin=0.005`(桨叶)/`body_obstacle_margin=0.005`(机身)/`capsule_radius`/`capsule_samples_per_segment`(安全);`path_preview_stride=4`(追踪层)。
+**固定·不搜**:`max_joint_step = max_velocity·control_dt`(硬件速度约束的 OCP 镜像,派生量);避障 `obstacle_safety_margin=0.005`(桨叶)/`body_obstacle_margin=0.005`(机身)/`capsule_joint_radii`·`capsule_link_radii`(分段避障半径:关节粗/连杆细,几何固定)/`capsule_samples_per_segment`(安全);`path_preview_stride=4`(追踪层)。
 
 ### 6. 当前默认与各模式结果
 
 | 模式 | 20s/圈 max 误差(9 维调后) | 最优要点(相对基线) |
 |---|---|---|
-| `avoidance_sweep` | 3.3 mm(rms 1.7) | `horizon_steps=4`、`position_weight=252`、`terminal_position_weight=1680`;零碰撞、启动直达首点 |
-| `lower_obstacle_circle` | 调参进行中 | — |
-| `front_wing_arc` | 调参进行中 | — |
-| `circle` | 调参进行中 | 几何受限,历史 ~6mm |
+| `avoidance_sweep` | 3.3 mm(rms 1.7) | `horizon_steps=4`、`position_weight=252`、`terminal_position_weight=1680`|
+| `lower_obstacle_circle` | 1.9 mm(rms 0.5) | `h=6`、`pw=180`、`tpw=800`|
+| `circle` | 2.3 mm(rms 0.9) | `h=4`、`pw=216`、`tpw=1200`|
 
 > 每模式的完整最优 `-p …` 命令见调参器终端输出末行,或 `demo/data/tune_ll100_<mode>_<时间戳>.csv` 的 `recommended_command` 列。demo 默认是一套通用参数;要拿到某模式的最优,用该模式的推荐命令覆盖。
 
@@ -407,12 +407,17 @@ if mode == "my_sweep":
 
 #### 8.2 切换 / 更换求解后端
 
-内置 MPC 自带三种后端。**只是想切换**的话,一个参数就够:
+> 求解器的完整选型/对比/安装/筛选规则,以 **[LL100_LH420_NMPC_Solver_README.md](LL100_LH420_NMPC_Solver_README.md)** 为准。
+> 结论:合格解为 acados-HPIPM(默认)/ acados-qpOASES / GRAMPC;CasADi-IPOPT、SciPy-SLSQP 已弃置(慢,保留作离线参照)。
+
+**本调参器**的 `--backend` 仍支持 acados / casadi / scipy(后两者为弃置回退,慢):
 
 ```bash
-python3 tune_ll100_nmpc.py --path-mode avoidance_sweep --backend casadi   # 或 scipy
+python3 tune_ll100_nmpc.py --path-mode avoidance_sweep --backend casadi   # 或 scipy(均为弃置回退)
 ```
 *效果:* 调参器与 demo 都会换用该后端求解,别的不用动。
+> 注:qpOASES 用 `-p acados_qp_solver:=FULL_CONDENSING_QPOASES`、GRAMPC 用 `-p solver_backend:=grampc`
+> 在 demo 里切换(见 Solver README §7);本调参器暂只覆盖 acados/casadi/scipy 三种 `--backend`。
 
 想把内置 MPC 换成**你自己写的算法**:LL100 的求解器统一由共享的 `MpcPinocchioIK` 构造(与独立臂同一套),做法与「一、§8.2」一致 —— 把你的算法包成一个实现 `step()` 的对象(输入:未来目标序列 + 当前关节角 + 可选目标朝向;输出:下一拍关节角、成功标志、信息字典)。这属于共享求解器改动,改前建议先与独立臂那边协调。
 

@@ -25,6 +25,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from ll100_traj_pub import SUPPORTED_PATH_MODES, _build_path
 from move_ll100_lh420_nmpc_demo import (
     BASE_FRAME,
+    CAPSULE_CENTERLINE_POINTS,
     DEFAULT_LL100_BODY_OBSTACLE_BOXES,
     JOINT_NAMES,
     LL100_NMPC_URDF,
@@ -56,7 +57,12 @@ class LL100TrajectoryVisualizerDemo(Node):
         self.max_actual_points = int(self.declare_parameter("max_actual_points", 2000).value)
         self.show_matplotlib = bool(self.declare_parameter("show_matplotlib", True).value)
         self.start_on_command = bool(self.declare_parameter("start_on_command", True).value)
-        self.use_message_stamp = bool(self.declare_parameter("use_message_stamp", True).value)
+        self.use_message_stamp = bool(self.declare_parameter("use_message_stamp", False).value)
+        self.start_when_on_expected_path = bool(
+            self.declare_parameter("start_when_on_expected_path", True).value)
+        self.start_path_tolerance = float(self.declare_parameter("start_path_tolerance", 0.025).value)
+        self.use_stable_front_wing_arc_start = bool(
+            self.declare_parameter("use_stable_front_wing_arc_start", True).value)
         self.reset_gap_sec = float(self.declare_parameter("reset_gap_sec", 2.0).value)
         self.stale_command_timeout_sec = float(self.declare_parameter("stale_command_timeout_sec", 0.2).value)
         self.ignore_initial_sec = float(self.declare_parameter("ignore_initial_sec", 1.0).value)
@@ -79,6 +85,8 @@ class LL100TrajectoryVisualizerDemo(Node):
             raise ValueError("expected_path_points 必须 >= 2")
         if self.ignore_initial_sec < 0.0:
             raise ValueError("ignore_initial_sec 必须 >= 0")
+        if self.start_path_tolerance <= 0.0:
+            raise ValueError("start_path_tolerance 必须 > 0")
 
         cfg = MpcIkConfig(
             solver_backend="acados",
@@ -89,6 +97,7 @@ class LL100TrajectoryVisualizerDemo(Node):
             body_obstacle_enabled=True,
             body_obstacle_boxes=DEFAULT_LL100_BODY_OBSTACLE_BOXES,
             capsule_radius=self.capsule_radius,
+            capsule_points=CAPSULE_CENTERLINE_POINTS,  # 与主 demo 一致的中心线胶囊模型(贴杆/分档半径)
             capsule_frame_sequence=("A_Link", "B_Link", "C_Link", "D_Link", "E_Link", "F_Link"),
             obstacle_safety_margin=self.obstacle_safety_margin,
             obstacle_disk_half_thickness=self.obstacle_disk_half_thickness,
@@ -100,6 +109,9 @@ class LL100TrajectoryVisualizerDemo(Node):
         # Avoid circular dependency: _target() indexes this raw path; expected_path
         # is then generated from _target().
         self._raw_path = _build_path(self.trajectory_mode, self.expected_path_points)
+        self.path_start_index = self._default_path_start_index()
+        self.path_phase_offset_index = self.path_start_index
+        self.path_start_index_locked = False
         self.expected_path = self._make_expected_path()
         self.actual_points = deque(maxlen=self.max_actual_points)
         self.expected_points = deque(maxlen=self.max_actual_points)
@@ -114,6 +126,8 @@ class LL100TrajectoryVisualizerDemo(Node):
         self.command_fk_samples = []
         self.warmup_reported = False
         self.stale_reported = False
+        self.waiting_for_path_start = self.start_when_on_expected_path
+        self.wait_start_reported = False
 
         self.plotter = None
         if self.show_matplotlib:
@@ -140,6 +154,8 @@ class LL100TrajectoryVisualizerDemo(Node):
         self.get_logger().info(
             "LL100 trajectory visualizer started: "
             f"mode={self.trajectory_mode}, expected_points={len(self.expected_path)}, "
+            f"use_message_stamp={self.use_message_stamp}, "
+            f"start_when_on_expected_path={self.start_when_on_expected_path}, "
             "actual_topic=/joint_states, command_topic=/student/joint_command"
         )
 
@@ -152,14 +168,24 @@ class LL100TrajectoryVisualizerDemo(Node):
     def _command_cb(self, msg: JointState):
         now = self.get_clock().now().nanoseconds * 1e-9
         msg_time = self._message_time_sec(msg)
-        should_reset = self.start_time is None
-        if self.last_command_time is not None and now - self.last_command_time > self.reset_gap_sec:
-            should_reset = True
+        command_gap = (
+            self.last_command_time is not None
+            and now - self.last_command_time > self.reset_gap_sec
+        )
         self.last_command_time = now
 
-        if should_reset:
-            self._reset_recording(msg_time)
-            self.get_logger().info("LL100 trajectory recording started from /student/joint_command")
+        if self.start_when_on_expected_path:
+            if command_gap or (self.start_time is None and not self.waiting_for_path_start):
+                self._begin_waiting_for_path_start()
+            if self.start_time is None and not self.wait_start_reported:
+                self.get_logger().info(
+                    "LL100 trajectory recording armed; waiting until EE reaches the expected path start")
+                self.wait_start_reported = True
+        else:
+            should_reset = self.start_time is None or command_gap
+            if should_reset:
+                self._reset_recording(msg_time)
+                self.get_logger().info("LL100 trajectory recording started from /student/joint_command")
 
         if self.record_command_fk:
             self._record_command_fk(msg)
@@ -174,7 +200,7 @@ class LL100TrajectoryVisualizerDemo(Node):
 
         sample_time = self._message_time_sec(msg)
         if self.start_time is None:
-            if self.start_on_command:
+            if self.start_on_command or self.start_when_on_expected_path:
                 return
             self._reset_recording(sample_time)
 
@@ -205,11 +231,17 @@ class LL100TrajectoryVisualizerDemo(Node):
         self.current_q = q.copy()
 
         sample_time = self._message_time_sec(msg)
+        actual = self._actual_position(q)
 
         if self.start_time is None:
-            if self.start_on_command:
+            self.current_actual = actual
+            if self.start_when_on_expected_path:
+                if not self._maybe_start_recording_on_path(sample_time, actual):
+                    return
+            elif self.start_on_command:
                 return
-            self._reset_recording(sample_time)
+            else:
+                self._reset_recording(sample_time)
 
         now = self.get_clock().now().nanoseconds * 1e-9
         elapsed = sample_time - self.start_time
@@ -217,7 +249,6 @@ class LL100TrajectoryVisualizerDemo(Node):
             return
 
         expected = self._target(elapsed)
-        actual = self._actual_position(q)
         self.current_expected = expected
         self.current_actual = actual
 
@@ -264,6 +295,29 @@ class LL100TrajectoryVisualizerDemo(Node):
         self.last_recorded_command_fk = None
         self.warmup_reported = False
         self.stale_reported = False
+        self.waiting_for_path_start = False
+        self.wait_start_reported = False
+        if self.plotter:
+            self.plotter.reset()
+
+    def _begin_waiting_for_path_start(self):
+        self.start_time = None
+        self.actual_points.clear()
+        self.expected_points.clear()
+        self.command_fk_points.clear()
+        self.samples.clear()
+        self.command_fk_samples.clear()
+        self.last_recorded_actual = None
+        self.last_recorded_command_fk = None
+        self.warmup_reported = False
+        self.stale_reported = False
+        self.waiting_for_path_start = True
+        self.wait_start_reported = False
+        self.path_start_index = self._default_path_start_index()
+        self.path_phase_offset_index = self.path_start_index
+        self.path_start_index_locked = False
+        self.current_expected = self._raw_path[self.path_start_index].copy()
+        self.expected_path = self._make_expected_path()
         if self.plotter:
             self.plotter.reset()
 
@@ -285,8 +339,68 @@ class LL100TrajectoryVisualizerDemo(Node):
                 return q
         return None
 
+    def _default_path_start_index(self) -> int:
+        if self.trajectory_mode == "front_wing_arc" and self.use_stable_front_wing_arc_start:
+            return len(self._raw_path) // 4
+        return 0
+
+    def _select_path_start_index(self, actual: np.ndarray) -> tuple[int, float]:
+        distances = np.linalg.norm(self._raw_path - actual.reshape(1, 3), axis=1)
+        nearest = int(np.argmin(distances))
+        if (
+            self.trajectory_mode == "front_wing_arc"
+            and self.use_stable_front_wing_arc_start
+            and float(distances[nearest]) > self.start_path_tolerance
+        ):
+            candidates = np.array([len(self._raw_path) // 4, 3 * len(self._raw_path) // 4], dtype=int)
+            candidate_distances = distances[candidates]
+            nearest = int(candidates[int(np.argmin(candidate_distances))])
+        return nearest, float(np.linalg.norm(actual - self._raw_path[nearest]))
+
+    def _maybe_start_recording_on_path(self, sample_time: float, actual: np.ndarray) -> bool:
+        if self.start_on_command:
+            if self.last_command_time is None:
+                self.current_expected = self._raw_path[self.path_start_index].copy()
+                return False
+            now = self.get_clock().now().nanoseconds * 1e-9
+            if now - self.last_command_time > self.stale_command_timeout_sec:
+                if not self.stale_reported:
+                    self.get_logger().warn(
+                        "Command topic is stale; wait for fresh command before starting LL100 trajectory recording")
+                    self.stale_reported = True
+                return False
+
+        if not self.path_start_index_locked:
+            start_index, _ = self._select_path_start_index(actual)
+            if start_index != self.path_start_index:
+                self.path_start_index = start_index
+                self.path_phase_offset_index = start_index
+                self.expected_path = self._make_expected_path()
+            self.path_start_index_locked = True
+        distance = float(np.linalg.norm(actual - self._raw_path[self.path_start_index]))
+        self.current_expected = self._raw_path[self.path_start_index].copy()
+
+        if distance > self.start_path_tolerance:
+            self.get_logger().info(
+                "Waiting for LL100 EE to reach expected path start: "
+                f"distance={distance:.4f} m, tolerance={self.start_path_tolerance:.4f} m, "
+                f"start_index={self.path_start_index}",
+                throttle_duration_sec=2.0)
+            return False
+
+        self.path_phase_offset_index = self.path_start_index
+        self.expected_path = self._make_expected_path()
+        self._reset_recording(sample_time)
+        self.current_expected = self._target(0.0)
+        self.current_actual = actual
+        self.get_logger().info(
+            "LL100 trajectory recording started after EE reached expected path: "
+            f"start_index={self.path_start_index}, distance={distance:.4f} m")
+        return True
+
     def _target(self, t: float) -> np.ndarray:
-        idx = int((t % self.period_sec) / self.period_sec * len(self._raw_path)) % len(self._raw_path)
+        base_idx = int((t % self.period_sec) / self.period_sec * len(self._raw_path)) % len(self._raw_path)
+        idx = (self.path_phase_offset_index + base_idx) % len(self._raw_path)
         return self._raw_path[idx].copy()
 
     def _actual_position(self, q: np.ndarray) -> np.ndarray:
@@ -388,24 +502,26 @@ class LL100TrajectoryVisualizerDemo(Node):
             marker.color.a = 0.22
             markers.markers.append(marker)
 
+        # 逐采样点画球:每个点用它自己的避障半径(中心线模型:贴杆/分档),SPHERE_LIST 只能统一 scale,故用独立球。
         capsule_samples = self.mpc_ik.capsule_sample_positions(self.current_q)
-        if len(capsule_samples) > 0:
+        capsule_radii = self.mpc_ik.capsule_sample_radii()
+        for idx, (p, r) in enumerate(zip(capsule_samples, capsule_radii)):
             marker = Marker()
             marker.header.frame_id = BASE_FRAME
             marker.header.stamp = stamp
             marker.ns = "capsule_samples"
-            marker.id = 200
-            marker.type = Marker.SPHERE_LIST
+            marker.id = 200 + idx
+            marker.type = Marker.SPHERE
             marker.action = Marker.ADD
+            marker.pose.position.x = float(p[0])
+            marker.pose.position.y = float(p[1])
+            marker.pose.position.z = float(p[2])
             marker.pose.orientation.w = 1.0
-            marker.scale.x = float(2.0 * self.capsule_radius)
-            marker.scale.y = float(2.0 * self.capsule_radius)
-            marker.scale.z = float(2.0 * self.capsule_radius)
+            marker.scale.x = marker.scale.y = marker.scale.z = float(2.0 * r)
             marker.color.r = 0.1
             marker.color.g = 0.8
             marker.color.b = 1.0
             marker.color.a = 0.25
-            marker.points = [to_point(p) for p in capsule_samples]
             markers.markers.append(marker)
 
         return markers

@@ -46,23 +46,42 @@ class MpcIkConfig:
     solver_backend: str = "acados"
     acados_build_dir: str = "/tmp/windylab_acados_mpc_ik"
     acados_rti_iterations: int = 3  # SQP_RTI 每次 solve 只做一次线性化;这里允许重复几次提高终端精度。
+    acados_nlp_solver_type: str = "SQP_RTI"  # acados NLP 类型:SQP_RTI(实时迭代)或 SQP(完整收敛)。
+    acados_qp_solver: str = "PARTIAL_CONDENSING_HPIPM"  # acados QP 后端:HPIPM/OSQP/QPOASES/DAQP 等。
+    acados_qp_solver_iter_max: int = 50  # QP 内层最大迭代数;active-set/一阶法(qpOASES/OSQP)可能需调大。
+    acados_qp_warm_start: int = 0  # QP 热启动:0 冷启动 / 1 primal / 2 primal+dual。
     obstacle_avoidance_enabled: bool = False
-    obstacle_weight: float = 2e4
     obstacle_safety_margin: float = 0.04
-    obstacle_soft_eps: float = 1e-6
+    obstacle_soft_eps: float = 1e-6  # 硬约束 SDF(smooth_max/圆盘距离)的平滑常量,避免不可导拐点。
+    # 障碍斥力代价(与硬约束并存,不替代):margin<阈值时代价二次上升,给 NMPC 主动离障的梯度。
+    # obstacle_repulsion_margin>0 才启用(结构量,进签名);权重走 W 运行时 cost_set,可扫不重编。
+    obstacle_repulsion_margin: float = 0.0   # 斥力生效阈值(m);0=关闭。取几 cm 让手臂在能留净空处留净空。
+    obstacle_repulsion_weight: float = 0.0   # 斥力权重;0=不罚。启用后由此调强度(运行时可调)。
     obstacle_propeller_radius: float = 0.27
     obstacle_disk_half_thickness: float = 0.04  # 圆盘半厚度
     obstacle_ll100_urdf_path: str = DEFAULT_LL100_URDF
     obstacle_coordinate_mode: str = "arm_base"
     obstacle_keypoint_frames: Tuple[str, ...] = DEFAULT_OBSTACLE_KEYPOINT_FRAMES
     obstacle_front_propeller_joints: Tuple[str, ...] = DEFAULT_FRONT_PROPELLER_JOINTS
+    # 前桨避障建模:False=约束连杆 frame 关键点(不含粗细,现有行为);
+    # True=沿 capsule 链采样并减 capsule_radius(含连杆粗细,像机身一样,需重新定标 margin)。
+    front_obstacle_capsule: bool = False
     body_obstacle_enabled: bool = False
-    body_obstacle_weight: float = 3e4
     body_obstacle_margin: float = 0.03
     body_obstacle_boxes: Tuple[Tuple[float, float, float, float, float, float], ...] = ()
     capsule_radius: float = 0.045
     capsule_samples_per_segment: int = 3
     capsule_frame_sequence: Tuple[str, ...] = ()
+    # 分段建模:关节(电机)粗、连杆(杆身)细,单一 capsule_radius 无法兼顾。给每个 frame 一个关节半径、
+    # 每段一个连杆半径,采样点按位置取对应半径(端点=关节半径,段内=连杆半径)。两者都留空时回退到
+    # 标量 capsule_radius(向后兼容)。长度要求:joint=len(frames)、link=len(frames)-1。
+    capsule_joint_radii: Tuple[float, ...] = ()
+    capsule_link_radii: Tuple[float, ...] = ()
+    # 中心线胶囊点(最精确的臂避障建模,优先级高于上面的关节连线采样):每条 =
+    # (frame_name, x, y, z, radius),(x,y,z) 是该采样球心在 frame 局部坐标下的位置(取自连杆网格
+    # 沿关节轴的横截面质心 → 圆心贴真实杆中心线,不再在关节连线上),radius 是覆盖该处网格的球半径
+    # (细杆细/电机粗,含无缝覆盖膨胀)。非空时,前桨/机身避障都改用这些点;为空则回退关节连线采样。
+    capsule_points: Tuple[Tuple[str, float, float, float, float], ...] = ()
 
 
 class MpcPinocchioIK:
@@ -84,6 +103,13 @@ class MpcPinocchioIK:
         self.nq = self.model.nq
         if self.config.obstacle_avoidance_enabled and self.config.acados_build_dir == MpcIkConfig.acados_build_dir:
             self.config.acados_build_dir = self.config.acados_build_dir + "_obstacle"
+        # 不同 NLP/QP 后端生成不同的 C 代码,追加后缀避免多配置共用 build 目录相互覆盖。
+        if self.config.solver_backend == "acados":
+            solver_tag = (
+                f"{self.config.acados_nlp_solver_type}_{self.config.acados_qp_solver}"
+                f"_it{self.config.acados_qp_solver_iter_max}_ws{self.config.acados_qp_warm_start}"
+            ).lower()
+            self.config.acados_build_dir = f"{self.config.acados_build_dir}_{solver_tag}"
         # 关节限位来自 URDF,后面会作为优化边界/可行性检查使用。
         self.q_lower = self.model.lowerPositionLimit.copy()
         self.q_upper = self.model.upperPositionLimit.copy()
@@ -92,11 +118,7 @@ class MpcPinocchioIK:
         self._last_plan = None
         # 从 Pinocchio/URDF 提取运动链,生成 CasADi 符号 FK。CasADi/ACADOS 后端共用它。
         self._symbolic_fk = _CasadiFkFromPinocchio(self.model, self.frame_id, self.urdf_path)
-        if (
-            (self.config.obstacle_avoidance_enabled or self.config.body_obstacle_enabled)
-            and self.config.solver_backend != "acados"
-        ):
-            raise ValueError("第一版避障 NMPC 只支持 solver_backend='acados'; CasADi/SciPy 后端暂不接入避障代价。")
+        # 避障恒为硬约束(已移除软约束选项),三后端(acados/casadi/scipy)复用同一组 CasADi 符号 margin 函数。
         self._obstacle_keypoint_frame_ids = (
             self._resolve_obstacle_keypoint_frames()
             if self.config.obstacle_avoidance_enabled
@@ -105,7 +127,10 @@ class MpcPinocchioIK:
         self._obstacle_disks = self._build_front_propeller_disks() if self.config.obstacle_avoidance_enabled else np.zeros((0, 7))
         self._body_obstacle_boxes = self._resolve_body_obstacle_boxes()
         self._capsule_frame_ids = self._resolve_capsule_frames()
+        self._capsule_points = self._resolve_capsule_points()
         self._acados_solver = None
+        # SciPy 后端避障约束用的 CasADi 值/雅可比函数缓存(惰性构建)。
+        self._obstacle_margin_fns = None
 
     def forward(self, q: np.ndarray):
         """正运动学:给定关节角 q,返回末端位置和旋转矩阵。"""
@@ -209,7 +234,9 @@ class MpcPinocchioIK:
         return self._body_obstacle_boxes.copy()
 
     def capsule_sample_positions(self, q: np.ndarray) -> np.ndarray:
-        """返回 capsule 线段上的固定采样点,用于 RViz marker 和诊断。"""
+        """返回避障采样点(中心线模式=各连杆中心线球心;否则=关节连线采样点),用于 RViz marker 和诊断。"""
+        if self._capsule_points_active():
+            return self._capsule_point_positions_np(q)[0]
         if len(self._capsule_frame_ids) < 2:
             return np.zeros((0, 3), dtype=float)
         q = self._initial_q(q)
@@ -219,6 +246,53 @@ class MpcPinocchioIK:
             for frame_id in self._capsule_frame_ids
         ]
         return self._capsule_samples_from_positions(frame_positions)
+
+    def _capsule_joint_link_radii(self) -> Tuple[np.ndarray, np.ndarray]:
+        """返回 (joint_radii, link_radii):每个 frame 的关节半径 + 每段的连杆半径。
+        未配置分段半径时,两者都回退成标量 capsule_radius。"""
+        if getattr(self, "_capsule_radii_cache", None) is not None:
+            return self._capsule_radii_cache
+        n_frames = len(self._capsule_frame_ids)
+        n_seg = max(0, n_frames - 1)
+        scalar = float(self.config.capsule_radius)
+        jr = tuple(float(x) for x in self.config.capsule_joint_radii)
+        lr = tuple(float(x) for x in self.config.capsule_link_radii)
+        if jr or lr:
+            if len(jr) != n_frames or len(lr) != n_seg:
+                raise ValueError(
+                    f"capsule_joint_radii 需 {n_frames} 个、capsule_link_radii 需 {n_seg} 个,"
+                    f"当前 {len(jr)}/{len(lr)}"
+                )
+            joint = np.array(jr, dtype=float)
+            link = np.array(lr, dtype=float)
+        else:
+            joint = np.full(n_frames, scalar, dtype=float)
+            link = np.full(n_seg, scalar, dtype=float)
+        self._capsule_radii_cache = (joint, link)
+        return self._capsule_radii_cache
+
+    def _sample_radius(self, seg_idx: int, alpha: float) -> float:
+        """采样点半径:端点(alpha≈0/1,落在关节 frame)取关节半径,段内取连杆半径。"""
+        joint, link = self._capsule_joint_link_radii()
+        if alpha <= 1e-9:
+            return float(joint[seg_idx])
+        if alpha >= 1.0 - 1e-9:
+            return float(joint[seg_idx + 1])
+        return float(link[seg_idx])
+
+    def capsule_sample_radii(self) -> np.ndarray:
+        """与 capsule_sample_positions 同序的每采样点半径,用于 RViz 逐点画球。"""
+        if self._capsule_points_active():
+            return np.array([r for _, _, r in self._capsule_points], dtype=float)
+        if len(self._capsule_frame_ids) < 2:
+            return np.zeros((0,), dtype=float)
+        n_samples = max(1, int(self.config.capsule_samples_per_segment))
+        alphas = np.linspace(0.0, 1.0, n_samples + 2)
+        radii = []
+        for seg_idx in range(len(self._capsule_frame_ids) - 1):
+            for alpha in alphas:
+                radii.append(self._sample_radius(seg_idx, float(alpha)))
+        return np.array(radii, dtype=float)
 
     def _resolve_obstacle_keypoint_frames(self) -> Dict[str, int]:
         frame_ids = {}
@@ -254,6 +328,48 @@ class MpcPinocchioIK:
         if self._body_obstacle_boxes.shape[0] > 0 and len(frame_ids) < 2:
             raise ValueError("启用 body obstacle 时 capsule_frame_sequence 至少需要两个 frame")
         return tuple(frame_ids)
+
+    def _resolve_capsule_points(self) -> Tuple[Tuple[int, np.ndarray, float], ...]:
+        """把 capsule_points 里的帧名解析成 (frame_id, 局部坐标, 半径)。为空则返回 ()。"""
+        if not self.config.capsule_points:
+            return ()
+        resolved = []
+        for entry in self.config.capsule_points:
+            name, x, y, z, r = entry
+            frame_id = self.model.getFrameId(name)
+            if frame_id >= self.model.nframes:
+                raise ValueError(f"capsule_points 的 frame '{name}' 不存在于 {self.urdf_path}")
+            resolved.append((int(frame_id), np.array([float(x), float(y), float(z)], dtype=float), float(r)))
+        return tuple(resolved)
+
+    def _capsule_points_active(self) -> bool:
+        return len(self._capsule_points) > 0
+
+    def _capsule_point_positions_ca(self, q):
+        """返回每个中心线胶囊点的 (base 位置 CasADi 3x1, 半径),用 frame 完整变换把局部点变换到 base。"""
+        import casadi as ca
+
+        transform_cache: Dict[int, object] = {}
+        out = []
+        for frame_id, local, radius in self._capsule_points:
+            if frame_id not in transform_cache:
+                transform_cache[frame_id] = self._symbolic_fk.transform_to_frame(q, frame_id)
+            T = transform_cache[frame_id]
+            p = ca.mtimes(T, ca.vertcat(local[0], local[1], local[2], 1.0))[:3]
+            out.append((p, radius))
+        return out
+
+    def _capsule_point_positions_np(self, q: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """numpy 版:返回 (Nx3 base 位置, N 半径),用于 RViz marker 与诊断。"""
+        q = self._initial_q(q)
+        pin.framesForwardKinematics(self.model, self.data, q)
+        pos = []
+        radii = []
+        for frame_id, local, radius in self._capsule_points:
+            oMf = self.data.oMf[frame_id]
+            pos.append(oMf.rotation @ local + oMf.translation)
+            radii.append(radius)
+        return np.array(pos, dtype=float), np.array(radii, dtype=float)
 
     def _build_front_propeller_disks(self) -> np.ndarray:
         """从 LL100 整机 URDF 中提取前桨圆盘,转换到配置指定坐标系下。"""
@@ -419,6 +535,10 @@ class MpcPinocchioIK:
         """SciPy SLSQP 后端:非线性目标 + 线性步长约束 + box 边界。"""
         bounds = self._bounds()
         constraints = [self._step_constraint(q0)]
+        # 避障硬约束:与 CasADi/ACADOS 后端复用同一组符号 margin 函数。
+        obstacle_constraint = self._obstacle_constraint_scipy()
+        if obstacle_constraint is not None:
+            constraints.append(obstacle_constraint)
 
         return minimize(
             fun=lambda x: self._objective(x, q0, targets, rotations),
@@ -462,6 +582,15 @@ class MpcPinocchioIK:
                 dq = q[i, :].T - q[i - 1, :].T
             # 约束 2:相邻两帧关节变化不能超过 max_joint_step。
             opti.subject_to(opti.bounded(-cfg.max_joint_step, dq, cfg.max_joint_step))
+            # 约束 3:避障硬约束。与 ACADOS 后端复用同一组符号 margin 函数,保证三后端解同一套约束。
+            if cfg.obstacle_avoidance_enabled:
+                front_margins = self._front_obstacle_margins_ca(q[i, :].T)
+                if front_margins.shape[0] > 0:
+                    opti.subject_to(front_margins >= 0)
+            if cfg.body_obstacle_enabled:
+                body_margins = self._body_obstacle_margins_ca(q[i, :].T)
+                if body_margins.shape[0] > 0:
+                    opti.subject_to(body_margins >= 0)
 
         cost = 0
         previous_q = ca.DM(q0)
@@ -640,6 +769,57 @@ class MpcPinocchioIK:
 
         return LinearConstraint(mat, lb, ub)
 
+    def _obstacle_margin_functions(self):
+        """惰性构建并缓存单帧障碍物 margin 的 CasADi 值/雅可比函数。
+
+        返回 ((value_fn, jac_fn), m) 或 (None, 0)。m 是单帧 margin 数量。
+        只纳入硬约束项(软约束 fallback 仅 acados 实现)。
+        """
+        if self._obstacle_margin_fns is not None:
+            return self._obstacle_margin_fns
+        import casadi as ca
+
+        cfg = self.config
+        q_sym = ca.MX.sym("q", self.nq)
+        exprs = []
+        if cfg.obstacle_avoidance_enabled:
+            exprs.append(self._front_obstacle_margins_ca(q_sym))
+        if cfg.body_obstacle_enabled:
+            exprs.append(self._body_obstacle_margins_ca(q_sym))
+        exprs = [e for e in exprs if e.shape[0] > 0]
+        if not exprs:
+            self._obstacle_margin_fns = (None, 0)
+            return self._obstacle_margin_fns
+        margin = ca.vertcat(*exprs)
+        value_fn = ca.Function("obstacle_margin", [q_sym], [margin])
+        jac_fn = ca.Function("obstacle_margin_jac", [q_sym], [ca.jacobian(margin, q_sym)])
+        self._obstacle_margin_fns = ((value_fn, jac_fn), int(margin.shape[0]))
+        return self._obstacle_margin_fns
+
+    def _obstacle_constraint_scipy(self):
+        """SciPy SLSQP 的避障不等式约束(margin >= 0),逐帧块对角组装雅可比。"""
+        fns, m = self._obstacle_margin_functions()
+        if fns is None:
+            return None
+        value_fn, jac_fn = fns
+        horizon = self.config.horizon_steps
+        nq = self.nq
+
+        def constraint_fun(x: np.ndarray) -> np.ndarray:
+            plan = x.reshape(horizon, nq)
+            return np.concatenate(
+                [np.asarray(value_fn(plan[i])).reshape(-1) for i in range(horizon)]
+            )
+
+        def constraint_jac(x: np.ndarray) -> np.ndarray:
+            plan = x.reshape(horizon, nq)
+            jac = np.zeros((horizon * m, horizon * nq))
+            for i in range(horizon):
+                jac[i * m:(i + 1) * m, i * nq:(i + 1) * nq] = np.asarray(jac_fn(plan[i]))
+            return jac
+
+        return {"type": "ineq", "fun": constraint_fun, "jac": constraint_jac}
+
     def _objective(
         self,
         x: np.ndarray,
@@ -696,53 +876,142 @@ class MpcPinocchioIK:
         skew = ca.mtimes(target_rotation, current_rotation.T) - ca.mtimes(current_rotation, target_rotation.T)
         return 0.5 * ca.vertcat(skew[2, 1], skew[0, 2], skew[1, 0])
 
-    def _obstacle_residuals_ca(self, q):
-        """ACADOS 避障残差:前桨圆盘和机身 box 的软约束。"""
+    def _front_obstacle_margins_ca(self, q):
         import casadi as ca
 
-        residuals = []
+        margins = []
         eps = float(self.config.obstacle_soft_eps)
-
         if self.config.obstacle_avoidance_enabled and self._obstacle_disks.shape[0] > 0:
-            for frame_id in self._obstacle_keypoint_frame_ids.values():
-                p_link = self._symbolic_fk.frame_position(q, frame_id)
-                for disk in self._obstacle_disks:
-                    sdf = self._disk_signed_distance_ca(p_link, ca.DM(disk), eps)
-                    margin = sdf - float(self.config.obstacle_safety_margin)
-                    # smooth_positive(-margin): margin<0 表示进入圆盘安全距离内。
-                    residuals.append(self._smooth_positive_ca(-margin, eps))
+            if self._capsule_points_active():
+                # 中心线模式(最精确):每个球心=连杆中心线点(帧局部→base),减该点半径 + safety_margin。
+                for sample, radius in self._capsule_point_positions_ca(q):
+                    for disk in self._obstacle_disks:
+                        sdf = self._disk_signed_distance_ca(sample, ca.DM(disk), eps)
+                        margins.append(sdf - float(radius) - float(self.config.obstacle_safety_margin))
+            elif self._front_capsule_active():
+                # capsule 模式:沿 capsule 链采样,减 capsule_radius(含连杆粗细)+ safety_margin(缓冲)。
+                frame_points = [
+                    self._symbolic_fk.frame_position(q, frame_id)
+                    for frame_id in self._capsule_frame_ids
+                ]
+                for seg_idx, (p0, p1) in enumerate(zip(frame_points[:-1], frame_points[1:])):
+                    for alpha in np.linspace(0.0, 1.0, max(1, int(self.config.capsule_samples_per_segment)) + 2):
+                        sample = (1.0 - float(alpha)) * p0 + float(alpha) * p1
+                        radius = self._sample_radius(seg_idx, float(alpha))
+                        for disk in self._obstacle_disks:
+                            sdf = self._disk_signed_distance_ca(sample, ca.DM(disk), eps)
+                            margins.append(
+                                sdf
+                                - radius
+                                - float(self.config.obstacle_safety_margin)
+                            )
+            else:
+                # 关键点模式(现有默认):约束连杆 frame 原点,不含连杆粗细。
+                for frame_id in self._obstacle_keypoint_frame_ids.values():
+                    p_link = self._symbolic_fk.frame_position(q, frame_id)
+                    for disk in self._obstacle_disks:
+                        sdf = self._disk_signed_distance_ca(p_link, ca.DM(disk), eps)
+                        margins.append(sdf - float(self.config.obstacle_safety_margin))
+        if not margins:
+            return ca.MX.zeros(0, 1)
+        return ca.vertcat(*margins)
 
+    def _body_obstacle_margins_ca(self, q):
+        import casadi as ca
+
+        margins = []
+        eps = float(self.config.obstacle_soft_eps)
         if self.config.body_obstacle_enabled and self._body_obstacle_boxes.shape[0] > 0:
-            frame_points = [
-                self._symbolic_fk.frame_position(q, frame_id)
-                for frame_id in self._capsule_frame_ids
-            ]
-            for p0, p1 in zip(frame_points[:-1], frame_points[1:]):
-                for alpha in np.linspace(0.0, 1.0, max(1, int(self.config.capsule_samples_per_segment)) + 2):
-                    sample = (1.0 - float(alpha)) * p0 + float(alpha) * p1
+            if self._capsule_points_active():
+                # 中心线模式(最精确):同一组中心线球心对机身 box 求 margin。
+                for sample, radius in self._capsule_point_positions_ca(q):
                     for box in self._body_obstacle_boxes:
                         signed_distance = self._box_signed_distance_ca(sample, box, eps)
-                        margin = (
-                            signed_distance
-                            - float(self.config.capsule_radius)
-                            - float(self.config.body_obstacle_margin)
-                        )
-                        residuals.append(self._smooth_positive_ca(-margin, eps))
-
-        if not residuals:
+                        margins.append(signed_distance - float(radius) - float(self.config.body_obstacle_margin))
+            else:
+                frame_points = [
+                    self._symbolic_fk.frame_position(q, frame_id)
+                    for frame_id in self._capsule_frame_ids
+                ]
+                for seg_idx, (p0, p1) in enumerate(zip(frame_points[:-1], frame_points[1:])):
+                    for alpha in np.linspace(0.0, 1.0, max(1, int(self.config.capsule_samples_per_segment)) + 2):
+                        sample = (1.0 - float(alpha)) * p0 + float(alpha) * p1
+                        radius = self._sample_radius(seg_idx, float(alpha))
+                        for box in self._body_obstacle_boxes:
+                            signed_distance = self._box_signed_distance_ca(sample, box, eps)
+                            margins.append(
+                                signed_distance
+                                - radius
+                                - float(self.config.body_obstacle_margin)
+                            )
+        if not margins:
             return ca.MX.zeros(0, 1)
-        return ca.vertcat(*residuals)
+        return ca.vertcat(*margins)
 
-    def _front_obstacle_residual_count(self) -> int:
+    def _front_capsule_active(self) -> bool:
+        """前桨是否走 capsule 模式(需开启开关且 capsule 链≥2 frame)。"""
+        return bool(self.config.front_obstacle_capsule) and len(self._capsule_frame_ids) >= 2
+
+    def _front_obstacle_constraint_count(self) -> int:
         if not self.config.obstacle_avoidance_enabled:
             return 0
-        return len(self._obstacle_keypoint_frame_ids) * int(self._obstacle_disks.shape[0])
+        n_disks = int(self._obstacle_disks.shape[0])
+        if self._capsule_points_active():
+            return len(self._capsule_points) * n_disks
+        if self._front_capsule_active():
+            samples = max(1, int(self.config.capsule_samples_per_segment)) + 2
+            return (len(self._capsule_frame_ids) - 1) * samples * n_disks
+        return len(self._obstacle_keypoint_frame_ids) * n_disks
 
-    def _body_obstacle_residual_count(self) -> int:
-        if not self.config.body_obstacle_enabled or len(self._capsule_frame_ids) < 2:
+    def _body_obstacle_constraint_count(self) -> int:
+        if not self.config.body_obstacle_enabled or self._body_obstacle_boxes.shape[0] == 0:
+            return 0
+        n_boxes = int(self._body_obstacle_boxes.shape[0])
+        if self._capsule_points_active():
+            return len(self._capsule_points) * n_boxes
+        if len(self._capsule_frame_ids) < 2:
             return 0
         samples_per_segment = max(1, int(self.config.capsule_samples_per_segment)) + 2
-        return (len(self._capsule_frame_ids) - 1) * samples_per_segment * int(self._body_obstacle_boxes.shape[0])
+        return (len(self._capsule_frame_ids) - 1) * samples_per_segment * n_boxes
+
+    def _obstacle_repulsion_enabled(self) -> bool:
+        return float(self.config.obstacle_repulsion_margin) > 0.0
+
+    def _obstacle_repulsion_count(self) -> int:
+        """斥力残差数量 = 每个障碍 margin 一项(前桨 + 机身),仅在阈值>0 时启用。"""
+        if not self._obstacle_repulsion_enabled():
+            return 0
+        n = 0
+        if self.config.obstacle_avoidance_enabled:
+            n += self._front_obstacle_constraint_count()
+        if self.config.body_obstacle_enabled:
+            n += self._body_obstacle_constraint_count()
+        return n
+
+    def _obstacle_repulsion_residuals_ca(self, q):
+        """避障斥力残差:对每个 margin 取 smooth_positive(阈值 − margin),margin<阈值时二次上升。
+        与硬约束(con_h_expr, margin≥0)并存:硬约束禁止越界,斥力给梯度让手臂在能留净空处离障更远。
+        残差本身不含权重,权重在 W 里(运行时 cost_set 可调、可扫不重编)。"""
+        import casadi as ca
+
+        if not self._obstacle_repulsion_enabled():
+            return ca.MX.zeros(0, 1)
+        thresh = float(self.config.obstacle_repulsion_margin)
+        eps = float(self.config.obstacle_soft_eps)
+        parts = []
+        if self.config.obstacle_avoidance_enabled:
+            parts.append(self._front_obstacle_margins_ca(q))
+        if self.config.body_obstacle_enabled:
+            parts.append(self._body_obstacle_margins_ca(q))
+        parts = [p for p in parts if p.shape[0] > 0]
+        if not parts:
+            return ca.MX.zeros(0, 1)
+        margins = ca.vertcat(*parts)
+        residuals = [
+            self._smooth_positive_ca(thresh - margins[i], eps)
+            for i in range(int(margins.shape[0]))
+        ]
+        return ca.vertcat(*residuals)
 
     @staticmethod
     def _smooth_positive_ca(value, eps: float):
@@ -850,10 +1119,12 @@ class MpcPinocchioIK:
 
         min_margin = float("inf")
         max_violation = 0.0
-        radius_with_margin = float(self.config.capsule_radius + self.config.body_obstacle_margin)
+        body_margin = float(self.config.body_obstacle_margin)
+        sample_radii = self.capsule_sample_radii()
         for q in plan:
             samples = self.capsule_sample_positions(q)
-            for sample in samples:
+            for sample, radius in zip(samples, sample_radii):
+                radius_with_margin = float(radius) + body_margin
                 for box in self._body_obstacle_boxes:
                     signed_distance = _box_signed_distance_np(sample, box)
                     margin = signed_distance - radius_with_margin
@@ -867,13 +1138,22 @@ class MpcPinocchioIK:
         }
 
     def _plan_feasible(self, q0: np.ndarray, plan: np.ndarray) -> bool:
-        """检查预测轨迹是否满足数值有效、关节限位和每步关节变化约束。"""
+        """检查预测轨迹是否满足数值有效、关节限位、步长和硬避障约束。"""
         if not np.all(np.isfinite(plan)):
             return False
         if np.any(plan < self.q_lower - 1e-6) or np.any(plan > self.q_upper + 1e-6):
             return False
         step_diffs = np.diff(np.vstack([q0, plan]), axis=0)
-        return bool(np.all(np.abs(step_diffs) <= self.config.max_joint_step + 1e-6))
+        if not np.all(np.abs(step_diffs) <= self.config.max_joint_step + 1e-6):
+            return False
+        if self.config.obstacle_avoidance_enabled:
+            front = self._front_obstacle_diagnostics(plan)
+            if float(front["front_obstacle_violation_max"] or 0.0) > 1e-4:
+                return False
+        if self.config.body_obstacle_enabled:
+            body = self._body_obstacle_diagnostics(plan)
+            return bool(float(body["body_obstacle_violation_max"] or 0.0) <= 1e-4)
+        return True
 
     def _make_info(
         self,
@@ -1165,19 +1445,56 @@ class _AcadosMpcBackend:
         ee_rot = owner._symbolic_fk.rotation(q)
         pos_error = ee_pos - target_pos
         rot_error = owner._orientation_error_ca(ee_rot, target_rot)
-        obstacle_residuals = owner._obstacle_residuals_ca(q)
-        n_obstacle_residuals = int(obstacle_residuals.shape[0])
-        n_front_obstacle_residuals = owner._front_obstacle_residual_count()
-        n_body_obstacle_residuals = owner._body_obstacle_residual_count()
-        if n_obstacle_residuals != n_front_obstacle_residuals + n_body_obstacle_residuals:
+        # 避障恒为硬约束(已移除软残差路径),障碍物 margin 只进 con_h_expr,不再进代价残差 y。
+        n_front_hard_constraints = (
+            owner._front_obstacle_constraint_count()
+            if cfg.obstacle_avoidance_enabled
+            else 0
+        )
+        n_body_hard_constraints = (
+            owner._body_obstacle_constraint_count()
+            if cfg.body_obstacle_enabled
+            else 0
+        )
+        front_hard_constraints = (
+            owner._front_obstacle_margins_ca(q)
+            if n_front_hard_constraints > 0
+            else ca.MX.zeros(0, 1)
+        )
+        body_hard_constraints = (
+            owner._body_obstacle_margins_ca(q)
+            if n_body_hard_constraints > 0
+            else ca.MX.zeros(0, 1)
+        )
+        if int(front_hard_constraints.shape[0]) != n_front_hard_constraints:
             raise RuntimeError(
-                "避障残差维度不一致: "
-                f"expr={n_obstacle_residuals}, front={n_front_obstacle_residuals}, body={n_body_obstacle_residuals}"
+                "前桨硬约束维度不一致: "
+                f"expr={int(front_hard_constraints.shape[0])}, expected={n_front_hard_constraints}"
             )
-        y = ca.vertcat(pos_error, rot_error, u, u - dq_prev, q - q_ref, q - q_center, obstacle_residuals)
-        y_e = ca.vertcat(pos_error, rot_error, q - q_ref, q - q_center, obstacle_residuals)
+        if int(body_hard_constraints.shape[0]) != n_body_hard_constraints:
+            raise RuntimeError(
+                "机身硬约束维度不一致: "
+                f"expr={int(body_hard_constraints.shape[0])}, expected={n_body_hard_constraints}"
+            )
+        # 障碍斥力残差(可选,与硬约束并存):margin<阈值时二次上升,权重在 W 里(运行时可调)。
+        n_repulsion = owner._obstacle_repulsion_count()
+        repulsion_residuals = (
+            owner._obstacle_repulsion_residuals_ca(q) if n_repulsion > 0 else ca.MX.zeros(0, 1)
+        )
+        if int(repulsion_residuals.shape[0]) != n_repulsion:
+            raise RuntimeError(
+                "斥力残差维度不一致: "
+                f"expr={int(repulsion_residuals.shape[0])}, expected={n_repulsion}"
+            )
+        y = ca.vertcat(pos_error, rot_error, u, u - dq_prev, q - q_ref, q - q_center, repulsion_residuals)
+        y_e = ca.vertcat(pos_error, rot_error, q - q_ref, q - q_center, repulsion_residuals)
         model.cost_y_expr = y
         model.cost_y_expr_e = y_e
+        hard_constraints = ca.vertcat(front_hard_constraints, body_hard_constraints)
+        n_hard_constraints = int(hard_constraints.shape[0])
+        if n_hard_constraints > 0:
+            model.con_h_expr = hard_constraints
+            model.con_h_expr_e = hard_constraints
 
         ocp = AcadosOcp()
         ocp.model = model
@@ -1187,26 +1504,35 @@ class _AcadosMpcBackend:
 
         ocp.cost.cost_type = "NONLINEAR_LS"
         ocp.cost.cost_type_e = "NONLINEAR_LS"
-        ocp.cost.W = np.diag(np.concatenate([
+        # 代价权重不进签名(见 _acados_solver_signature),这里构造的 W 只作编译期占位/维度用;
+        # 真正生效的权重在 solver 建好后由 _apply_cost_weights 运行时 cost_set 写入,
+        # 这样"同结构下只改权重"可复用已编译的 .so,不必重编。
+        W = np.diag(np.concatenate([
             np.full(3, cfg.position_weight),
             np.full(3, cfg.orientation_weight),
             np.full(nq, cfg.joint_delta_weight),
             np.full(nq, cfg.joint_delta_change_weight),
             np.full(nq, cfg.current_posture_weight),
             np.full(nq, cfg.center_posture_weight),
-            np.full(n_front_obstacle_residuals, cfg.obstacle_weight),
-            np.full(n_body_obstacle_residuals, cfg.body_obstacle_weight),
+            np.full(n_repulsion, cfg.obstacle_repulsion_weight),
         ]))
-        ocp.cost.W_e = np.diag(np.concatenate([
+        W_e = np.diag(np.concatenate([
             np.full(3, cfg.terminal_position_weight),
             np.full(3, cfg.terminal_orientation_weight),
             np.full(nq, cfg.current_posture_weight),
             np.full(nq, cfg.center_posture_weight),
-            np.full(n_front_obstacle_residuals, cfg.obstacle_weight),
-            np.full(n_body_obstacle_residuals, cfg.body_obstacle_weight),
+            np.full(n_repulsion, cfg.obstacle_repulsion_weight),
         ]))
-        ocp.cost.yref = np.zeros(6 + 4 * nq + n_obstacle_residuals)
-        ocp.cost.yref_e = np.zeros(6 + 2 * nq + n_obstacle_residuals)
+        # 编译期用与权重无关的固定占位 W(单位阵):acados 会把 ocp.cost.W 烘进生成代码并与
+        # 缓存 json 比对,若这里放真实权重,改任一权重都会被判"结构变了"而强制重编。放占位后
+        # acados 判定结构不变 → 复用已编译 .so;真实权重在 _apply_cost_weights 运行时 cost_set。
+        ocp.cost.W = np.eye(W.shape[0])
+        ocp.cost.W_e = np.eye(W_e.shape[0])
+        self._cost_W = W
+        self._cost_W_e = W_e
+        self._weights_applied = False
+        ocp.cost.yref = np.zeros(6 + 4 * nq + n_repulsion)
+        ocp.cost.yref_e = np.zeros(6 + 2 * nq + n_repulsion)
 
         x_min = np.concatenate([owner.q_lower, np.full(nq, -cfg.max_joint_step)])
         x_max = np.concatenate([owner.q_upper, np.full(nq, cfg.max_joint_step)])
@@ -1219,14 +1545,25 @@ class _AcadosMpcBackend:
         ocp.constraints.idxbu = np.arange(nu)
         ocp.constraints.lbu = np.full(nu, -cfg.max_joint_step)
         ocp.constraints.ubu = np.full(nu, cfg.max_joint_step)
+        if n_hard_constraints > 0:
+            ocp.constraints.lh = np.zeros(n_hard_constraints)
+            ocp.constraints.uh = np.full(n_hard_constraints, 1e9)
+            ocp.constraints.lh_e = np.zeros(n_hard_constraints)
+            ocp.constraints.uh_e = np.full(n_hard_constraints, 1e9)
         ocp.constraints.x0 = np.zeros(nx)
 
         ocp.solver_options.tf = cfg.horizon_steps * cfg.control_dt
         ocp.solver_options.integrator_type = "DISCRETE"
-        ocp.solver_options.nlp_solver_type = "SQP_RTI"
-        ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+        ocp.solver_options.nlp_solver_type = cfg.acados_nlp_solver_type
+        ocp.solver_options.qp_solver = cfg.acados_qp_solver
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.print_level = 0
+        # QP 内层迭代上限 / 热启动:让 active-set(qpOASES)、一阶法(OSQP)有机会真正收敛。
+        ocp.solver_options.qp_solver_iter_max = max(1, int(cfg.acados_qp_solver_iter_max))
+        ocp.solver_options.qp_solver_warm_start = int(cfg.acados_qp_warm_start)
+        # 全 SQP(非 RTI)需要允许多次迭代,才能收敛到可作精度参照的高精度解。
+        if cfg.acados_nlp_solver_type == "SQP":
+            ocp.solver_options.nlp_solver_max_iter = max(1, int(cfg.max_iter))
 
         build_dir = Path(cfg.acados_build_dir).expanduser().resolve()
         build_dir.mkdir(parents=True, exist_ok=True)
@@ -1240,7 +1577,9 @@ class _AcadosMpcBackend:
             nx=nx,
             nu=nu,
             np_param=np_param,
-            n_obstacle_residuals=n_obstacle_residuals,
+            n_front_hard_constraints=n_front_hard_constraints,
+            n_body_hard_constraints=n_body_hard_constraints,
+            n_repulsion=n_repulsion,
             model_name=model.name,
         )
         reuse_generated_solver = _can_reuse_acados_solver(
@@ -1262,13 +1601,22 @@ class _AcadosMpcBackend:
             if reuse_generated_solver:
                 self.solver = AcadosOcpSolver(ocp, json_file=str(json_path), generate=True, build=True)
                 _write_acados_solver_metadata(metadata_path, signature)
-                return
-            raise RuntimeError(
-                "ACADOS 求解器已生成,但动态库加载失败。请先运行: "
-                "source src/arm-platform/scripts/setup_acados_env.sh; "
-                "或改用 solver_backend='casadi' / 'scipy'。原始错误: "
-                f"{exc}"
-            ) from exc
+            else:
+                raise RuntimeError(
+                    "ACADOS 求解器已生成,但动态库加载失败。请先运行: "
+                    "source src/arm-platform/scripts/setup_acados_env.sh; "
+                    "或改用 solver_backend='casadi' / 'scipy'。原始错误: "
+                    f"{exc}"
+                ) from exc
+        # 权重不在签名里,复用旧 .so 时必须用当前 cfg 的权重运行时覆盖(否则会静默沿用占位权重)。
+        self._apply_cost_weights(cfg.horizon_steps)
+
+    def _apply_cost_weights(self, horizon_steps: int) -> None:
+        """建好 solver 后按当前 cfg 权重运行时写入 W/W_e。所有 stage 都要设,漏设=静默用占位权重。"""
+        for stage in range(int(horizon_steps)):
+            self.solver.cost_set(stage, "W", self._cost_W)
+        self.solver.cost_set(int(horizon_steps), "W", self._cost_W_e)
+        self._weights_applied = True
 
     def set(self, *args, **kwargs):
         return self.solver.set(*args, **kwargs)
@@ -1277,6 +1625,10 @@ class _AcadosMpcBackend:
         return self.solver.get(*args, **kwargs)
 
     def solve(self):
+        if not getattr(self, "_weights_applied", False):
+            raise RuntimeError(
+                "ACADOS 代价权重未运行时写入(_apply_cost_weights 未调用)——权重可能是编译期占位值。"
+            )
         return self.solver.solve()
 
 
@@ -1371,12 +1723,14 @@ def _acados_solver_signature(
     nx: int,
     nu: int,
     np_param: int,
-    n_obstacle_residuals: int,
+    n_front_hard_constraints: int,
+    n_body_hard_constraints: int,
+    n_repulsion: int,
     model_name: str,
 ) -> Dict[str, object]:
     cfg = owner.config
     return {
-        "signature_version": 1,
+        "signature_version": 9,
         "model_name": model_name,
         "urdf_path": str(Path(owner.urdf_path).expanduser().resolve()),
         "urdf_file": _file_signature(owner.urdf_path),
@@ -1390,25 +1744,19 @@ def _acados_solver_signature(
         "horizon_steps": int(cfg.horizon_steps),
         "control_dt": float(cfg.control_dt),
         "max_joint_step": float(cfg.max_joint_step),
-        "weights": {
-            "position": float(cfg.position_weight),
-            "terminal_position": float(cfg.terminal_position_weight),
-            "orientation": float(cfg.orientation_weight),
-            "terminal_orientation": float(cfg.terminal_orientation_weight),
-            "joint_delta": float(cfg.joint_delta_weight),
-            "joint_delta_change": float(cfg.joint_delta_change_weight),
-            "current_posture": float(cfg.current_posture_weight),
-            "center_posture": float(cfg.center_posture_weight),
-        },
+        # 代价权重不再进签名:权重由 _apply_cost_weights 运行时 cost_set 写入,
+        # 同结构下只改权重可复用已编译 solver(权重扫描/调参不再每次重编)。
         "solver_options": {
             "integrator_type": "DISCRETE",
-            "nlp_solver_type": "SQP_RTI",
-            "qp_solver": "PARTIAL_CONDENSING_HPIPM",
+            "nlp_solver_type": str(cfg.acados_nlp_solver_type),
+            "qp_solver": str(cfg.acados_qp_solver),
+            "qp_solver_iter_max": int(cfg.acados_qp_solver_iter_max),
+            "qp_solver_warm_start": int(cfg.acados_qp_warm_start),
             "hessian_approx": "GAUSS_NEWTON",
         },
         "obstacle": {
             "enabled": bool(cfg.obstacle_avoidance_enabled),
-            "weight": float(cfg.obstacle_weight),
+            "front_capsule": bool(cfg.front_obstacle_capsule),
             "safety_margin": float(cfg.obstacle_safety_margin),
             "soft_eps": float(cfg.obstacle_soft_eps),
             "propeller_radius": float(cfg.obstacle_propeller_radius),
@@ -1419,17 +1767,20 @@ def _acados_solver_signature(
             "keypoint_frames": list(cfg.obstacle_keypoint_frames),
             "front_propeller_joints": list(cfg.obstacle_front_propeller_joints),
             "disk_count": int(owner._obstacle_disks.shape[0]),
-            "residual_count": int(n_obstacle_residuals),
             "disks": np.round(owner._obstacle_disks, 12).tolist(),
             "body_enabled": bool(cfg.body_obstacle_enabled),
-            "body_weight": float(cfg.body_obstacle_weight),
             "body_margin": float(cfg.body_obstacle_margin),
             "body_boxes": np.round(owner._body_obstacle_boxes, 12).tolist(),
             "capsule_radius": float(cfg.capsule_radius),
+            "capsule_joint_radii": [float(x) for x in cfg.capsule_joint_radii],
+            "capsule_link_radii": [float(x) for x in cfg.capsule_link_radii],
+            "capsule_points": [[str(e[0]), *[round(float(v), 6) for v in e[1:]]] for e in cfg.capsule_points],
             "capsule_samples_per_segment": int(cfg.capsule_samples_per_segment),
             "capsule_frame_sequence": list(cfg.capsule_frame_sequence),
-            "front_residual_count": int(owner._front_obstacle_residual_count()),
-            "body_residual_count": int(owner._body_obstacle_residual_count()),
+            "front_hard_constraint_count": int(n_front_hard_constraints),
+            "body_hard_constraint_count": int(n_body_hard_constraints),
+            "repulsion_count": int(n_repulsion),
+            "repulsion_margin": float(cfg.obstacle_repulsion_margin),
         },
     }
 

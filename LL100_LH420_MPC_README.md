@@ -7,7 +7,9 @@
 - 控制对象:LL100-LH420 整机模型中的六轴机械臂 `A_Joint` ~ `F_Joint`。
 - 可视化对象:整机 `ll100_lh420.urdf`,包含机体、4 个旋翼和机械臂。
 - NMPC 模型:`ll100_lh420_nmpc.urdf`,只保留 A-F 六轴机械臂用于求解。
-- 求解器:默认 ACADOS 后端。
+- 求解器:默认 acados(SQP_RTI + HPIPM);demo 可切 qpOASES / GRAMPC。
+  **求解器选型/对比/安装/切换的完整说明,以 [LL100_LH420_NMPC_Solver_README.md](LL100_LH420_NMPC_Solver_README.md) 为准。**
+  合格解:acados-HPIPM(默认)/ acados-qpOASES / GRAMPC;CasADi-IPOPT、SciPy-SLSQP 已弃置(慢,保留作离线参照)。
 - 避障:前桨圆盘 SDF + 机身/安装架简化 box + 连杆 capsule 采样点,默认使用 ACADOS 非线性硬约束。
 - 当前用途:仿真/RViz 演示和算法验证,不直接控制真实 LL100 硬件。
 
@@ -90,6 +92,7 @@ Subscription count: 1
 
 ## 4. 避障 NMPC
 
+核心文件介绍：
 `ll100_traj_pub.py`：生成期望轨迹
 `move_ll100_lh420_nmpc_demo.py` ：核心启动demo
 `MpcPinocchioIK` ：NMPC公式与求解器调用
@@ -135,9 +138,9 @@ python3 move_ll100_lh420_nmpc_demo.py
 
 | 参数 | 默认值 | 说明 |
 |---|---:|---|
-| `period_sec` | `60.0` | 轨迹周期,s;默认很慢,方便实际模型跟上 |
-| `path_mode` | `60.0` | 不同轨迹模式切换 |
-| `max_joint_step` | `0.01` | 每周期最大关节步长,rad |
+| `period_sec` | `20.0` | 一圈时长,s(完成时间;越长越精准) |
+| `path_mode` | `lower_obstacle_circle` | 不同轨迹模式切换(见下方 `path_mode` 支持表) |
+| `max_joint_step` | `0.010` | 每周期最大关节步长,rad;**硬件派生 = `max_velocity`(0.5)·`control_dt`(0.02),非自由调参项** |
 | `path_preview_stride` | `4` | 预测时域内相邻目标点间隔,避免时域只盯住当前点 |
 | `position_weight` | `120.0` | 位置跟踪权重 |
 | `terminal_position_weight` | `1200.0` | 终端位置跟踪权重 |
@@ -146,18 +149,25 @@ python3 move_ll100_lh420_nmpc_demo.py
 | `orientation_weight` | `0.3` | 姿态软约束权重 |
 | `terminal_orientation_weight` | `3.0` | 终端姿态软约束权重 |
 | `obstacle_avoidance_enabled` | `True` | 是否启用前桨圆盘避障(固定为 ACADOS 非线性硬约束,无软约束开关) |
-| `obstacle_safety_margin` | `0.04` | 前桨圆盘避障的 NMPC 硬约束安全余量(从 SDF 中减去),m |
+| `obstacle_safety_margin` | `0.005` | 前桨圆盘避障的 NMPC 硬约束安全余量(从 SDF 中减去),m;小正余量保证实际不接触 |
 | `advance_on_feedback` | `False` | `False` 时按 `period_sec` 保持期望速度;`True` 时实际末端接近当前路径点后再推进 |
 | `start_from_nearest_path_point` | `True` | 启动时从距离当前末端最近的路径点并入 |
 | `hold_start_until_reached` | `True` | 从稳定弧线并入点进入容差后再启动时间轴 |
-| `target_switch_tolerance` | `0.025` | 路径点切换距离阈值,m |
+| `target_switch_tolerance` | `0.005` | 启动贴紧首点/路径点切换阈值,m(收紧→启动残差小、max 误差小) |
 | `stuck_steps_before_advance` | `120` | 当前点误差长时间不下降时自动推进 |
 | `stuck_advance_points` | `10` | 卡住时一次跳过的路径点数 |
-| `body_obstacle_margin` | `0.015` | 机身/安装架 box 避障的 NMPC 硬约束余量(额外安全距离),m |
-| `capsule_radius` | `0.018` | 连杆 capsule 碰撞半径,m;参与机身 box 的 NMPC 硬约束 |
-| `capsule_samples_per_segment` | `1` | 每段连杆中间采样点数量 |
+| `body_obstacle_margin` | `0.005` | 机身/安装架 box 避障的 NMPC 硬约束余量(额外安全距离),m;小正余量保证实际不接触 |
+| `capsule_radius` | `0.018` | 回退标量碰撞半径,m(仅在中心线模型与分段半径都为空时用) |
+| `capsule_joint_radii` | `[0.052,0.062,0.058,0.050,0.049,0.040]` | 回退-各关节(电机)半径,m,A~F 帧(**当前被代码常量 `capsule_points` 中心线模型取代**,见下) |
+| `capsule_link_radii` | `[0.045,0.035,0.043,0.016,0.035]` | 回退-各段连杆(杆身)半径,m,A→B~E→F 段(**当前被 `capsule_points` 取代**) |
+| `capsule_samples_per_segment` | `3` | 每段连杆中间采样点数量;每段总采样点=此值+2(现为 5 点/段,减小长杆球间缝隙) |
 | `current_posture_weight` | `0.005` | 抑制相对当前姿态突变 |
 | `center_posture_weight` | `0.01` | 抑制机械臂拉到近奇异伸直姿态 |
+| `joint_delta_weight` | `0.08` | 一阶平滑权重(惩罚每步 Δq) |
+| `joint_delta_change_weight` | `0.25` | 二阶平滑权重(惩罚 ΔΔq,抑抖) |
+| `front_obstacle_capsule` | `True` | 前桨按连杆 capsule 建模(含粗细),硬约束保证连杆表面离桨;`False`=仅关键点(旧,漏连杆粗细→真臂会擦桨) |
+| `obstacle_repulsion_margin` | `0.03` | 障碍斥力场阈值,m;>0 启用,手臂进此距离内被斥力主动推离障碍(留净空);`0`=关 |
+| `obstacle_repulsion_weight` | `1e4` | 斥力强度;默认开(NMPC 主动留净空、不贴硬约束墙),硬约束始终兜底。运行时可扫、不重编 |
 
 `path_mode` 支持:
 
@@ -165,19 +175,17 @@ python3 move_ll100_lh420_nmpc_demo.py
 |---|---|
 | `lower_obstacle_circle` | 默认模式,末端朝下,在避障区域下方慢速画圆 |
 | `avoidance_sweep` | 靠近机身/安装架约束的演示轨迹 |
-| `front_wing_arc` | 前端左右机翼/前桨下方两点之间的余弦往返弧线|
-| `front_propeller_line` | 前桨外侧直线演示 |
+| `front_wing_arc` | 右桨盘下方扫掠弧避障演示:两端点都在桨盘下方(z≈−0.22),中段升向桨盘(z≈−0.14、进斥力避障区)→ 避障把手臂顶在离桨 ~30mm 处,升段出现可见跟踪偏移(~11mm)= 避障在起作用;全程 `viol=0`、真臂不碰桨 |
 | `circle` | 在 `base_link` 的 y-z 平面画圆 |
-| `windylab` | 在 `base_link` 的 y-z 平面写简化 `windylab` |
 | `single_target` | 单目标模式 |
 
-`max_joint_step` 应与底层限速匹配。`ll100_lh420_control.launch.py` 默认 `max_velocity=0.5 rad/s`,50 Hz 控制周期下推荐:
+`max_joint_step` 是硬件速度约束在 OCP 里的镜像,不是自由调参项:它必须等于底层单周期能走的关节量 = `max_velocity · control_dt`。`ll100_lh420_control.launch.py` 默认 `max_velocity=0.5 rad/s`、50 Hz 控制周期,故默认:
 
 ```text
-max_joint_step ~= max_velocity * 0.02
+max_joint_step = max_velocity * 0.02 = 0.5 * 0.02 = 0.010
 ```
 
-例如 launch 使用 `max_velocity:=1.0` 时,路径 demo 可设置:
+设得比它**大**,MPC 会规划底层跟不上的速度(规划/执行不匹配、实际末端滞后,还会侵蚀避障余量);设得比它**小**则人为限速、跟踪滞后。**要更快只能提 `max_velocity`**,再按上式同步放大 `max_joint_step`。例如 launch 用 `max_velocity:=1.0` 时:
 
 ```bash
 python3 move_ll100_lh420_nmpc_demo.py --ros-args -p max_joint_step:=0.02
@@ -197,6 +205,35 @@ python3 move_ll100_lh420_nmpc_demo.py --ros-args -p max_joint_step:=0.02
 - `obstacle_violation_max`:最大安全裕度侵入量;硬约束下应**恒为 `0.0`**,一旦 `> 0` 说明发生侵入,优先级高于跟踪精度。
 
 `min_obstacle_margin < 0` 表示预测轨迹已经进入安全裕度内。ACADOS hard constraint 只约束当前简化模型和采样点,不等于真机安全证明;真机前仍需要增大 margin、降低速度并保留硬件安全措施。
+
+### 4.4 可达范围探测工具（安全+无奇异）
+
+`ll100_workspace_probe.py`：离线扫描机械臂在**避障约束下**的"安全可达区"——即末端**竖直朝下**、**远离奇异**、且臂与**桨盘/机身无碰撞**的所有可达末端位置,在 RViz 里用**体素方块**画出来、按**可操作度**上色(绿=远离奇异 → 黄 → 红=接近奇异阈值)。碰撞用与主 demo 完全相同的中心线胶囊模型(复用同一 `CAPSULE_CENTERLINE_POINTS`),所以能吃到你微调过的小球。
+
+原理:关节空间蒙特卡洛采样 → 逐构型过滤(①末端与竖直朝下夹角 ≤ 容差 ②可操作度 `sqrt(det(J·Jᵀ)) ≥` 阈值 ③所有碰撞球对桨盘/机身 `margin ≥ extra_clearance`)→ 通过的末端位置按体素合并、取体素内最大可操作度上色。
+
+先起控制版 launch(§3,提供 RViz + robot_state_publisher),再另开终端:
+
+```bash
+cd ~/code/windylab_ws/src/arm-platform/demo
+source /opt/ros/humble/setup.bash
+source ~/code/windylab_ws/install/setup.bash
+python3 ll100_workspace_probe.py --ros-args -p num_samples:=1000000
+```
+
+RViz 里 Add → By topic → `/ll100_workspace/reachable`(可达体素)和 `/ll100_workspace/obstacles`(桨盘+机身,便于对照)。启动时算一次(~10s),之后 latched 重发。
+
+| 参数 | 默认 | 说明 |
+|---|---:|---|
+| `num_samples` | `1000000` | 关节空间采样数;竖直朝下命中率低(~0.1%),越大体素越密越慢(~10µs/个) |
+| `voxel_size` | `0.02` | 体素边长,m |
+| `manipulability_threshold` | `0.012` | 可操作度低于此判为接近奇异,剔除(= 调参器 `SINGULAR_SOFT_TARGET`) |
+| `orientation_tol_deg` | `20.0` | 末端与竖直朝下的最大夹角,° |
+| `require_vertical_down` | `True` | 设 `false` = 不限姿态,得到完整可达体积(范围明显更大) |
+| `extra_clearance` | `0.0` | 在内置 margin 之外再加的安全净空,m(调大→区域缩小、更远离障碍) |
+| `seed` | `0` | 采样随机种子,可复现 |
+
+用途:放目标点前先在这张图上确认"在不在绿区",避免像 front_wing_arc 那样盲试不可行目标。日志会打印 采样/过姿态/过奇异/过碰撞 计数、可达 bbox、可操作度范围。
 
 ## 5. LL100 轨迹可视化节点
 
@@ -240,7 +277,7 @@ src/arm-platform/demo/data
 
 | 参数 | 默认值 | 说明 |
 |---|---:|---|
-| `trajectory_mode` | `lower_obstacle_circle` | 期望轨迹模式,共 6 种，与demo相同，但single_target不计入，因为单目标点没有连续路径可绘制;必须和路径 demo 的 `path_mode` 一致 |
+| `trajectory_mode` | `lower_obstacle_circle` | 期望轨迹模式,共 4 种,与 demo 相同，但single_target不计入，因为单目标点没有连续路径可绘制;必须和路径 demo 的 `path_mode` 一致 |
 | `period_sec` | `60.0` | 绘图期望轨迹的时间周期 |
 | `expected_path_points` | `240` | RViz/Matplotlib 中期望路径采样点数 |
 | `max_actual_points` | `2000` | RViz 中保留的实际轨迹点数 |
@@ -249,7 +286,7 @@ src/arm-platform/demo/data
 | `use_message_stamp` | `False` | 默认用可视化节点接收时钟统一 `/student/joint_command` 和 `/joint_states` 时间 |
 | `start_when_on_expected_path` | `True` | 实际末端进入期望轨迹入口点容差后才把记录时间置零 |
 | `start_path_tolerance` | `0.025` | 判定“已经到达期望轨迹入口点”的距离阈值,m |
-| `use_stable_front_wing_arc_start` | `True` | `front_wing_arc` 远离轨迹启动时等待左右稳定弧线中点之一,避免从端点或直线段并入 |
+| `use_stable_front_wing_arc_start` | `True` | `front_wing_arc` 远离轨迹启动时从弧线中点之一并入,避免从端点并入 |
 | `reset_gap_sec` | `2.0` | 命令中断超过该间隔后重置记录,开始新一段轨迹 |
 | `stale_command_timeout_sec` | `0.2` | 超过该时间没收到新命令则认为命令过期/已停 |
 | `ignore_initial_sec` | `1.0` | 记录开始后忽略前几秒 |
@@ -259,7 +296,7 @@ src/arm-platform/demo/data
 | `obstacle_safety_margin` | `0.04` | 仅可视化:前桨圆盘障碍的安全余量,m(不参与 NMPC 求解) |
 | `obstacle_disk_half_thickness` | `0.02` | 仅可视化:障碍圆盘半厚度,m |
 | `body_obstacle_margin` | `0.015` | 仅可视化:机身/安装架 box 障碍的额外安全距离,m |
-| `capsule_radius` | `0.018` | 仅可视化:连杆 capsule 半径,m |
+| `capsule_radius` | `0.018` | 仅回退:分段半径留空时的标量;RViz 逐采样点按各自半径(关节粗/连杆细)画青色球 |
 | `data_dir` | `.../arm-platform/demo/data` | 记录数据(轨迹/图)的保存目录 |
 
 
@@ -275,8 +312,10 @@ src/arm-platform/demo/data
 机身/安装架避障:
 
 - 在 `base_link` 坐标系下用局部 box 覆盖底板、机身后部和机械臂安装架。
-- 连杆避障不是完整 mesh 碰撞,而是把 `A_Link`~`F_Link` 相邻 frame 形成 capsule。
-- 每段 capsule 取固定采样点,默认作为 ACADOS nonlinear hard constraint;关闭 hard constraint 时才退回 soft cost。
+- 连杆避障不是完整 mesh 碰撞,而是把臂离散成一串带半径的球(球的并集≈胶囊/圆柱)。
+- **中心线模型(默认,最精确)**:`capsule_points` 给出 37 个球,球心=各连杆 STL 网格**沿关节轴的横截面质心**(贴住真实杆中心线,不再落在关节连线上),半径=该处真实粗细(细杆 ~25–31mm、电机 ~56–78mm,含无缝覆盖膨胀)。采样间距 30mm、`R=√(局部粗细²+15²)+6mm`,**全程无缝**(球采样对半径=杆粗的圆柱永远有缝,故半径必须略大于杆粗)。由网格离线生成。
+- **回退:分段半径**(`capsule_points` 为空时):沿 `A_Link`~`F_Link` 关节连线采样,端点取 `capsule_joint_radii`、段内取 `capsule_link_radii`。缺点是圆心在关节连线上、偏离真实杆中心线,半径被撑大偏保守。
+- 采样点默认作为 ACADOS nonlinear hard constraint;斥力代价复用同一组 margin。
 
 姿态目标:
 

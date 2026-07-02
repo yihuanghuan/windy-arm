@@ -21,39 +21,24 @@ SUPPORTED_PATH_MODES = (
     "lower_obstacle_circle",
     "avoidance_sweep",
     "front_wing_arc",
-    "front_propeller_line",
     "circle",
-    "windylab",
 )
 
-# Lightweight front-propeller-line anchors. Keep x at the propeller reference
-# plane; _build_path() adds the forward offset explicitly.
-_FRONT_PROP_LEFT_CENTER = np.array([0.0, 0.230, 0.0], dtype=float)
-_FRONT_PROP_RIGHT_CENTER = np.array([0.0, -0.230, 0.0], dtype=float)
 LL100_CIRCLE_CENTER = np.array([0.70, 0.0, 0.10], dtype=float)
 LL100_CIRCLE_RADIUS = 0.08
 LL100_LOWER_OBSTACLE_CIRCLE_CENTER = np.array([0.70, 0.02, -0.21], dtype=float)
 LL100_LOWER_OBSTACLE_CIRCLE_RADIUS = 0.08
-LL100_FRONT_WING_ARC_LEFT = np.array([0.67, -0.20, -0.19], dtype=float)
-LL100_FRONT_WING_ARC_RIGHT = np.array([0.67, 0.20, -0.19], dtype=float)
-LL100_FRONT_WING_ARC_DROP = 0.08
-LL100_FRONT_WING_ARC_FORWARD = 0.04
+# front_wing_arc = 右桨盘【下方】的扫掠弧线避障演示。两端点都在桨盘下方(z=-0.22),中段沿 z
+# 抬升到 z≈-0.14(进入 3cm 斥力避障区)→ 手臂想升向桨盘、被避障顶在离桨 ~30mm 处,抬升段出现
+# 可见跟踪偏移(那就是避障在起作用)。全程 viol=0、真臂不碰桨。
+# 前提:front_obstacle_capsule=True(前桨按连杆 capsule 建模)+ 斥力场默认开(见 demo 默认参数)。
+LL100_FRONT_WING_ARC_LEFT = np.array([0.62, -0.24, -0.22], dtype=float)   # 桨下方·外侧端
+LL100_FRONT_WING_ARC_RIGHT = np.array([0.54, -0.06, -0.22], dtype=float)  # 桨下方·内侧端
+LL100_FRONT_WING_ARC_RISE = 0.08  # 中段沿 z 抬向桨盘(升到 z≈-0.14,进避障区)
 
 
 def _lerp(a: np.ndarray, b: np.ndarray, alpha: float) -> np.ndarray:
     return (1.0 - alpha) * a + alpha * b
-
-
-def _front_wing_arc_point(s: float) -> np.ndarray:
-    s = float(np.clip(s, 0.0, 1.0))
-    theta = math.pi * s
-    point = _lerp(LL100_FRONT_WING_ARC_LEFT, LL100_FRONT_WING_ARC_RIGHT, s)
-    # A relaxed arc below the two front wing/propeller areas.  The midpoint is
-    # pushed down and forward so obstacle avoidance has a visible side-effect
-    # without demanding a near-contact maneuver.
-    point[0] += LL100_FRONT_WING_ARC_FORWARD * math.sin(theta)
-    point[2] -= LL100_FRONT_WING_ARC_DROP * math.sin(theta)
-    return point
 
 
 def _resample_polyline(points, count: int) -> np.ndarray:
@@ -75,40 +60,6 @@ def _resample_polyline(points, count: int) -> np.ndarray:
         alpha = (distance - distances[seg]) / length
         result.append(_lerp(pts[seg], pts[seg + 1], alpha))
     return np.array(result, dtype=float)
-
-
-def _stroke_text_points(text: str, x: float, y0: float, z0: float, height: float, spacing: float):
-    glyphs = {
-        "w": [(0, 1), (0.18, 0), (0.36, 0.55), (0.54, 0), (0.72, 1)],
-        "i": [(0.36, 0), (0.36, 0.72), (0.36, 0.95), (0.36, 1.0)],
-        "n": [(0, 0), (0, 1), (0.55, 1), (0.55, 0)],
-        "d": [(0.55, 0), (0.55, 1), (0.05, 1), (0, 0.75), (0, 0.25), (0.05, 0), (0.55, 0)],
-        "y": [(0, 1), (0.28, 0.45), (0.55, 1), (0.28, 0.45), (0.20, 0)],
-        "l": [(0.28, 1), (0.28, 0), (0.55, 0)],
-        "a": [(0, 0), (0.0, 0.85), (0.55, 0.85), (0.55, 0), (0.55, 0.45), (0.0, 0.45)],
-        "b": [(0, 0), (0, 1), (0.48, 1), (0.55, 0.75), (0.48, 0.55), (0, 0.55),
-              (0.48, 0.55), (0.55, 0.25), (0.48, 0), (0, 0)],
-    }
-    width = height * 0.55
-    pen_y = y0
-    points = []
-    last = None
-    for char in text:
-        raw = glyphs.get(char.lower())
-        if raw is None:
-            pen_y += width + spacing
-            continue
-        char_points = [
-            np.array([x, pen_y + width * px, z0 + height * pz], dtype=float)
-            for px, pz in raw
-        ]
-        if last is not None:
-            points.append(last)
-            points.append(char_points[0])
-        points.extend(char_points)
-        last = char_points[-1]
-        pen_y += width + spacing
-    return points
 
 
 def _build_path(mode: str, count: int) -> np.ndarray:
@@ -144,42 +95,35 @@ def _build_path(mode: str, count: int) -> np.ndarray:
                 )
             )
         return np.array(points, dtype=float)
-    if mode == "windylab":
-        points = _stroke_text_points("windylab", x=0.52, y0=-0.22, z0=0.04, height=0.10, spacing=0.018)
-        return _resample_polyline(points, count)
     if mode == "avoidance_sweep":
-        # 抬高前部下沉段,远离机身/安装架 box(原最低点 z=-0.02 紧贴 lower deck box 顶 z=-0.03)。
-        # 前沉段同时把 x 略往回收,降低前伸+下沉带来的连杆贴近。
+        # 前部下沉段(原 x~0.42, z~0.10)会把臂带进近奇异区:实测该处 manip 最低、跟踪误差最大。
+        # 因此把前段外推到 x>=0.49、抬到 z~0.14,使整圈停留在高可操作度区(实测 manip 0.008+),
+        # 仍是机身/安装架前方的扫掠演示,但远离奇异、关节速度需求更低。
         points = [
-            [0.48, -0.20, 0.14],
-            [0.44, -0.08, 0.10],
-            [0.40, 0.00, 0.08],
-            [0.44, 0.08, 0.10],
-            [0.48, 0.20, 0.14],
+            [0.50, -0.18, 0.15],
+            [0.49, -0.07, 0.14],
+            [0.49, 0.00, 0.14],
+            [0.49, 0.07, 0.14],
+            [0.50, 0.18, 0.15],
             [0.56, 0.12, 0.16],
-            [0.58, 0.00, 0.18],
+            [0.58, 0.00, 0.17],
             [0.56, -0.12, 0.16],
-            [0.48, -0.20, 0.14],
+            [0.50, -0.18, 0.15],
         ]
         return _resample_polyline(points, count)
     if mode == "front_wing_arc":
-        points = []
+        # 桨下扫掠弧:两端点都在桨盘下方,中段沿 z 抬向桨盘、进入斥力避障区 → 避障把手臂顶在
+        # 离桨 ~30mm 处(抬升段出现可见跟踪偏移=避障在起作用)。既是桨下弧线、又真验证避障。
+        pts = []
         for i in range(count):
-            phase = 2.0 * i / max(1, count)
-            tau = phase if phase <= 1.0 else 2.0 - phase
-            s = 0.5 * (1.0 - math.cos(math.pi * tau))
-            points.append(_front_wing_arc_point(s))
-        return np.array(points, dtype=float)
-    if mode == "front_propeller_line":
-        left_center = _FRONT_PROP_LEFT_CENTER
-        right_center = _FRONT_PROP_RIGHT_CENTER
-        prop_center = 0.5 * (left_center + right_center)
-        x = float(prop_center[0] + 0.315)
-        z = float(prop_center[2] + 0.22)
-        y_extension = 0.02
-        start = np.array([x, min(left_center[1], right_center[1]) - y_extension, z], dtype=float)
-        end = np.array([x, max(left_center[1], right_center[1]) + y_extension, z], dtype=float)
-        return _resample_polyline([start, end, start], count)
+            phase = 2.0 * i / max(1, count)                  # 0..2
+            tau = phase if phase <= 1.0 else 2.0 - phase      # 0..1..0
+            s = 0.5 * (1.0 - math.cos(math.pi * tau))          # 余弦缓入缓出
+            p = (1.0 - s) * LL100_FRONT_WING_ARC_LEFT + s * LL100_FRONT_WING_ARC_RIGHT
+            p = p.copy()
+            p[2] += LL100_FRONT_WING_ARC_RISE * math.sin(math.pi * s)   # 中段抬向桨盘(激活避障)
+            pts.append(p)
+        return np.array(pts, dtype=float)
     raise ValueError(f"path_mode 必须是 {SUPPORTED_PATH_MODES}, 当前是 {mode!r}")
 
 
