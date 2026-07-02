@@ -168,6 +168,12 @@ python3 move_ll100_lh420_nmpc_demo.py
 | `front_obstacle_capsule` | `True` | 前桨按连杆 capsule 建模(含粗细),硬约束保证连杆表面离桨;`False`=仅关键点(旧,漏连杆粗细→真臂会擦桨) |
 | `obstacle_repulsion_margin` | `0.03` | 障碍斥力场阈值,m;>0 启用,手臂进此距离内被斥力主动推离障碍(留净空);`0`=关 |
 | `obstacle_repulsion_weight` | `1e4` | 斥力强度;默认开(NMPC 主动留净空、不贴硬约束墙),硬约束始终兜底。运行时可扫、不重编 |
+| `gentle_start` | `True` | 启动阶段用 approach carrot;`False` 时保持旧行为 |
+| `approach_speed` | `0.05` | carrot 沿当前末端→起点直线的移动速度,m/s |
+| `approach_lead` | `0.04` | carrot 最多领先实际末端的距离,m;末端没跟上则暂停推进 |
+| `start_reach_timeout_sec` | `8.0` | 启动到位判定超时,s |
+| `start_relaxed_tolerance` | `0.02` | 超时后的放宽阈值,m;误差进入后启动滚动跟踪 |
+| `min_manip_warn` | `0.012` | 可操作度低于此值打 WARN |
 
 `path_mode` 支持:
 
@@ -210,7 +216,9 @@ python3 move_ll100_lh420_nmpc_demo.py --ros-args -p max_joint_step:=0.02
 
 `ll100_workspace_probe.py`：离线扫描机械臂在**避障约束下**的"安全可达区"——即末端**竖直朝下**、**远离奇异**、且臂与**桨盘/机身无碰撞**的所有可达末端位置,在 RViz 里用**体素方块**画出来、按**可操作度**上色(绿=远离奇异 → 黄 → 红=接近奇异阈值)。碰撞用与主 demo 完全相同的中心线胶囊模型(复用同一 `CAPSULE_CENTERLINE_POINTS`),所以能吃到你微调过的小球。
 
-原理:关节空间蒙特卡洛采样 → 逐构型过滤(①末端与竖直朝下夹角 ≤ 容差 ②可操作度 `sqrt(det(J·Jᵀ)) ≥` 阈值 ③所有碰撞球对桨盘/机身 `margin ≥ extra_clearance`)→ 通过的末端位置按体素合并、取体素内最大可操作度上色。
+原理(两阶段):
+1. **蒙特卡洛粗扫**:关节空间随机采样 → 逐构型过滤(①末端 **x 轴与 −Z 夹角** ≤ 容差,绕竖直轴 yaw 自由——与 demo 软姿态锁语义一致 ②可操作度 `sqrt(det(J·Jᵀ)) ≥` 阈值 ③所有碰撞球对桨盘/机身 `margin ≥ extra_clearance`)→ 体素合并、取体素内最大可操作度上色。
+2. **前方 ROI 逐体素 IK 精查**:蒙特卡洛在笛卡尔空间不均匀,"折叠着往前下方伸+朝下"的构型是 6 维里极薄的流形,随机采样几乎砸不中——**MC 图上空 ≠ 不可达**。对 ROI 里 MC 没填上的体素,逐个用 DLS-IK(多 yaw 目标 + 上一体素解 warm start + 最近 MC 种子)求解,成功再过奇异+碰撞筛;多种子全失败才保持空(此时"大概率不可达"才成立)。
 
 先起控制版 launch(§3,提供 RViz + robot_state_publisher),再另开终端:
 
@@ -218,22 +226,25 @@ python3 move_ll100_lh420_nmpc_demo.py --ros-args -p max_joint_step:=0.02
 cd ~/code/windylab_ws/src/arm-platform/demo
 source /opt/ros/humble/setup.bash
 source ~/code/windylab_ws/install/setup.bash
-python3 ll100_workspace_probe.py --ros-args -p num_samples:=1000000
+python3 ll100_workspace_probe.py
 ```
 
-RViz 里 Add → By topic → `/ll100_workspace/reachable`(可达体素)和 `/ll100_workspace/obstacles`(桨盘+机身,便于对照)。启动时算一次(~10s),之后 latched 重发。
+RViz 里 Add → By topic → `/ll100_workspace/reachable`(可达体素)和 `/ll100_workspace/obstacles`(桨盘+机身,便于对照)。启动时算一次(MC 几秒 + IK 精查几分钟,看日志进度),之后 latched 重发。
 
 | 参数 | 默认 | 说明 |
 |---|---:|---|
-| `num_samples` | `1000000` | 关节空间采样数;竖直朝下命中率低(~0.1%),越大体素越密越慢(~10µs/个) |
+| `num_samples` | `300000` | MC 采样数(轴锥判据命中率 ~3%,全局粗扫够用;局部细节靠 IK 精查,不靠堆采样) |
 | `voxel_size` | `0.02` | 体素边长,m |
 | `manipulability_threshold` | `0.012` | 可操作度低于此判为接近奇异,剔除(= 调参器 `SINGULAR_SOFT_TARGET`) |
-| `orientation_tol_deg` | `20.0` | 末端与竖直朝下的最大夹角,° |
+| `orientation_tol_deg` | `20.0` | 末端 x 轴与 −Z 的最大夹角,°(yaw 自由) |
 | `require_vertical_down` | `True` | 设 `false` = 不限姿态,得到完整可达体积(范围明显更大) |
 | `extra_clearance` | `0.0` | 在内置 margin 之外再加的安全净空,m(调大→区域缩小、更远离障碍) |
+| `grid_ik_enabled` | `True` | 前方 ROI 逐体素 IK 精查开关 |
+| `grid_ik_region` | `[0.40,0.78,-0.35,0.35,-0.32,0.08]` | 精查 ROI `[xmin,xmax,ymin,ymax,zmin,zmax]`,base_link 系,默认盖住前方工作区(含 front_wing_arc) |
+| `grid_ik_yaw_count` | `3` | 每体素尝试的竖直朝下 yaw 变体数(覆盖不同腕部取向分支) |
 | `seed` | `0` | 采样随机种子,可复现 |
 
-用途:放目标点前先在这张图上确认"在不在绿区",避免像 front_wing_arc 那样盲试不可行目标。日志会打印 采样/过姿态/过奇异/过碰撞 计数、可达 bbox、可操作度范围。
+用途:放目标点前先在这张图上确认"在不在绿区",避免像 front_wing_arc 那样盲试不可行目标。日志会打印 MC 计数、IK 精查(尝试/新增可达/预筛跳过)、可达 bbox、可操作度范围。
 
 ## 5. LL100 轨迹可视化节点
 

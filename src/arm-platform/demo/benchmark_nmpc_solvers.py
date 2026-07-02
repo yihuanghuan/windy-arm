@@ -187,7 +187,13 @@ def build_config(sc: SolverConfig, path_mode: str) -> Tuple[MpcIkConfig, str]:
     只有求解器相关字段(backend / nlp / qp)随 SolverConfig 变化,其余保持基线不变。
     """
     from mpc_pinocchio_ik import DEFAULT_LL100_URDF
-    from move_ll100_lh420_nmpc_demo import DEFAULT_LL100_BODY_OBSTACLE_BOXES, LL100_NMPC_URDF
+    from move_ll100_lh420_nmpc_demo import (
+        DEFAULT_LL100_BODY_OBSTACLE_BOXES,
+        LL100_NMPC_URDF,
+        CAPSULE_CENTERLINE_POINTS,
+        DEFAULT_CAPSULE_JOINT_RADII,
+        DEFAULT_CAPSULE_LINK_RADII,
+    )
 
     build_dir = f"/tmp/windylab_acados_bench_ll100_{path_mode}"
     cfg = MpcIkConfig(
@@ -214,7 +220,11 @@ def build_config(sc: SolverConfig, path_mode: str) -> Tuple[MpcIkConfig, str]:
         body_obstacle_margin=BASELINE_BODY_MARGIN,
         body_obstacle_boxes=DEFAULT_LL100_BODY_OBSTACLE_BOXES,
         capsule_radius=0.018,
-        capsule_samples_per_segment=BASELINE_CAPSULE_SAMPLES,
+        # 中心线胶囊部署几何(对齐 demo):优先级最高,前桨/机身/斥力都改用它 → 55 硬约束。
+        capsule_points=CAPSULE_CENTERLINE_POINTS,
+        capsule_joint_radii=tuple(DEFAULT_CAPSULE_JOINT_RADII),
+        capsule_link_radii=tuple(DEFAULT_CAPSULE_LINK_RADII),
+        capsule_samples_per_segment=3,
         capsule_frame_sequence=LINK_FRAMES,
         current_posture_weight=0.005,
         center_posture_weight=0.01,

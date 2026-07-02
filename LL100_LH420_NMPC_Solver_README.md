@@ -171,7 +171,47 @@ python3 benchmark_nmpc_solvers.py --only acados_sqp_rti_hpipm,acados_sqp_rti_qpo
 
 ### 4.4 淘汰记录与最终结论
 
+**测试条件**:部署避障几何(中心线胶囊 `capsule_points` + 斥力,前桨/机身共约 50 硬约束)、`periods=1.0`、稳态 RMS 口径。列三类场景(不含 `avoidance_sweep`;它每周期短暂穿近奇异,单列见下方备注)。"最大求解"= 单轮最坏单步(含启动尖峰,仍应 <20ms 实时预算)。
 
+#### lower_obstacle_circle
+| 求解器配置 | 平均求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
+|---|---:|---:|---:|:---:|
+| acados SQP_RTI + qpOASES | 1.00 | 11.14 | 0.69 | ✅ |
+| acados SQP_RTI + HPIPM | 2.53 | 15.92 | 0.69 | ✅ |
+| GRAMPC | 4.23 | 8.79 | 0.59 | ✅ |
+| acados 全SQP + HPIPM | 43.72 | 55.37 | 198.87 | ❌ |
+| acados SQP_RTI + OSQP | 92.53 | 169.70 | 337.59 | ❌ |
+| CasADi + IPOPT | ~1100 | — | — | 弃置 |
+| SciPy + SLSQP | ~45 | — | — | 弃置 |
+
+#### circle
+| 求解器配置 | 平均求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
+|---|---:|---:|---:|:---:|
+| acados SQP_RTI + qpOASES | 0.88 | 4.96 | 2.41 | ✅ |
+| acados SQP_RTI + HPIPM | 2.36 | 16.02 | 2.41 | ✅ |
+| GRAMPC | 4.28 | 6.33 | 0.96 | ✅ |
+| acados 全SQP + HPIPM | 3.40 | 55.75 | 2.41 | ✅ |
+| acados SQP_RTI + OSQP | 4.52 | 94.50 | 2.37 | ❌ |
+| CasADi + IPOPT | ~1100 | — | — | 弃置 |
+| SciPy + SLSQP | ~45 | — | — | 弃置 |
+
+#### front_wing_arc
+| 求解器配置 | 平均求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
+|---|---:|---:|---:|:---:|
+| acados SQP_RTI + qpOASES | 1.12 | 9.17 | 2.37 | ✅ |
+| acados SQP_RTI + HPIPM | 2.87 | 13.04 | 2.38 | ✅ |
+| GRAMPC | 4.70 | 6.59 | 1.67 | ✅ |
+| acados 全SQP + HPIPM | 37.31 | 49.66 | 138.21 | ❌ |
+| acados SQP_RTI + OSQP | 118.89 | 180.19 | 234.37 | ❌ |
+| CasADi + IPOPT | ~1100 | — | — | 弃置 |
+| SciPy + SLSQP | ~45 | — | — | 弃置 |
+
+> **弃置两项(CasADi-IPOPT / SciPy-SLSQP)**:实时率 0%/低,不进实时回路,故不在新几何逐场景重跑;
+> 平均求解为旧几何/离线实测量级(新几何约束更多只会更慢),仅作对照。IPOPT 完整收敛可作离线精度 ground-truth。
+
+**结论(三场景一致)**:qpOASES / HPIPM / GRAMPC 三者全 safe;按优先级(安全>求解时间>精度)**首选 acados qpOASES**(平均 0.9–1.1ms、最快),HPIPM 次之(均衡),GRAMPC 精度常最好(0.59–1.67mm)且最大求解最稳(无启动尖峰)。全SQP/OSQP 除 circle 外基本不合格。
+
+> **备注 `avoidance_sweep`**:该场景每周期短暂穿近奇异。新中心线胶囊几何下 qpOASES/HPIPM 已能保持 σ_min≈2.6e-3 过门槛(safe),但 **GRAMPC 在此场景擦障(viol≈14mm)+ 近奇异** → GRAMPC 的增广拉格朗日是软约束、苛刻场景可被突破,而 acados 是真硬约束。对"绝不碰撞"要求,acados 更可靠。
 
 ## 5. 教程:如何自己增 / 减求解器
 

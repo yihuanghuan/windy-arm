@@ -68,20 +68,20 @@ CAPSULE_CENTERLINE_POINTS = (
     # A_Link
     # ("A_Link", -0.00042, -0.00101, -0.04925, 0.0298),
     # ("A_Link", -0.00037, -0.00416, -0.00308, 0.0592),
-    ("A_Link", +0.01171, -0.00023, +0.00756, 0.0693),
+    ("A_Link", +0.01171, -0.00023, +0.00756, 0.04),
     # ("A_Link", +0.02404, +0.01110, +0.01370, 0.0781),
     # ("A_Link", +0.03001, +0.04512, +0.03552, 0.0732),
     # ("A_Link", +0.03129, +0.06386, +0.05199, 0.0636),
     # ("A_Link", +0.03375, +0.06799, +0.05483, 0.0650),
     # B_Link
     # ("B_Link", +0.00067, -0.01710, -0.00594, 0.0619),
-    ("B_Link", +0.00044, -0.00245, -0.00858, 0.0620),
+    ("B_Link", +0.00044, -0.00245, -0.00858, 0.05),
     # ("B_Link", -0.00015, +0.01696, -0.01146, 0.0644),
     # ("B_Link", -0.00059, +0.04107, -0.00659, 0.0646),
     ("B_Link", -0.00111, +0.08214, +0.00228, 0.0405),
-    ("B_Link", -0.00012, +0.12458, +0.00194, 0.0295),
+    # ("B_Link", -0.00012, +0.12458, +0.00194, 0.0295),
     # ("B_Link", -0.00012, +0.12519, +0.00188, 0.0296),
-    ("B_Link", +0.00004, +0.18057, -0.00091, 0.0770),
+    ("B_Link", +0.00004, +0.18057, -0.00091, 0.06),
     # ("B_Link", -0.00007, +0.21268, +0.00177, 0.0311),
     # ("B_Link", +0.00064, +0.23314, -0.00994, 0.0555),
     # ("B_Link", +0.00045, +0.24989, -0.01431, 0.0520),
@@ -89,7 +89,7 @@ CAPSULE_CENTERLINE_POINTS = (
     # C_Link
     # ("C_Link", -0.00036, -0.00477, -0.00080, 0.0557),
     # ("C_Link", +0.00021, +0.00855, -0.00178, 0.0586),
-    ("C_Link", -0.00708, +0.04951, -0.01685, 0.0729),
+    ("C_Link", -0.00708, +0.04951, -0.01685, 0.07),
     # ("C_Link", -0.00919, +0.05994, -0.01908, 0.0493),
     # ("C_Link", -0.01335, +0.07643, -0.02116, 0.0505),
     # D_Link
@@ -223,6 +223,12 @@ class MoveLL100LH420NmpcDemo(Node):
         self.declare_parameter("start_from_nearest_path_point", True)
         self.declare_parameter("hold_start_until_reached", True)
         self.declare_parameter("target_switch_tolerance", 0.005)  # 启动贴紧首点(5mm)
+        self.declare_parameter("gentle_start", True)  # 启动阶段用贴近末端的 approach carrot,避免猛冲
+        self.declare_parameter("approach_speed", 0.05)  # carrot 沿当前末端→起点直线推进速度,m/s
+        self.declare_parameter("approach_lead", 0.04)  # carrot 最多领先实际末端距离,m;跟不上则暂停推进
+        self.declare_parameter("start_reach_timeout_sec", 8.0)  # 启动到位等待超时,s
+        self.declare_parameter("start_relaxed_tolerance", 0.02)  # 超时后启动滚动跟踪的放宽阈值,m
+        self.declare_parameter("min_manip_warn", 0.012)  # 可操作度低于此值时提示接近奇异
         self.declare_parameter("stuck_error_epsilon", 0.002)
         self.declare_parameter("stuck_steps_before_advance", 120)
         self.declare_parameter("stuck_advance_points", 10)
@@ -267,6 +273,12 @@ class MoveLL100LH420NmpcDemo(Node):
         self.start_from_nearest_path_point = bool(self.get_parameter("start_from_nearest_path_point").value)
         self.hold_start_until_reached = bool(self.get_parameter("hold_start_until_reached").value)
         self.target_switch_tolerance = float(self.get_parameter("target_switch_tolerance").value)
+        self.gentle_start = bool(self.get_parameter("gentle_start").value)
+        self.approach_speed = float(self.get_parameter("approach_speed").value)
+        self.approach_lead = float(self.get_parameter("approach_lead").value)
+        self.start_reach_timeout_sec = float(self.get_parameter("start_reach_timeout_sec").value)
+        self.start_relaxed_tolerance = float(self.get_parameter("start_relaxed_tolerance").value)
+        self.min_manip_warn = float(self.get_parameter("min_manip_warn").value)
         self.stuck_error_epsilon = float(self.get_parameter("stuck_error_epsilon").value)
         self.stuck_steps_before_advance = int(self.get_parameter("stuck_steps_before_advance").value)
         self.stuck_advance_points = int(self.get_parameter("stuck_advance_points").value)
@@ -365,6 +377,8 @@ class MoveLL100LH420NmpcDemo(Node):
         self.best_current_target_error = float("inf")
         self.stuck_steps = 0
         self.trajectory_start_time_sec = None
+        self._approach_carrot = None
+        self._start_wait_start_time_sec = None
         self.actual_trail = []
 
         self.command_pub = self.create_publisher(JointState, "/student/joint_command", 10)
@@ -412,6 +426,8 @@ class MoveLL100LH420NmpcDemo(Node):
             indices = (self.path_index + offsets) % len(self.path)
             return self.path[indices]
         if not self.path_time_tracking_started:
+            if self.gentle_start and self._approach_carrot is not None:
+                return np.repeat(self._approach_carrot.reshape(1, 3), self.horizon_steps, axis=0)
             return np.repeat(self.path[self.path_index].reshape(1, 3), self.horizon_steps, axis=0)
         start = (self._time_path_index() + self.path_time_offset_index) % len(self.path)
         indices = (start + offsets) % len(self.path)
@@ -447,6 +463,42 @@ class MoveLL100LH420NmpcDemo(Node):
         self.best_current_target_error = float("inf")
         self.stuck_steps = 0
 
+    def _start_time_tracking(self, error: float, log_prefix: str):
+        self.path_time_offset_index = (self.path_index - self._time_path_index()) % len(self.path)
+        self.path_time_tracking_started = True
+        self._start_wait_start_time_sec = None
+        self.get_logger().info(
+            f"{log_prefix}: "
+            f"path_index={self.path_index}, error={error:.4f}, "
+            f"time_offset={self.path_time_offset_index}"
+        )
+
+    def _start_wait_elapsed_sec(self) -> float:
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        if self._start_wait_start_time_sec is None:
+            self._start_wait_start_time_sec = now_sec
+        return now_sec - self._start_wait_start_time_sec
+
+    def _update_approach_carrot(self, actual_pos: np.ndarray):
+        if not self.gentle_start or self.path_time_tracking_started:
+            return
+        if self._approach_carrot is None:
+            self._approach_carrot = actual_pos.copy()
+        lead_limit = max(self.approach_lead, 0.0)
+        current_lead = float(np.linalg.norm(self._approach_carrot - actual_pos))
+        if current_lead > lead_limit:
+            return
+        target = self.path[self.path_index]
+        delta = target - self._approach_carrot
+        distance = float(np.linalg.norm(delta))
+        if distance <= 1e-12:
+            self._approach_carrot = target.copy()
+            return
+        step = min(max(self.approach_speed, 0.0) * self.dt, distance, max(lead_limit - current_lead, 0.0))
+        if step <= 0.0:
+            return
+        self._approach_carrot = self._approach_carrot + (step / distance) * delta
+
     def _advance_path_index_if_ready(self, actual_pos: np.ndarray):
         if not self.path_index_initialized:
             self._initialize_path_index(actual_pos)
@@ -455,12 +507,25 @@ class MoveLL100LH420NmpcDemo(Node):
                 target = self.path[self.path_index]
                 error = float(np.linalg.norm(actual_pos - target))
                 if not self.hold_start_until_reached or error <= self.target_switch_tolerance:
-                    self.path_time_offset_index = (self.path_index - self._time_path_index()) % len(self.path)
-                    self.path_time_tracking_started = True
-                    self.get_logger().info(
-                        "已进入弧线并启动按时间推进: "
-                        f"path_index={self.path_index}, error={error:.4f}, "
-                        f"time_offset={self.path_time_offset_index}"
+                    self._start_time_tracking(error, "已进入弧线并启动按时间推进")
+                    return
+                if self.gentle_start:
+                    wait_elapsed = self._start_wait_elapsed_sec()
+                    if (
+                        wait_elapsed > self.start_reach_timeout_sec
+                        and error <= self.start_relaxed_tolerance
+                    ):
+                        self._start_time_tracking(
+                            error,
+                            "启动到位超时,以放宽阈值启动滚动跟踪",
+                        )
+                        return
+                    self.get_logger().warn(
+                        "启动等待尚未到位: "
+                        f"error={error:.4f}, "
+                        f"target_tol={self.target_switch_tolerance:.4f}, "
+                        f"relaxed_tol={self.start_relaxed_tolerance:.4f}",
+                        throttle_duration_sec=2.0,
                     )
             return
         target = self.path[self.path_index]
@@ -489,7 +554,22 @@ class MoveLL100LH420NmpcDemo(Node):
         q_current = self.q_feedback.copy()
         actual_pos, _ = self.mpc_ik.forward(q_current)
         self._advance_path_index_if_ready(actual_pos)
+        self._update_approach_carrot(actual_pos)
         targets = self._target_sequence()
+        jac = pin.computeFrameJacobian(
+            self.mpc_ik.model,
+            self.mpc_ik.data,
+            q_current,
+            self.mpc_ik.frame_id,
+            pin.ReferenceFrame.LOCAL_WORLD_ALIGNED,
+        )[:3, :]
+        manip = math.sqrt(max(float(np.linalg.det(jac @ jac.T)), 0.0))
+        if manip < self.min_manip_warn:
+            self.get_logger().warn(
+                "接近奇异: "
+                f"manip={manip:.6f}, threshold={self.min_manip_warn:.6f}",
+                throttle_duration_sec=2.0,
+            )
         target_rotation = self.locked_rotation if self.lock_orientation else None
         q_next, ok, info = self.mpc_ik.step(
             targets,
@@ -538,6 +618,7 @@ class MoveLL100LH420NmpcDemo(Node):
             self.get_logger().info(
                 f"[metrics] mode={self.path_mode} "
                 f"terminal_error={info['terminal_error']:.4f} "
+                f"manip={manip:.6f} "
                 f"min_margin={info.get('min_obstacle_margin')} "
                 f"body_margin={info.get('min_body_obstacle_margin')} "
                 f"violation={info.get('obstacle_violation_max')} "
