@@ -142,12 +142,13 @@ python3 move_ll100_lh420_nmpc_demo.py
 | `path_mode` | `lower_obstacle_circle` | 不同轨迹模式切换(见下方 `path_mode` 支持表) |
 | `max_joint_step` | `0.010` | 每周期最大关节步长,rad;**硬件派生 = `max_velocity`(0.5)·`control_dt`(0.02),非自由调参项** |
 | `path_preview_stride` | `4` | 预测时域内相邻目标点间隔,避免时域只盯住当前点 |
-| `position_weight` | `120.0` | 位置跟踪权重 |
-| `terminal_position_weight` | `1200.0` | 终端位置跟踪权重 |
+| `horizon_steps` | `0(自动=按场景预设)` | 预测时域步数;见下方各场景调参推荐参数表 |
+| `position_weight` | `-1.0(自动=按场景预设)` | 位置跟踪权重;见下方各场景调参推荐参数表 |
+| `terminal_position_weight` | `-1.0(自动=按场景预设)` | 终端位置跟踪权重;见下方各场景调参推荐参数表 |
 | `lock_orientation` | `True` | 默认锁定末端姿态 |
 | `orientation_target` | `vertical_down` | 末端 x 轴朝 `-Z` |
-| `orientation_weight` | `0.3` | 姿态软约束权重 |
-| `terminal_orientation_weight` | `3.0` | 终端姿态软约束权重 |
+| `orientation_weight` | `-1.0(自动=按场景预设)` | 姿态软约束权重;见下方各场景调参推荐参数表 |
+| `terminal_orientation_weight` | `-1.0(自动=按场景预设)` | 终端姿态软约束权重;见下方各场景调参推荐参数表 |
 | `obstacle_avoidance_enabled` | `True` | 是否启用前桨圆盘避障(固定为 ACADOS 非线性硬约束,无软约束开关) |
 | `obstacle_safety_margin` | `0.005` | 前桨圆盘避障的 NMPC 硬约束安全余量(从 SDF 中减去),m;小正余量保证实际不接触 |
 | `advance_on_feedback` | `False` | `False` 时按 `period_sec` 保持期望速度;`True` 时实际末端接近当前路径点后再推进 |
@@ -161,10 +162,10 @@ python3 move_ll100_lh420_nmpc_demo.py
 | `capsule_joint_radii` | `[0.052,0.062,0.058,0.050,0.049,0.040]` | 回退-各关节(电机)半径,m,A~F 帧(**当前被代码常量 `capsule_points` 中心线模型取代**,见下) |
 | `capsule_link_radii` | `[0.045,0.035,0.043,0.016,0.035]` | 回退-各段连杆(杆身)半径,m,A→B~E→F 段(**当前被 `capsule_points` 取代**) |
 | `capsule_samples_per_segment` | `3` | 每段连杆中间采样点数量;每段总采样点=此值+2(现为 5 点/段,减小长杆球间缝隙) |
-| `current_posture_weight` | `0.005` | 抑制相对当前姿态突变 |
-| `center_posture_weight` | `0.01` | 抑制机械臂拉到近奇异伸直姿态 |
-| `joint_delta_weight` | `0.08` | 一阶平滑权重(惩罚每步 Δq) |
-| `joint_delta_change_weight` | `0.25` | 二阶平滑权重(惩罚 ΔΔq,抑抖) |
+| `current_posture_weight` | `-1.0(自动=按场景预设)` | 抑制相对当前姿态突变;见下方各场景调参推荐参数表 |
+| `center_posture_weight` | `-1.0(自动=按场景预设)` | 抑制机械臂拉到近奇异伸直姿态;见下方各场景调参推荐参数表 |
+| `joint_delta_weight` | `-1.0(自动=按场景预设)` | 一阶平滑权重(惩罚每步 Δq);见下方各场景调参推荐参数表 |
+| `joint_delta_change_weight` | `-1.0(自动=按场景预设)` | 二阶平滑权重(惩罚 ΔΔq,抑抖);见下方各场景调参推荐参数表 |
 | `front_obstacle_capsule` | `True` | 前桨按连杆 capsule 建模(含粗细),硬约束保证连杆表面离桨;`False`=仅关键点(旧,漏连杆粗细→真臂会擦桨) |
 | `obstacle_repulsion_margin` | `0.03` | 障碍斥力场阈值,m;>0 启用,手臂进此距离内被斥力主动推离障碍(留净空);`0`=关 |
 | `obstacle_repulsion_weight` | `1e4` | 斥力强度;默认开(NMPC 主动留净空、不贴硬约束墙),硬约束始终兜底。运行时可扫、不重编 |
@@ -184,6 +185,27 @@ python3 move_ll100_lh420_nmpc_demo.py
 | `front_wing_arc` | 右桨盘下方扫掠弧避障演示:两端点都在桨盘下方(z≈−0.22),中段升向桨盘(z≈−0.14、进斥力避障区)→ 避障把手臂顶在离桨 ~30mm 处,升段出现可见跟踪偏移(~11mm)= 避障在起作用;全程 `viol=0`、真臂不碰桨 |
 | `circle` | 在 `base_link` 的 y-z 平面画圆 |
 | `single_target` | 单目标模式 |
+
+#### 各场景调参推荐参数(离线闭环坐标下降·反抖动版,2026-07-02)
+
+**这些预设已烧录为各场景默认——裸跑 `-p path_mode:=<场景>` 即生效;显式 `-p` 传正值可逐项覆盖。**
+
+下表为自动预设来源;无预设场景(`single_target` 等)仍回退到原全局默认。评分 = 安全硬门 + **高频震荡 hf(主目标,权重 2e4)** + 命令抖动 acc + 沿路径滞后 lag + 求解速度 + 精度 + 远奇异(实测数据发现旧评分无平滑度项,调出的参数末端误差有 ~4Hz 震荡,故重调)。CSV 明细在 `demo/data/tune_ll100_<场景>_*.csv`。
+
+| 参数 | lower_obstacle_circle | avoidance_sweep | circle | front_wing_arc |
+|---|---:|---:|---:|---:|
+| `horizon_steps` | 6 | 8 | 4 | 6 |
+| `position_weight` | 180 | 252 | 120 | 180 |
+| `terminal_position_weight` | 1400 | 2800 | 1020 | 1200 |
+| `orientation_weight` | 0.105 | 0.105 | 0.30 | 0.30 |
+| `terminal_orientation_weight` | 3.0 | 1.05 | 2.1 | 3.0 |
+| `joint_delta_weight` | 0.028 | 0.224 | 0.224 | 0.16 |
+| `joint_delta_change_weight` | 0.175 | 0.70 | 0.70 | 0.50 |
+| `current_posture_weight` | 0.014 | 0.0085 | 0.007 | 0.002 |
+| `center_posture_weight` | 0.0043 | 0.0043 | 0.0035 | 0.0085 |
+| 效果 rms/max/hf/求解 | 0.4/1.7mm/**0.00**/1.6ms | 5.3/14.1mm/0.33/2.0ms | 2.5/5.7mm/0.05/**1.0ms** | 3.0/7.4mm/0.11/1.5ms |
+
+hf = 稳态误差去 0.5s 趋势后的 RMS(高频震荡量,mm)。相比旧版(无平滑度项):高频震荡从 0.4-0.9mm 压到 0-0.33mm;circle/front_wing_arc 用少量 rms 换平滑(用户要求"误差不能有高频震荡"优先)。front_wing_arc 的命令抖动 acc≈7 rad/s² 仍偏高(该路径 min-manip ~0.003 近奇异所致,物理上限)。可视化验证看 visualizer 新增的 `path_distance_error` 曲线(到路径曲线的几何距离,不受期望时间轴相位伪影影响;旧的 expected−actual 误差曲线含 100mm 级相位伪影,勿用来判跟踪精度)。
 
 `max_joint_step` 是硬件速度约束在 OCP 里的镜像,不是自由调参项:它必须等于底层单周期能走的关节量 = `max_velocity · control_dt`。`ll100_lh420_control.launch.py` 默认 `max_velocity=0.5 rad/s`、50 Hz 控制周期,故默认:
 
@@ -261,7 +283,7 @@ source /opt/ros/humble/setup.bash
 source ~/code/windylab_ws/install/setup.bash
 python3 ll100_trajectory_visualizer_demo.py --ros-args \
   -p trajectory_mode:=lower_obstacle_circle \
-  -p period_sec:=60.0
+  -p period_sec:=20.0
 ```
 
 这个合并话题同时包含期望轨迹、实际轨迹、command FK、当前点、前桨圆盘和机身 box。

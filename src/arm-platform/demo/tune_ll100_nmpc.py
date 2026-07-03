@@ -187,6 +187,9 @@ class TrialResult:
     solver_failure_count: int
     rms_position_error: float
     max_position_error: float
+    hf_err_rms: float
+    cmd_acc_rms: float
+    lag_mm: float
     mean_solve_time_ms: float
     samples: int
     recommended_command: str
@@ -250,7 +253,7 @@ def build_config(p: ParamSet, backend: str, max_velocity: float) -> Tuple[MpcIkC
 
 
 def score_of(viol_max, fallback, solver_fail, rms_pos, max_pos, mean_ms,
-             min_manip, reached_first) -> Tuple[float, bool]:
+             min_manip, reached_first, hf_err_rms, cmd_acc_rms, lag_mm) -> Tuple[float, bool]:
     # 硬门:安全无碰撞 + 无 fallback。不满足直接拉到很后面。
     safe = (viol_max <= VIOLATION_TOL) and (fallback == 0)  # 仅碰撞+可行性;reached_first 作质量项
     score = (
@@ -260,10 +263,44 @@ def score_of(viol_max, fallback, solver_fail, rms_pos, max_pos, mean_ms,
         + 500.0 * solver_fail
         + 0.05 * mean_ms                                     # 3 求解速度(优先于精度/完成时间)
         + 1000.0 * rms_pos + 1000.0 * max_pos               # 4/6 末端误差(含跟踪滞后)
+        + 2.0e4 * hf_err_rms                                 # 高频震荡(0.5mm → +10 分)
+        + 10.0 * cmd_acc_rms                                 # 命令二阶抖动
+        + 2000.0 * lag_mm                                    # 沿路径滞后
         + (2.0e4 if not reached_first else 0.0)              # 5 启动直达首点
         + 300.0 * max(0.0, SINGULAR_SOFT_TARGET - min_manip)  # 2 远离奇异(软)
     )
     return score, safe
+
+
+def _steady_slice(n: int) -> slice:
+    """稳态段:丢掉计时跟踪前 20% 样本。"""
+    start = int(0.2 * n)
+    return slice(start, n)
+
+
+def _high_frequency_error_rms(pos_errs: np.ndarray) -> float:
+    """误差减 0.5s 滑动均值后的 RMS,用于识别 4Hz 量级高频震荡。"""
+    if pos_errs.size == 0:
+        return 0.0
+    win = int(0.5 / CONTROL_DT)
+    if win <= 1:
+        return rms(pos_errs)
+    if pos_errs.size < win:
+        return rms(pos_errs - float(np.mean(pos_errs)))
+    kernel = np.ones(win, dtype=float) / float(win)
+    trend = np.convolve(pos_errs, kernel, mode="same")
+    detrended = pos_errs - trend
+    if detrended.size > 2 * win:
+        detrended = detrended[win:-win]
+    return rms(detrended) if detrended.size else 0.0
+
+
+def _command_acceleration_rms(q_cmds: np.ndarray) -> float:
+    """命令关节角二阶差分 RMS,单位 rad/s²。"""
+    if q_cmds.shape[0] < 3:
+        return 0.0
+    acc = np.diff(q_cmds, n=2, axis=0) / (CONTROL_DT * CONTROL_DT)
+    return rms(acc)
 
 
 def recommended_command(p: ParamSet, path_mode: str, max_velocity: float, period_sec: float) -> str:
@@ -342,7 +379,7 @@ def evaluate(p: ParamSet, path_mode: str, backend: str,
             qdot_ref = np.zeros_like(q_plant)
         q_plant, last_v = _plant_step(q_plant, q_cmd, qdot_ref, last_v,
                                       max_velocity, mpc.q_lower, mpc.q_upper)
-        return dt_ms
+        return dt_ms, q_cmd.copy()
 
     # --- 阶段 1:启动直达第一个期望点(需求 5)---
     reached_first = False
@@ -364,16 +401,26 @@ def evaluate(p: ParamSet, path_mode: str, backend: str,
     # --- 阶段 2:计时跟踪一圈 ---
     steps = max(1, int(round(periods * period_sec / CONTROL_DT)))
     pos_errs: List[float] = []
+    cmd_qs: List[np.ndarray] = []
+    lag_projections: List[float] = []
     solve_ms: List[float] = []
     realized: List[np.ndarray] = []
     manips: List[float] = []
     for step in range(steps):
         base = (nearest + step) % len(path)
-        dt_ms = tick(path[(base + offsets) % len(path)])
+        target = path[base]
+        dt_ms, q_cmd = tick(path[(base + offsets) % len(path)])
         solve_ms.append(dt_ms)
+        cmd_qs.append(q_cmd)
         realized.append(q_plant.copy())
         cur, _ = mpc.forward(q_plant)
-        pos_errs.append(float(np.linalg.norm(cur - path[base])))
+        pos_errs.append(float(np.linalg.norm(cur - target)))
+        tangent = path[(base + 1) % len(path)] - target
+        tangent_norm = float(np.linalg.norm(tangent))
+        if tangent_norm > 1.0e-12:
+            lag_projections.append(float(np.dot(target - cur, tangent / tangent_norm)))
+        else:
+            lag_projections.append(0.0)
         if step % MANIP_SUBSAMPLE == 0:
             manips.append(manipulability(mpc, q_plant))
 
@@ -387,12 +434,20 @@ def evaluate(p: ParamSet, path_mode: str, backend: str,
         min_margin = 0.0
 
     pos = np.asarray(pos_errs, dtype=float) if pos_errs else np.zeros(1)
+    steady = _steady_slice(len(pos_errs))
+    steady_pos = pos[steady]
+    steady_cmd_qs = np.asarray(cmd_qs, dtype=float)[steady] if cmd_qs else np.zeros((0, 0), dtype=float)
+    steady_lag = np.asarray(lag_projections, dtype=float)[steady] if lag_projections else np.zeros(0, dtype=float)
     rms_pos = rms(pos)
     max_pos = float(np.max(pos))
+    hf_err_rms = _high_frequency_error_rms(steady_pos)
+    cmd_acc_rms = _command_acceleration_rms(steady_cmd_qs)
+    lag_mm = max(0.0, float(np.mean(steady_lag))) if steady_lag.size else 0.0
     mean_ms = float(np.mean(solve_ms)) if solve_ms else 0.0
     min_manip = float(min(manips)) if manips else 0.0
     score, safe = score_of(viol_max, fallback, solver_fail, rms_pos, max_pos,
-                            mean_ms, min_manip, reached_first)
+                            mean_ms, min_manip, reached_first,
+                            hf_err_rms, cmd_acc_rms, lag_mm)
     return TrialResult(
         params=p, path_mode=path_mode, safe=safe, score=score,
         violation_max=viol_max, min_margin=min_margin,
@@ -400,6 +455,7 @@ def evaluate(p: ParamSet, path_mode: str, backend: str,
         reach_time_sec=reach_time_sec,
         fallback_count=fallback, solver_failure_count=solver_fail,
         rms_position_error=rms_pos, max_position_error=max_pos,
+        hf_err_rms=hf_err_rms, cmd_acc_rms=cmd_acc_rms, lag_mm=lag_mm,
         mean_solve_time_ms=mean_ms, samples=len(pos_errs),
         recommended_command=recommended_command(p, path_mode, max_velocity, period_sec),
     )
@@ -429,7 +485,8 @@ def run(args: argparse.Namespace) -> int:
                 f"    [{len(cache)}] safe={r.safe} score={r.score:.2f} viol={r.violation_max:.6f} "
                 f"manip={r.min_manipulability:.4f} reached={r.reached_first} fb={r.fallback_count} "
                 f"rms={r.rms_position_error:.4f} max={r.max_position_error:.4f} "
-                f"ms={r.mean_solve_time_ms:.2f} | {p}",
+                f"hf={1000.0 * r.hf_err_rms:.2f}mm acc={r.cmd_acc_rms:.1f} "
+                f"lag={1000.0 * r.lag_mm:.1f}mm ms={r.mean_solve_time_ms:.2f} | {p}",
                 flush=True,
             )
         return cache[p]
@@ -507,7 +564,8 @@ def run(args: argparse.Namespace) -> int:
             "current_posture_weight", "center_posture_weight",
             "violation_max", "min_margin", "min_manipulability", "reached_first",
             "reach_time_sec", "fallback_count", "solver_failure_count",
-            "rms_position_error", "max_position_error", "mean_solve_time_ms", "samples",
+            "rms_position_error", "max_position_error", "hf_err_rms", "cmd_acc_rms", "lag_mm",
+            "mean_solve_time_ms", "samples",
             "recommended_command",
         ])
         for rank, r in enumerate(results, 1):
@@ -521,24 +579,32 @@ def run(args: argparse.Namespace) -> int:
                 f"{r.violation_max:.8f}", f"{r.min_margin:.6f}", f"{r.min_manipulability:.6f}",
                 r.reached_first, f"{r.reach_time_sec:.3f}", r.fallback_count,
                 r.solver_failure_count, f"{r.rms_position_error:.6f}",
-                f"{r.max_position_error:.6f}", f"{r.mean_solve_time_ms:.3f}", r.samples,
+                f"{r.max_position_error:.6f}", f"{r.hf_err_rms:.6f}",
+                f"{r.cmd_acc_rms:.3f}", f"{r.lag_mm:.6f}",
+                f"{r.mean_solve_time_ms:.3f}", r.samples,
                 r.recommended_command,
             ])
     print(f"\nCSV: {csv_path}  (共评估 {len(results)} 组)", flush=True)
-    print(f"\nTop {min(args.top_k, len(results))}(先看 safe,再看 rms/max / manip):")
+    print(f"\nTop {min(args.top_k, len(results))}(先看 safe,再看 rms/max/hf/lag / manip):")
     for rank, r in enumerate(results[: args.top_k], 1):
         q = r.params
         print(
             f"  #{rank} safe={r.safe} viol={r.violation_max:.6f} manip={r.min_manipulability:.4f} "
             f"reached={r.reached_first} rms={r.rms_position_error:.4f} "
-            f"max={r.max_position_error:.4f} ms={r.mean_solve_time_ms:.2f} | "
+            f"max={r.max_position_error:.4f} hf={1000.0 * r.hf_err_rms:.2f}mm "
+            f"acc={r.cmd_acc_rms:.1f} lag={1000.0 * r.lag_mm:.1f}mm "
+            f"ms={r.mean_solve_time_ms:.2f} | "
             f"h={q.horizon_steps} pw={q.position_weight:.0f} tpw={q.terminal_position_weight:.0f} "
             f"ow={q.orientation_weight:.2f} tow={q.terminal_orientation_weight:.2f} "
             f"jd={q.joint_delta_weight:.3f} jdc={q.joint_delta_change_weight:.3f} "
             f"cur={q.current_posture_weight:.3f} cen={q.center_posture_weight:.3f}"
         )
     best_result = results[0]
-    print(f"\n推荐(score 最低):\n{best_result.recommended_command}")
+    print(
+        f"\n推荐(score 最低): hf={1000.0 * best_result.hf_err_rms:.2f}mm "
+        f"acc={best_result.cmd_acc_rms:.1f} lag={1000.0 * best_result.lag_mm:.1f}mm\n"
+        f"{best_result.recommended_command}"
+    )
     if not best_result.safe:
         print("⚠️ 最优候选未过安全门(碰撞 / fallback);可能需要提高 "
               "--max-velocity(周期内底层跟不上)或改路径几何。")

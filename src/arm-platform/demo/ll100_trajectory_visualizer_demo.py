@@ -37,6 +37,7 @@ from trajectory_visualizer_demo import MatplotlibPlotter
 
 JOINT_COUNT = 6
 PUBLISH_RATE_HZ = 10.0
+PATH_DISTANCE_SUBDIVISIONS = 50
 
 
 def to_point(p: np.ndarray) -> Point:
@@ -112,7 +113,7 @@ class LL100TrajectoryVisualizerDemo(Node):
         self.path_start_index = self._default_path_start_index()
         self.path_phase_offset_index = self.path_start_index
         self.path_start_index_locked = False
-        self.expected_path = self._make_expected_path()
+        self._update_expected_path()
         self.actual_points = deque(maxlen=self.max_actual_points)
         self.expected_points = deque(maxlen=self.max_actual_points)
         self.command_fk_points = deque(maxlen=self.max_actual_points)
@@ -278,7 +279,8 @@ class LL100TrajectoryVisualizerDemo(Node):
 
         self.actual_points.append(actual)
         self.expected_points.append(expected)
-        self.samples.append((elapsed, expected.copy(), actual.copy(), actual - expected))
+        path_distance_error = self._path_distance_error(actual)
+        self.samples.append((elapsed, expected.copy(), actual.copy(), actual - expected, path_distance_error))
         self.last_recorded_actual = actual.copy()
 
         if self.plotter:
@@ -317,7 +319,7 @@ class LL100TrajectoryVisualizerDemo(Node):
         self.path_phase_offset_index = self.path_start_index
         self.path_start_index_locked = False
         self.current_expected = self._raw_path[self.path_start_index].copy()
-        self.expected_path = self._make_expected_path()
+        self._update_expected_path()
         if self.plotter:
             self.plotter.reset()
 
@@ -375,7 +377,7 @@ class LL100TrajectoryVisualizerDemo(Node):
             if start_index != self.path_start_index:
                 self.path_start_index = start_index
                 self.path_phase_offset_index = start_index
-                self.expected_path = self._make_expected_path()
+                self._update_expected_path()
             self.path_start_index_locked = True
         distance = float(np.linalg.norm(actual - self._raw_path[self.path_start_index]))
         self.current_expected = self._raw_path[self.path_start_index].copy()
@@ -389,7 +391,7 @@ class LL100TrajectoryVisualizerDemo(Node):
             return False
 
         self.path_phase_offset_index = self.path_start_index
-        self.expected_path = self._make_expected_path()
+        self._update_expected_path()
         self._reset_recording(sample_time)
         self.current_expected = self._target(0.0)
         self.current_actual = actual
@@ -410,6 +412,29 @@ class LL100TrajectoryVisualizerDemo(Node):
     def _make_expected_path(self) -> np.ndarray:
         ts = np.linspace(0.0, self.period_sec, self.expected_path_points + 1)
         return np.array([self._target(t) for t in ts], dtype=float)
+
+    def _update_expected_path(self):
+        self.expected_path = self._make_expected_path()
+        self.expected_path_dense = self._densify_expected_path(self.expected_path)
+
+    def _densify_expected_path(self, path: np.ndarray) -> np.ndarray:
+        """按每段 50 等分加密期望路径,用于几何距离误差。"""
+        if len(path) < 2:
+            return np.array(path, dtype=float)
+        alphas = np.linspace(0.0, 1.0, PATH_DISTANCE_SUBDIVISIONS, endpoint=False)
+        points = []
+        for start, end in zip(path[:-1], path[1:]):
+            points.extend(start + alpha * (end - start) for alpha in alphas)
+        points.append(path[-1].copy())
+        return np.array(points, dtype=float)
+
+    def _path_distance_error(self, actual: np.ndarray) -> float:
+        """实际点到加密期望路径点集的最近距离;不受时间相位错位影响。"""
+        if self.expected_path_dense.size == 0:
+            return 0.0
+        delta = self.expected_path_dense - actual.reshape(1, 3)
+        dist2 = np.einsum("ij,ij->i", delta, delta)
+        return float(np.sqrt(np.min(dist2)))
 
     def _publish_markers(self):
         now = self.get_clock().now().to_msg()
@@ -585,13 +610,15 @@ class LL100TrajectoryVisualizerDemo(Node):
                     "time_sec",
                     "expected_x", "expected_y", "expected_z",
                     "actual_x", "actual_y", "actual_z",
-                    "error_x", "error_y", "error_z"])
-                for t, expected, actual, error in self.samples:
+                    "error_x", "error_y", "error_z",
+                    "path_distance_error"])
+                for t, expected, actual, error, path_distance_error in self.samples:
                     writer.writerow([
                         float(t),
                         float(expected[0]), float(expected[1]), float(expected[2]),
                         float(actual[0]), float(actual[1]), float(actual[2]),
-                        float(error[0]), float(error[1]), float(error[2])])
+                        float(error[0]), float(error[1]), float(error[2]),
+                        float(path_distance_error)])
 
             plot_png = prefix.with_suffix(".png")
             try:
@@ -636,16 +663,18 @@ class LL100TrajectoryVisualizerDemo(Node):
         expected = np.array([s[1] for s in self.samples], dtype=float)
         actual = np.array([s[2] for s in self.samples], dtype=float)
         error = np.array([s[3] for s in self.samples], dtype=float)
+        path_distance_error = np.array([s[4] for s in self.samples], dtype=float)
         command_times = np.array([s[0] for s in self.command_fk_samples], dtype=float)
         command_fk = np.array([s[2] for s in self.command_fk_samples], dtype=float)
         command_error = np.array([s[3] for s in self.command_fk_samples], dtype=float)
 
-        fig = Figure(figsize=(12, 10), constrained_layout=True)
+        fig = Figure(figsize=(12, 12), constrained_layout=True)
         FigureCanvasAgg(fig)
-        grid = fig.add_gridspec(3, 3, height_ratios=[2.0, 1.0, 1.0])
+        grid = fig.add_gridspec(4, 3, height_ratios=[2.0, 1.0, 1.0, 0.9])
         ax_3d = fig.add_subplot(grid[0, :], projection="3d")
         ax_track = [fig.add_subplot(grid[1, i]) for i in range(3)]
         ax_err = [fig.add_subplot(grid[2, i]) for i in range(3)]
+        ax_path_dist = fig.add_subplot(grid[3, :])
 
         ax_3d.plot(self.expected_path[:, 0], self.expected_path[:, 1], self.expected_path[:, 2],
                    color="tab:green", linestyle="--", label="expected full path")
@@ -685,7 +714,16 @@ class LL100TrajectoryVisualizerDemo(Node):
             if command_error.size:
                 axis.legend(loc="upper right")
 
-        fig.suptitle(f"LL100 {self.trajectory_mode} trajectory tracking")
+        ax_path_dist.plot(times, path_distance_error, color="tab:purple", label="path_distance_error (不受相位影响)")
+        ax_path_dist.axhline(0.0, color="0.4", linewidth=0.8)
+        ax_path_dist.set_xlabel("time (s)")
+        ax_path_dist.set_ylabel("path distance error (m)")
+        ax_path_dist.grid(True)
+        ax_path_dist.legend(loc="upper right")
+
+        fig.suptitle(
+            f"LL100 {self.trajectory_mode} trajectory tracking; "
+            "time-indexed expected/actual error 含时间相位伪影, 几何误差看 path_distance_error")
         fig.savefig(path, dpi=150)
 
     def _save_command_fk_plot(self, path: Path):
