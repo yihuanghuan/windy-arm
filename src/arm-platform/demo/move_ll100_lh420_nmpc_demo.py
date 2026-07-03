@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """LL100-LH420 NMPC path demo with front-propeller and body obstacle avoidance."""
 
+import csv
 import math
+import time
 from pathlib import Path
 
 from builtin_interfaces.msg import Time
@@ -54,8 +56,79 @@ def _quat_from_z_axis(normal: np.ndarray):
 
 PUBLISH_RATE_HZ = 50.0
 MAX_TRAIL_POINTS = 2500
+LATENCY_WARMUP_SEC = 5.0
+LATENCY_LOG_INTERVAL_TICKS = 500
 DEFAULT_MAX_JOINT_STEP = 0.010  # 硬件派生 = max_velocity(0.5)·control_dt(0.02),非自由调参项
 DEFAULT_PATH_PREVIEW_STRIDE = 4
+# 各场景 NMPC 调参预设来自 README §4.2 反抖动调参表,由 tune_ll100_nmpc.py 产出。
+SCENARIO_TUNED_PRESETS = {
+    "lower_obstacle_circle": dict(
+        horizon_steps=6,
+        position_weight=180.0,
+        terminal_position_weight=1400.0,
+        orientation_weight=0.105,
+        terminal_orientation_weight=3.0,
+        joint_delta_weight=0.028,
+        joint_delta_change_weight=0.175,
+        current_posture_weight=0.014,
+        center_posture_weight=0.0043,
+    ),
+    "avoidance_sweep": dict(
+        horizon_steps=8,
+        position_weight=252.0,
+        terminal_position_weight=2800.0,
+        orientation_weight=0.105,
+        terminal_orientation_weight=1.05,
+        joint_delta_weight=0.224,
+        joint_delta_change_weight=0.70,
+        current_posture_weight=0.0085,
+        center_posture_weight=0.0043,
+    ),
+    "circle": dict(
+        horizon_steps=4,
+        position_weight=120.0,
+        terminal_position_weight=1020.0,
+        orientation_weight=0.30,
+        terminal_orientation_weight=2.1,
+        joint_delta_weight=0.224,
+        joint_delta_change_weight=0.70,
+        current_posture_weight=0.007,
+        center_posture_weight=0.0035,
+    ),
+    "front_wing_arc": dict(
+        horizon_steps=6,
+        position_weight=180.0,
+        terminal_position_weight=1200.0,
+        orientation_weight=0.30,
+        terminal_orientation_weight=3.0,
+        joint_delta_weight=0.16,
+        joint_delta_change_weight=0.50,
+        current_posture_weight=0.002,
+        center_posture_weight=0.0085,
+    ),
+}
+# 无预设场景(single_target 等)回退到原全局默认,保持改前行为。
+GLOBAL_NMPC_DEFAULTS = dict(
+    horizon_steps=8,
+    position_weight=120.0,
+    terminal_position_weight=1200.0,
+    orientation_weight=0.3,
+    terminal_orientation_weight=3.0,
+    joint_delta_weight=0.08,
+    joint_delta_change_weight=0.25,
+    current_posture_weight=0.005,
+    center_posture_weight=0.01,
+)
+NMPC_TUNED_PARAM_NAMES = tuple(GLOBAL_NMPC_DEFAULTS.keys())
+
+
+def _resolve_nmpc_param(name: str, raw, path_mode: str):
+    if raw is not None and raw > 0:
+        return raw
+    preset = SCENARIO_TUNED_PRESETS.get(path_mode, GLOBAL_NMPC_DEFAULTS)
+    return preset.get(name, GLOBAL_NMPC_DEFAULTS[name])
+
+
 # 分段避障半径:关节(电机)粗、连杆(杆身)细。数值来自各连杆 STL 网格绕真实杆轴(相邻 frame 原点
 # 连线)的最大垂距(=包络上界),再留 ~1-2mm 缓冲。frame 链 = A,B,C,D,E,F(6 个 → 6 关节半径/5 段半径)。
 DEFAULT_CAPSULE_JOINT_RADII = [0.052, 0.062, 0.058, 0.050, 0.049, 0.040]  # A,B,C,D,E,F 关节(电机)
@@ -198,15 +271,15 @@ class MoveLL100LH420NmpcDemo(Node):
         self.declare_parameter("single_target_position", [0.50, 0.0, 0.10])
         self.declare_parameter("period_sec", 20.0)  # 调参定稿:20s/圈达 ~5mm
         self.declare_parameter("terminal_tolerance", 0.025)
-        self.declare_parameter("horizon_steps", 8)
+        self.declare_parameter("horizon_steps", 0)
         self.declare_parameter("max_joint_step", DEFAULT_MAX_JOINT_STEP)
         self.declare_parameter("path_preview_stride", DEFAULT_PATH_PREVIEW_STRIDE)
-        self.declare_parameter("position_weight", 120.0)
-        self.declare_parameter("terminal_position_weight", 1200.0)
+        self.declare_parameter("position_weight", -1.0)
+        self.declare_parameter("terminal_position_weight", -1.0)
         self.declare_parameter("lock_orientation", True)
         self.declare_parameter("orientation_target", "vertical_down")
-        self.declare_parameter("orientation_weight", 0.3)
-        self.declare_parameter("terminal_orientation_weight", 3.0)
+        self.declare_parameter("orientation_weight", -1.0)
+        self.declare_parameter("terminal_orientation_weight", -1.0)
         self.declare_parameter("obstacle_avoidance_enabled", True)
         self.declare_parameter("obstacle_safety_margin", 0.005)  # 桨叶:小正余量,保证实际不接触
         self.declare_parameter("obstacle_disk_half_thickness", 0.02)
@@ -232,11 +305,12 @@ class MoveLL100LH420NmpcDemo(Node):
         self.declare_parameter("stuck_error_epsilon", 0.002)
         self.declare_parameter("stuck_steps_before_advance", 120)
         self.declare_parameter("stuck_advance_points", 10)
-        self.declare_parameter("current_posture_weight", 0.005)
-        self.declare_parameter("center_posture_weight", 0.01)
-        self.declare_parameter("joint_delta_weight", 0.08)         # 一阶平滑(惩罚 Δq),NMPC 代价权重
-        self.declare_parameter("joint_delta_change_weight", 0.25)  # 二阶平滑(惩罚 ΔΔq/抑抖),NMPC 代价权重
+        self.declare_parameter("current_posture_weight", -1.0)
+        self.declare_parameter("center_posture_weight", -1.0)
+        self.declare_parameter("joint_delta_weight", -1.0)         # 一阶平滑(惩罚 Δq),NMPC 代价权重
+        self.declare_parameter("joint_delta_change_weight", -1.0)  # 二阶平滑(惩罚 ΔΔq/抑抖),NMPC 代价权重
         self.declare_parameter("metrics_log_sec", 0.0)
+        self.declare_parameter("latency_profiling", False)
         # 求解器选择(用于求解器对比;默认与原行为一致)。
         self.declare_parameter("solver_backend", "acados")
         self.declare_parameter("acados_nlp_solver_type", "SQP_RTI")
@@ -248,15 +322,10 @@ class MoveLL100LH420NmpcDemo(Node):
         )
         self.period_sec = float(self.get_parameter("period_sec").value)
         self.terminal_tolerance = float(self.get_parameter("terminal_tolerance").value)
-        self.horizon_steps = int(self.get_parameter("horizon_steps").value)
         self.max_joint_step = float(self.get_parameter("max_joint_step").value)
         self.path_preview_stride = int(self.get_parameter("path_preview_stride").value)
-        self.position_weight = float(self.get_parameter("position_weight").value)
-        self.terminal_position_weight = float(self.get_parameter("terminal_position_weight").value)
         self.lock_orientation = bool(self.get_parameter("lock_orientation").value)
         self.orientation_target = str(self.get_parameter("orientation_target").value)
-        self.orientation_weight = float(self.get_parameter("orientation_weight").value)
-        self.terminal_orientation_weight = float(self.get_parameter("terminal_orientation_weight").value)
         self.obstacle_avoidance_enabled = bool(self.get_parameter("obstacle_avoidance_enabled").value)
         self.obstacle_safety_margin = float(self.get_parameter("obstacle_safety_margin").value)
         self.obstacle_disk_half_thickness = float(self.get_parameter("obstacle_disk_half_thickness").value)
@@ -282,11 +351,46 @@ class MoveLL100LH420NmpcDemo(Node):
         self.stuck_error_epsilon = float(self.get_parameter("stuck_error_epsilon").value)
         self.stuck_steps_before_advance = int(self.get_parameter("stuck_steps_before_advance").value)
         self.stuck_advance_points = int(self.get_parameter("stuck_advance_points").value)
-        self.current_posture_weight = float(self.get_parameter("current_posture_weight").value)
-        self.center_posture_weight = float(self.get_parameter("center_posture_weight").value)
-        self.joint_delta_weight = float(self.get_parameter("joint_delta_weight").value)
-        self.joint_delta_change_weight = float(self.get_parameter("joint_delta_change_weight").value)
+        raw_nmpc_params = {
+            "horizon_steps": int(self.get_parameter("horizon_steps").value),
+            "position_weight": float(self.get_parameter("position_weight").value),
+            "terminal_position_weight": float(self.get_parameter("terminal_position_weight").value),
+            "orientation_weight": float(self.get_parameter("orientation_weight").value),
+            "terminal_orientation_weight": float(self.get_parameter("terminal_orientation_weight").value),
+            "joint_delta_weight": float(self.get_parameter("joint_delta_weight").value),
+            "joint_delta_change_weight": float(self.get_parameter("joint_delta_change_weight").value),
+            "current_posture_weight": float(self.get_parameter("current_posture_weight").value),
+            "center_posture_weight": float(self.get_parameter("center_posture_weight").value),
+        }
+        resolved_nmpc_params = {
+            name: _resolve_nmpc_param(name, raw_nmpc_params[name], self.path_mode)
+            for name in NMPC_TUNED_PARAM_NAMES
+        }
+        self.horizon_steps = int(resolved_nmpc_params["horizon_steps"])
+        self.position_weight = float(resolved_nmpc_params["position_weight"])
+        self.terminal_position_weight = float(resolved_nmpc_params["terminal_position_weight"])
+        self.orientation_weight = float(resolved_nmpc_params["orientation_weight"])
+        self.terminal_orientation_weight = float(resolved_nmpc_params["terminal_orientation_weight"])
+        self.joint_delta_weight = float(resolved_nmpc_params["joint_delta_weight"])
+        self.joint_delta_change_weight = float(resolved_nmpc_params["joint_delta_change_weight"])
+        self.current_posture_weight = float(resolved_nmpc_params["current_posture_weight"])
+        self.center_posture_weight = float(resolved_nmpc_params["center_posture_weight"])
+        preset_name = self.path_mode if self.path_mode in SCENARIO_TUNED_PRESETS else "GLOBAL_NMPC_DEFAULTS"
+        user_overrides = [
+            f"{name}={raw_nmpc_params[name]:g}"
+            for name in NMPC_TUNED_PARAM_NAMES
+            if raw_nmpc_params[name] > 0
+        ]
+        resolved_text = ", ".join(
+            f"{name}={resolved_nmpc_params[name]:g}" for name in NMPC_TUNED_PARAM_NAMES
+        )
+        self.get_logger().info(
+            f"NMPC 调参预设: path_mode={self.path_mode}, preset={preset_name}, "
+            f"user_overrides=[{', '.join(user_overrides) if user_overrides else '无'}], "
+            f"resolved=[{resolved_text}]"
+        )
         self.metrics_log_sec = float(self.get_parameter("metrics_log_sec").value)
+        self.latency_profiling = bool(self.get_parameter("latency_profiling").value)
         self.solver_backend = str(self.get_parameter("solver_backend").value)
         self.acados_nlp_solver_type = str(self.get_parameter("acados_nlp_solver_type").value)
         self.acados_qp_solver = str(self.get_parameter("acados_qp_solver").value)
@@ -380,6 +484,27 @@ class MoveLL100LH420NmpcDemo(Node):
         self._approach_carrot = None
         self._start_wait_start_time_sec = None
         self.actual_trail = []
+        self._last_feedback_perf_counter = None
+        self._latency_profile_start_perf_counter = None
+        self._latency_rows = []
+        self._latency_csv_file = None
+        self._latency_csv_writer = None
+        self._latency_csv_path = None
+        self._latency_finalized = False
+        if self.latency_profiling:
+            data_dir = Path(__file__).resolve().parent / "data"
+            data_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            self._latency_csv_path = data_dir / f"latency_{timestamp}.csv"
+            self._latency_csv_file = self._latency_csv_path.open("w", newline="")
+            self._latency_csv_writer = csv.writer(self._latency_csv_file)
+            self._latency_csv_writer.writerow(
+                ["tick", "elapsed_sec", "feedback_age_sec", "compute_sec", "end_to_end_sec"]
+            )
+            self.get_logger().info(
+                "Latency profiling enabled: "
+                f"warmup={LATENCY_WARMUP_SEC:.1f}s, csv={self._latency_csv_path}"
+            )
 
         self.command_pub = self.create_publisher(JointState, "/student/joint_command", 10)
         self.marker_pub = self.create_publisher(MarkerArray, "/ll100_nmpc_path/markers", 10)
@@ -419,6 +544,70 @@ class MoveLL100LH420NmpcDemo(Node):
         q = np.array([msg.position[name_to_index[name]] for name in JOINT_NAMES], dtype=float)
         if q.shape == (len(JOINT_NAMES),) and np.all(np.isfinite(q)):
             self.q_feedback = np.clip(q, self.mpc_ik.q_lower, self.mpc_ik.q_upper)
+            if self.latency_profiling:
+                self._last_feedback_perf_counter = time.perf_counter()
+
+    def _record_latency_sample(self, t0: float, t_pub: float, feedback_time: float):
+        if self._latency_profile_start_perf_counter is None:
+            self._latency_profile_start_perf_counter = t_pub
+            return
+        elapsed = t_pub - self._latency_profile_start_perf_counter
+        if elapsed < LATENCY_WARMUP_SEC:
+            return
+
+        feedback_age = t0 - feedback_time
+        compute = t_pub - t0
+        end_to_end = t_pub - feedback_time
+        tick = len(self._latency_rows) + 1
+        row = (tick, elapsed, feedback_age, compute, end_to_end)
+        self._latency_rows.append(row)
+        if self._latency_csv_writer is not None:
+            self._latency_csv_writer.writerow(row)
+        if tick % LATENCY_LOG_INTERVAL_TICKS == 0:
+            self._log_latency_stats(prefix=f"latency profiling {tick} ticks")
+            if self._latency_csv_file is not None:
+                self._latency_csv_file.flush()
+
+    def _latency_summary(self, values):
+        arr = np.asarray(values, dtype=float) * 1e3
+        return {
+            "mean": float(np.mean(arr)),
+            "p50": float(np.percentile(arr, 50)),
+            "p95": float(np.percentile(arr, 95)),
+            "max": float(np.max(arr)),
+        }
+
+    def _log_latency_stats(self, prefix: str):
+        if not self._latency_rows:
+            self.get_logger().info(
+                f"[{prefix}] no post-warmup latency samples yet "
+                f"(warmup={LATENCY_WARMUP_SEC:.1f}s)"
+            )
+            return
+        labels = ("feedback_age", "compute", "end_to_end")
+        columns = list(zip(*[(r[2], r[3], r[4]) for r in self._latency_rows]))
+        parts = []
+        for label, values in zip(labels, columns):
+            s = self._latency_summary(values)
+            parts.append(
+                f"{label}: mean={s['mean']:.3f}ms p50={s['p50']:.3f}ms "
+                f"p95={s['p95']:.3f}ms max={s['max']:.3f}ms"
+            )
+        self.get_logger().info(f"[{prefix}] samples={len(self._latency_rows)}; " + "; ".join(parts))
+
+    def _finalize_latency_profiling(self):
+        if self._latency_finalized or not self.latency_profiling:
+            return
+        self._latency_finalized = True
+        self._log_latency_stats(prefix="latency profiling final")
+        if self._latency_csv_file is not None:
+            self._latency_csv_file.flush()
+            self._latency_csv_file.close()
+            self.get_logger().info(f"Latency profiling CSV written: {self._latency_csv_path}")
+
+    def destroy_node(self):
+        self._finalize_latency_profiling()
+        return super().destroy_node()
 
     def _target_sequence(self) -> np.ndarray:
         offsets = self.path_preview_stride * np.arange(self.horizon_steps)
@@ -548,9 +737,11 @@ class MoveLL100LH420NmpcDemo(Node):
             self._advance_to_next_path_index(self.stuck_advance_points)
 
     def tick(self):
+        t0 = time.perf_counter() if self.latency_profiling else None
         if self.q_feedback is None:
             self.get_logger().warn("尚未收到 /joint_states 的 A_Joint~F_Joint 反馈,暂不发布路径命令", throttle_duration_sec=2.0)
             return
+        feedback_time = self._last_feedback_perf_counter
         q_current = self.q_feedback.copy()
         actual_pos, _ = self.mpc_ik.forward(q_current)
         self._advance_path_index_if_ready(actual_pos)
@@ -608,7 +799,15 @@ class MoveLL100LH420NmpcDemo(Node):
         msg.name = JOINT_NAMES
         msg.position = self.q_last.tolist()
         msg.velocity = dq_cmd.tolist()
+        t_pub = time.perf_counter() if self.latency_profiling else None
         self.command_pub.publish(msg)
+        if (
+            self.latency_profiling
+            and t0 is not None
+            and t_pub is not None
+            and feedback_time is not None
+        ):
+            self._record_latency_sample(t0, t_pub, feedback_time)
 
         self.actual_trail.append(actual_pos.copy())
         if len(self.actual_trail) > MAX_TRAIL_POINTS:

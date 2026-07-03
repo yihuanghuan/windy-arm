@@ -20,6 +20,27 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 GEN_DIR = HERE / "grampc_problem"
 MODULE_NAME = "ll100_grampc_problem"
+GEN_BASENAME = "ll100_grampc_gen"
+META_NAME = "ll100_grampc_meta.json"
+
+# Files that define the generated GRAMPC constraints/costs.  If any of these is
+# newer than the generated problem module, rebuild so GRAMPC cannot silently use
+# an older collision geometry than the acados backend.
+CODEGEN_DEPS = (
+    HERE / "mpc_pinocchio_ik.py",
+    HERE / "grampc_codegen.py",
+    HERE / "benchmark_nmpc_solvers.py",
+    HERE / "move_ll100_lh420_nmpc_demo.py",
+)
+GENERATED_FILES = (
+    GEN_DIR / f"{GEN_BASENAME}.c",
+    GEN_DIR / f"{GEN_BASENAME}.h",
+    GEN_DIR / META_NAME,
+)
+CXX_BUILD_DEPS = (
+    GEN_DIR / "ll100_problem.cpp",
+    GEN_DIR / "CMakeLists.txt",
+)
 
 # pygrampc 源码树(含 src/ 与 grampc/include),由任务环境放在 scratchpad。
 _SCRATCH = (
@@ -55,19 +76,48 @@ def _find_so() -> Path | None:
     return hits[0] if hits else None
 
 
+def _path_mtime_ns(path: Path) -> int | None:
+    try:
+        return int(path.stat().st_mtime_ns)
+    except OSError:
+        return None
+
+
+def _newer_than_any(output: Path, deps) -> bool:
+    output_mtime = _path_mtime_ns(output)
+    if output_mtime is None:
+        return True
+    for dep in deps:
+        dep_mtime = _path_mtime_ns(dep)
+        if dep_mtime is not None and dep_mtime > output_mtime:
+            return True
+    return False
+
+
+def _codegen_outdated() -> bool:
+    return any(_newer_than_any(path, CODEGEN_DEPS) for path in GENERATED_FILES)
+
+
+def _module_outdated(module_path: Path | None) -> bool:
+    if module_path is None:
+        return True
+    return _codegen_outdated() or _newer_than_any(module_path, (*GENERATED_FILES, *CXX_BUILD_DEPS))
+
+
 def is_built() -> bool:
-    return _find_so() is not None
+    module = _find_so()
+    return module is not None and not _module_outdated(module)
 
 
 def build(force: bool = False) -> Path:
-    """编译问题模块,返回 .so 路径。已编译且非 force 时直接返回。"""
+    """编译问题模块,返回 .so 路径。已编译且未过期且非 force 时直接返回。"""
+    existing = _find_so()
+    if existing is not None and not force and not _module_outdated(existing):
+        return existing
+
     from grampc_codegen import generate
 
-    meta = generate(force=force)
-
-    existing = _find_so()
-    if existing is not None and not force:
-        return existing
+    generate(force=force or _codegen_outdated())
 
     if not (PYGRAMPC_ROOT / "src" / "problem_description.hpp").exists():
         raise FileNotFoundError(
@@ -110,6 +160,7 @@ def ensure_module():
     # 必须先 import pygrampc:它通过 _core 注册 grampc::ProblemDescription 基类型,
     # 我们的模块继承自它,否则 pybind11 报 "unknown base type"。
     import pygrampc  # noqa: F401
+    build()
     if str(GEN_DIR) not in sys.path:
         sys.path.insert(0, str(GEN_DIR))
     try:

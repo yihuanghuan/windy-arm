@@ -18,6 +18,11 @@ demo/acados_ocp*.json
 windylab_acados*/
 windylab_acados_bench*/
 
+# GRAMPC codegen 生成物(grampc_build 会按需自动重建;保留手写的 CMakeLists.txt 与 ll100_problem.cpp)
+demo/grampc_problem/ll100_grampc_gen.*
+demo/grampc_problem/ll100_grampc_meta.json
+demo/grampc_problem/build/
+
 # Local editor/system files
 .cache/
 .pytest_cache/

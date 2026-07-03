@@ -15,7 +15,7 @@
 
 ## 1. 各求解器的安装与部署
 
-所有求解器都在 `src/arm-platform/demo/` 下运行,先激活环境(见 1.6)。
+所有求解器都在 `src/arm-platform/demo/` 下运行,先激活环境(见 1.7)。
 
 ### 1.1 acados(主力,提供 HPIPM / qpOASES / OSQP 三个 QP 后端)
 acados 是一个 NMPC/OCP 求解框架:它做 SQP/RTI 迭代,每次迭代把问题线性化成一个 QP,交给一个 **QP 后端**求解。
@@ -61,6 +61,7 @@ python3 -c "import pygrampc; print(pygrampc.__version__)"   # 应打印 2.2.2
 ```
 - 首次运行对比程序时,`grampc_build.ensure_module()` 会自动用 CasADi codegen + scikit-build 编译
   LL100 的 GRAMPC 问题模块到 `src/arm-platform/demo/grampc_problem/`(生成 `.c/.h/.so`),之后复用。
+  现已加过期检测:约束源(`mpc_pinocchio_ik.py`/`grampc_codegen.py`)改动后会自动重建,避免跑到旧约束。
 - ⚠️ 部署注意:`grampc_build` 需要 pygrampc 源码树来取 GRAMPC/ProblemDescription 头文件,默认路径来自
   环境变量 `PYGRAMPC_ROOT`。请把它指向持久的 pygrampc 目录:
   ```bash
@@ -68,7 +69,33 @@ python3 -c "import pygrampc; print(pygrampc.__version__)"   # 应打印 2.2.2
   ```
   (放进 `setup_acados_env.sh` 或你的 shell profile,避免每次手动设。)
 
-### 1.5 各求解器速查
+### 1.5 Crocoddyl(DDP + mim_solvers CSQP 硬约束,源码编译;已实测淘汰)
+Crocoddyl 是 DDP/FDDP 最优控制框架,配 mim_solvers 的 CSQP 可做硬约束。已接入对比
+([crocoddyl_ll100.py](src/arm-platform/demo/crocoddyl_ll100.py)),但**实测非实时**(~100–250ms/步、fallback 上千、过不了安全门槛,见 §4.4 备注),仅作 DDP 路线对照,不进实时回路。
+
+- **务必 ABI 兼容**:本机 Pinocchio 是 apt 包 `ros-humble-pinocchio` 3.9.0(`/opt/ros/humble`)。
+  **绝不能 `pip install crocoddyl/pinocchio`**——会拉进第二个 Pinocchio 与 ROS 版冲突。apt 源无现成
+  `ros-humble-crocoddyl`,故针对 ROS 的 Pinocchio 从源码编译。
+- 依赖:`sudo apt-get install -y ros-humble-jrl-cmakemodules`。
+- 源码 + 版本(装到独立前缀,不污染系统):
+  ```bash
+  ROOT=~/.local/src/crocoddyl_ros_humble
+  PREFIX=~/.local/opt/crocoddyl_ros_humble_pinocchio39
+  git clone --depth 1 -b v2.0.0 https://github.com/jrl-umi3218/jrl-cmakemodules.git $ROOT/jrl-cmakemodules
+  git clone --depth 1 -b v3.2.1 https://github.com/loco-3d/crocoddyl.git             $ROOT/crocoddyl
+  git clone --depth 1 -b v0.3.0 https://github.com/machines-in-motion/mim_solvers.git $ROOT/mim_solvers
+  # 依次 cmake(-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PREFIX)构建 + install
+  # 提速:crocoddyl 的 CMakeLists 里 SCALAR_TYPES 只留 double(删 float),省一半绑定编译量
+  ```
+- 用前把前缀加进 `PYTHONPATH`,并验证 Pinocchio 仍是 ROS 版(没被换掉):
+  ```bash
+  export PYTHONPATH=$PREFIX/lib/python3.10/site-packages:$PYTHONPATH
+  python3 -c "import pinocchio,crocoddyl,mim_solvers; print(pinocchio.__version__)"   # 应仍是 3.9.0
+  ```
+- 跑对比:`python3 benchmark_nmpc_solvers.py --only crocoddyl --path-mode <场景> --periods 1.0`
+  (它 `status=pending`、单独 tier,不进默认扫描;单步超时上限由 `CROCODDYL_MAX_SOLVE_TIME` 控制,默认 0.25s)。
+
+### 1.6 各求解器速查
 
 | 求解器 | 载体 | 安装 | 状态 |
 |---|---|---|---|
@@ -77,10 +104,11 @@ python3 -c "import pygrampc; print(pygrampc.__version__)"   # 应打印 2.2.2
 | acados + OSQP | acados(需 `-DACADOS_WITH_OSQP=ON` 重编) | 见 1.1 | 不合格(卡奇异) |
 | acados 全SQP | acados(`nlp_solver_type=SQP`) | 编译 acados | 不合格(卡奇异) |
 | GRAMPC | pygrampc + C++ codegen | 见 1.4 | **合格** |
+| Crocoddyl | crocoddyl + mim_solvers(源码编译) | 见 1.5 | **淘汰(非实时,~100–250ms/步)** |
 | CasADi + IPOPT | casadi | `pip install casadi` | 弃置回退 |
 | SciPy + SLSQP | scipy | `pip install scipy` | 弃置回退 |
 
-### 1.6 激活环境(每次跑之前)
+### 1.7 激活环境(每次跑之前)
 ```bash
 cd ~/code/windylab_ws/src/arm-platform/demo
 source /opt/ros/humble/setup.bash
@@ -169,7 +197,7 @@ python3 benchmark_nmpc_solvers.py --only acados_sqp_rti_hpipm,acados_sqp_rti_qpo
 对比程序 [benchmark_nmpc_solvers.py](src/arm-platform/demo/benchmark_nmpc_solvers.py) 的 `rank_key()` 已按此
 优先级排序(`(safe, p95_solve_ms, rms_position_error)`),终端"推荐"项即此优先级下的最优合格解。
 
-### 4.4 淘汰记录与最终结论
+### 4.4 测试结果（纯求解器版本）
 
 **测试条件**:部署避障几何(中心线胶囊 `capsule_points` + 斥力,前桨/机身共约 50 硬约束)、`periods=1.0`、稳态 RMS 口径。列三类场景(不含 `avoidance_sweep`;它每周期短暂穿近奇异,单列见下方备注)。"最大求解"= 单轮最坏单步(含启动尖峰,仍应 <20ms 实时预算)。
 
@@ -212,6 +240,52 @@ python3 benchmark_nmpc_solvers.py --only acados_sqp_rti_hpipm,acados_sqp_rti_qpo
 **结论(三场景一致)**:qpOASES / HPIPM / GRAMPC 三者全 safe;按优先级(安全>求解时间>精度)**首选 acados qpOASES**(平均 0.9–1.1ms、最快),HPIPM 次之(均衡),GRAMPC 精度常最好(0.59–1.67mm)且最大求解最稳(无启动尖峰)。全SQP/OSQP 除 circle 外基本不合格。
 
 > **备注 `avoidance_sweep`**:该场景每周期短暂穿近奇异。新中心线胶囊几何下 qpOASES/HPIPM 已能保持 σ_min≈2.6e-3 过门槛(safe),但 **GRAMPC 在此场景擦障(viol≈14mm)+ 近奇异** → GRAMPC 的增广拉格朗日是软约束、苛刻场景可被突破,而 acados 是真硬约束。对"绝不碰撞"要求,acados 更可靠。
+
+### 4.5 测试结果（接入 ROS 版本:软件栈 + 计算延迟）
+
+4.4 是**纯求解器**闭环(Python 内部仿真 plant)的求解耗时;本节补充**接入 ROS 后的真实延迟**——把 demo 节点 [move_ll100_lh420_nmpc_demo.py](src/arm-platform/demo/move_ll100_lh420_nmpc_demo.py) 起在 ROS 2 里,用零反馈发布器 [ll100_lh420_zero_joint_state_publisher.py](src/arm-platform/demo/ll100_lh420_zero_joint_state_publisher.py) 喂 `/joint_states`,节点带 `latency_profiling:=true` 逐 tick 打点。它测的是节点里 **rclpy 回调调度 + FK/雅可比 + 求解 + marker 发布 + DDS** 的端到端软件栈延迟,不只是求解耗时。
+
+**三个延迟量**(单位 ms):
+- **`feedback_age`**:反馈到达 → tick 消费(发布频率伪影,非求解器性能)。
+- **`compute`**:tick 入口 → publish(回调内全部计算:FK+雅可比+求解+marker+rclpy)。
+- **`end_to_end`** = feedback_age + compute:传感器 → 命令,真实控制延迟。
+
+**测试条件**:RMW=Fast-DDS、`taskset` 核隔离 + `nice` 降扰、独立 `ROS_DOMAIN_ID`、50Hz 反馈、跳过 5s 暖机、每格约 1500 样本;三后端各在三场景跑一次。GRAMPC 需先把问题模块重建到当前约束(见 §1.4)才能上机。
+
+#### lower_obstacle_circle
+| 求解器配置 | compute 均值(ms) | compute P95(ms) | end_to_end 均值(ms) | end_to_end P95(ms) |
+|---|---:|---:|---:|---:|
+| acados SQP_RTI + qpOASES | 7.06 | 7.44 | 12.90 | 13.08 |
+| acados SQP_RTI + HPIPM | 7.97 | 8.28 | 15.43 | 16.41 |
+| GRAMPC | 7.12 | 7.45 | 15.83 | 16.59 |
+
+#### circle
+| 求解器配置 | compute 均值(ms) | compute P95(ms) | end_to_end 均值(ms) | end_to_end P95(ms) |
+|---|---:|---:|---:|---:|
+| acados SQP_RTI + qpOASES | 9.25 | 9.72 | 15.80 | 16.85 |
+| acados SQP_RTI + HPIPM | 12.35 | 12.70 | 15.95 | 16.81 |
+| GRAMPC | 6.87 | 7.08 | 15.68 | 16.84 |
+
+#### front_wing_arc
+| 求解器配置 | compute 均值(ms) | compute P95(ms) | end_to_end 均值(ms) | end_to_end P95(ms) |
+|---|---:|---:|---:|---:|
+| acados SQP_RTI + qpOASES | 6.48 | 6.89 | 15.85 | 16.47 |
+| acados SQP_RTI + HPIPM | 9.57 | 10.18 | 15.32 | 15.65 |
+| GRAMPC | 7.01 | 7.50 | 15.81 | 16.75 |
+
+**结论(接入 ROS)**:
+1. **三后端 compute P95 全 ≤ 12.7ms、稳稳 <20ms** —— 接入 ROS 后仍全部实时可行。
+2. **约 6ms 的节点固定开销(FK+雅可比+marker+rclpy)压平了求解器差异**:纯求解 4.7 倍差距(qpOASES ~1ms / HPIPM ~2.5ms / GRAMPC ~4.7ms)上机后压缩到 <2 倍;唯一仍可见的规律是 **HPIPM 上机后一致最慢**(partial-condensing 每次调用开销更大,circle 场景 P95 12.7ms)。
+3. **`end_to_end` P95 稳定在 ~13–17ms,与后端/场景基本无关** —— compute 与 feedback_age 此消彼长、填满约一个 tick 周期。**上机后端到端延迟的瓶颈是控制周期时序,不是求解器速度。**
+
+> **口径**:零反馈源 + 本机 ROS 回环、Fast-DDS 默认 QoS。此回环下臂不动,故**只测延迟、不测 RMS/safe**(要测精度/避障需把真实 plant 仿真接进 ROS);**不含真机传感器/总线延迟**,真机会更大。插桩藏在 `latency_profiling` 参数后(默认关),不影响正常运行。
+
+**复现**(先按 §1.7 source 环境):
+```bash
+python3 ll100_lh420_zero_joint_state_publisher.py &     # 反馈源(50Hz)
+python3 move_ll100_lh420_nmpc_demo.py --ros-args -p latency_profiling:=true \
+  -p path_mode:=circle -p acados_qp_solver:=FULL_CONDENSING_QPOASES   # 换后端/场景改这两个参数
+```
 
 ## 5. 教程:如何自己增 / 减求解器
 

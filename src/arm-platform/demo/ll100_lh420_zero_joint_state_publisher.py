@@ -6,6 +6,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
 
+PUBLISH_RATE_HZ = 50.0
 JOINT_NAMES = [
     "rot1_Joint",
     "rot2_Joint",
@@ -24,8 +25,10 @@ class LL100LH420ZeroJointStatePublisher(Node):
     def __init__(self):
         super().__init__("ll100_lh420_zero_joint_state_publisher")
         self.pub = self.create_publisher(JointState, "/joint_states", 10)
-        self.timer = self.create_timer(0.1, self.publish_zero_state)
-        self.get_logger().info("Publishing zero joint states for LL100-LH420 display model")
+        self.timer = self.create_timer(1.0 / PUBLISH_RATE_HZ, self.publish_zero_state)
+        self.get_logger().info(
+            f"Publishing zero joint states for LL100-LH420 display model at {PUBLISH_RATE_HZ:.1f} Hz"
+        )
 
     def publish_zero_state(self):
         msg = JointState()

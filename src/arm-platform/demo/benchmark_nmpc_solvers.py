@@ -113,6 +113,9 @@ def solver_matrix() -> List[SolverConfig]:
         SolverConfig("grampc", "grampc", None, None, ("A",), "GRAMPC (增广拉格朗日+梯度法)",
                      status="active",
                      note="pygrampc + CasADi codegen 的 C++ 问题描述(grampc_ll100.py)"),
+        SolverConfig("crocoddyl", "crocoddyl", None, None, ("C",), "Crocoddyl (DDP+CSQP硬约束)",
+                     status="pending",
+                     note="mim_solvers CSQP + Crocoddyl Python action model;需 ABI 对齐 ROS Pinocchio"),
         SolverConfig("casadi_ipopt", "casadi", None, None, ("A",), "CasADi + IPOPT",
                      status="eliminated",
                      note="弃置回退(保留不删):~1100ms/步、实时率0%,只能离线;仍用作高精度 ground-truth 参照"),
@@ -265,6 +268,10 @@ def evaluate(sc: SolverConfig, path_mode: str, periods: float,
             from grampc_ll100 import GrampcRunner
 
             mpc = GrampcRunner(urdf_path=urdf, ee_frame=EE_FRAME, config=cfg)
+        elif sc.backend == "crocoddyl":
+            from crocoddyl_ll100 import CrocoddylRunner
+
+            mpc = CrocoddylRunner(urdf_path=urdf, ee_frame=EE_FRAME, config=cfg)
         else:
             mpc = MpcPinocchioIK(urdf_path=urdf, ee_frame=EE_FRAME, config=cfg)
 

@@ -128,6 +128,9 @@ class GrampcRunner:
     def capsule_sample_positions(self, q):
         return self.mpc.capsule_sample_positions(q)
 
+    def capsule_sample_radii(self):
+        return self.mpc.capsule_sample_radii()
+
     def _position_error(self, q, target) -> float:
         pos, _ = self.mpc.forward(q)
         return float(np.linalg.norm(pos - target))
