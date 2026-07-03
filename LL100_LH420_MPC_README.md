@@ -15,33 +15,18 @@
 
 ## 2. 环境准备
 
-每个新终端先 source ROS 和工作空间:
+> 首次部署(系统依赖、编译工作空间、安装 acados)见总 [README.md](README.md) 的**《六、部署步骤》**,并区分**一般电脑 / Jetson** 两类。请先在那里完成部署。
+
+部署完成后,**每个新终端**运行本文的 demo 前先激活环境:
 
 ```bash
 cd ~/code/windylab_ws
 source /opt/ros/humble/setup.bash
 source install/setup.bash
+source src/arm-platform/scripts/setup_acados_env.sh
 ```
 
-运行 ACADOS NMPC 前还需要 source ACADOS 环境:
-
-```bash
-source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
-```
-
-验证 ACADOS Python 接口:
-
-```bash
-python3 -c "import acados_template; print('acados ok')"
-```
-
-如果尚未安装 ACADOS:
-
-```bash
-cd ~/code/windylab_ws/src/arm-platform
-scripts/install_acados.sh
-source scripts/setup_acados_env.sh
-```
+验证 ACADOS Python 接口:`python3 -c "import acados_template; print('acados ok')"`。
 
 ACADOS 求解器缓存规则:
 

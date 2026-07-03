@@ -5,7 +5,7 @@
 - **一、7 自由度机械臂自动调参** —— 固定基座 + 浮动基座臂,搜一套统一参数,脚本 `tune_unified_mpc_params.py`。
 - **二、LL100-LH420 自动调参** —— 空中操作臂避障,脚本 `tune_ll100_nmpc.py`。
 
-两者完全独立、互不影响(求解器、场景、参数都分开)。下面分别说明。共同前置:先按对应 README 装好 ACADOS 并配置环境:
+两者完全独立、互不影响(求解器、场景、参数都分开)。下面分别说明。共同前置:先按总 [README.md](README.md) 的**《六、部署步骤》**(区分一般电脑 / Jetson)装好环境与 ACADOS,再激活:
 
 ```bash
 cd ~/code/windylab_ws/src/arm-platform

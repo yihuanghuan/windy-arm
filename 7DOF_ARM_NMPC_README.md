@@ -2,99 +2,21 @@
 
 当前 NMPC 做的是固定基 7 自由度机械臂的末端位置 MPC,可选末端姿态软约束。控制器最终发布的是 7 个关节角到 `/student/joint_command`。ACADOS 是外部依赖,仓库不会提交 ACADOS 源码、生成 C 代码或 build 产物。
 
-## 1. 系统要求
+## 1. 环境部署
 
-- Ubuntu 22.04
-- ROS 2 Humble
-- Python 3
-- Pinocchio Python 绑定
-- NumPy、SciPy、CasADi
-- ACADOS 和 `acados_template`
+> 环境部署(系统依赖、编译工作空间、安装 acados、环境自检)已统一到**总 [README.md](README.md) 的《六、部署步骤》**,并区分**一般电脑 / Jetson** 两类。请先按那里完成部署,再回到本文跑 demo。
 
-基础依赖:
-
-```bash
-sudo apt update
-sudo apt install -y \
-  git cmake build-essential python3-pip \
-  ros-humble-pinocchio \
-  ros-humble-robot-state-publisher \
-  ros-humble-rviz2 \
-  libeigen3-dev
-
-python3 -m pip install --user numpy scipy casadi
-```
-
-如果你的系统已经通过 ROS 包安装了 `numpy/scipy`,重复安装通常也没有问题。
-
-## 2. 编译机械臂工作空间
-
-```bash
-cd ~/code/windylab_ws/src
-[ -d serial ] || git clone https://github.com/ZhaoXiangBox/serial.git serial
-
-cd ~/code/windylab_ws
-source /opt/ros/humble/setup.bash
-colcon build --packages-select serial dummy_interface manipulator
-source install/setup.bash
-```
-
-每个新终端运行 ROS demo 前都要 source:
+部署完成后,**每个新终端**运行本文的 demo 前先激活环境:
 
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/code/windylab_ws/install/setup.bash
-```
-
-## 3. 安装 ACADOS
-
-仓库提供源码安装脚本,默认安装到:
-
-```text
-$HOME/code/acados
-```
-
-安装:
-
-```bash
-cd ~/code/windylab_ws/src/arm-platform
-scripts/install_acados.sh
-```
-
-如果想安装到其他位置:
-
-```bash
-export ACADOS_SOURCE_DIR=/path/to/acados
-scripts/install_acados.sh
-```
-
-安装完成后,每个新终端运行 NMPC 前 source 环境脚本:
-
-```bash
 source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
 ```
 
-验证:
+验证 ACADOS Python 接口:`python3 -c "import acados_template; print('acados ok')"`。
 
-```bash
-python3 -c "import acados_template; print('acados ok')"
-```
-
-## 4. 环境检查
-
-可以用检查脚本一次性确认依赖:
-
-```bash
-cd ~/code/windylab_ws/src/arm-platform
-source /opt/ros/humble/setup.bash
-source ~/code/windylab_ws/install/setup.bash
-source scripts/setup_acados_env.sh
-scripts/check_nmpc_env.sh
-```
-
-检查脚本只读环境,不会安装或修改系统。
-
-## 5. 最小自测 — `mpc_pinocchio_ik.py`
+## 2. 最小自测 — `mpc_pinocchio_ik.py`
 
 进入 demo 目录:
 
@@ -143,7 +65,7 @@ ACADOS 求解器缓存规则:
 - 如果配置变了,例如 `horizon_steps`、`max_joint_step`、权重、姿态软约束开关、前桨避障开关、关键点数量、避障球数量、机身 box 数量、capsule 半径或 capsule 采样点数量变化,配置指纹会不一致,程序会自动重新生成并编译。
 - 如果怀疑缓存损坏,可以删除对应的 `acados_build_dir` 目录,下次启动会重新生成。
 
-## 6. 启动 demo
+## 3. 启动 demo
 
 先启动学生机械臂仿真:
 
@@ -153,7 +75,7 @@ source ~/code/windylab_ws/install/setup.bash
 ros2 launch manipulator student_arm.launch.py
 ```
 
-### 6.1 竖直圆 — `move_arm_mpc_ik_demo.py`
+### 3.1 竖直圆 — `move_arm_mpc_ik_demo.py`
 
 末端在 y-z 平面画半径 8 cm 的圆。
 
@@ -171,7 +93,7 @@ source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
 python3 move_arm_mpc_ik_demo.py
 ```
 
-### 6.2 直线 — `move_arm_mpc_ik_demo.py`
+### 3.2 直线 — `move_arm_mpc_ik_demo.py`
 
 末端在两点间沿直线平滑往返(余弦插值,端点速度为零)。
 
@@ -190,7 +112,7 @@ source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
 python3 move_arm_mpc_ik_demo.py --ros-args -p trajectory_mode:=line
 ```
 
-### 6.3 水平圆 — `move_arm_mpc_ik_demo.py 或 move_arm_horizontal_circle_mpc_ik_demo`
+### 3.3 水平圆 — `move_arm_mpc_ik_demo.py 或 move_arm_horizontal_circle_mpc_ik_demo`
 
 末端在 x-y 平面画半径 8 cm 的圆。
 
@@ -219,7 +141,7 @@ source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
 python3 move_arm_mpc_ik_demo.py --ros-args -p trajectory_mode:=horizontal_circle
 ```
 
-### 6.4 软锁姿态水平圆 — `move_arm_mpc_ik_demo.py 或 move_arm_horizontal_circle_mpc_ik_demo`
+### 3.4 软锁姿态水平圆 — `move_arm_mpc_ik_demo.py 或 move_arm_horizontal_circle_mpc_ik_demo`
 
 锁定起始末端姿态运行水平圆:
 
@@ -254,7 +176,7 @@ python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
 
 其中 `vertical_down` 定义为:末端坐标系 x 轴对齐世界坐标 `-Z`,y 轴对齐世界坐标 `+Y`,z 轴对齐世界坐标 `+X`。
 
-### 6.5 基座运动下的 world 系末端跟踪
+### 3.5 基座运动下的 world 系末端跟踪
 
 `move_base_circle_visual_demo.py` 和 `move_base_circle_mpc_ik_demo.py` 都使用 `demo/moving_base_trajectory_config.py` 里的同一套轨迹参数。如果要修改轨迹,只改这个共享配置文件里的 `BASE_CIRCLE_RADIUS`、`BASE_HEIGHT`、`BASE_ATTITUDE_AMPLITUDE_DEG`,然后重新 build。
 
@@ -332,7 +254,7 @@ expected_world(t) = p_ref_world(t)
 控制 demo 会在 `/student/joint_command` 的 `header.frame_id` 中标记 `moving_base_reset` / `moving_base_track`;作图程序在 `moving_base_circle` 模式下只从 `moving_base_track` 开始记录。
 `record_command_fk:=true` 会额外保存 `*_command_fk.csv/png`,用于对比“命令关节角对应的末端轨迹”和 `/joint_states` 反馈轨迹。
 
-## 7. 作图模块 — `trajectory_visualizer_demo.py`
+## 4. 作图模块 — `trajectory_visualizer_demo.py`
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
@@ -358,7 +280,7 @@ expected_world(t) = p_ref_world(t)
 | `data_dir` | `/home/windylab/code/windylab_ws/src/arm-platform/demo/data` | CSV/PNG 保存目录 |
 
 
-## 8. MPC IK 模块 — `move_arm_mpc_ik_demo.py/move_arm_horizontal_circle_mpc_ik_demo.py`
+## 5. MPC IK 模块 — `move_arm_mpc_ik_demo.py/move_arm_horizontal_circle_mpc_ik_demo.py`
 
 参数介绍：
 
@@ -374,7 +296,7 @@ expected_world(t) = p_ref_world(t)
 | `orientation_weight` | `0.375` | 姿态约束权重,仅 `lock_orientation:=true` 时生效 |
 | `terminal_orientation_weight` | `5.0` | 终端姿态约束权重,仅 `lock_orientation:=true` 时生效 |
 
-### 8.1 核心文件介绍
+### 5.1 核心文件介绍
 
 - `move_arm_mpc_ik_demo.py`:核心启动 demo —— 内部生成期望末端轨迹、按 50 Hz 调用 MPC 求解、把关节命令发布到 `/student/joint_command`,并负责 reset→track 切换与求解失败降级。
 - `move_arm_horizontal_circle_mpc_ik_demo.py`:上面那个节点类的水平圆封装(同一个类,仅把默认 `trajectory_mode` 设为 `horizontal_circle`)。
@@ -382,13 +304,13 @@ expected_world(t) = p_ref_world(t)
 - 期望轨迹:固定臂没有单独的轨迹发布节点,`circle`/`horizontal_circle`/`line` 由 demo 内部的 `_target()` 直接生成。
 
 
-### 8.2 话题的使用
+### 5.2 话题的使用
 
 - **MPC 接受的当前状态话题**:订阅 `/joint_states` 中的 `joint1`~`joint7`,作为 NMPC 闭环求解的当前状态(求解起点)。
 - **MPC 接收的期望状态话题**:无 —— demo 内部直接生成笛卡尔轨迹(`circle`/`horizontal_circle`/`line`),不订阅外部期望话题。
 - **MPC 输出的控制量话题**:发布 `/student/joint_command`(`sensor_msgs/JointState`,`position` = 下一拍关节角 `q_next`,`velocity` = 关节速度前馈 `dq_cmd`)。
 
-## 9. 调参
+## 6. 调参
 
 统一参数闭环离线调参脚本(固定臂 + 浮动基座臂四场景, 一套参数):
 
@@ -400,7 +322,7 @@ python3 tune_unified_mpc_params.py
 
 详细说明见 `MPC_TUNING_README.md`。
 
-## 10. 常见问题
+## 7. 常见问题
 
 ### 找不到 `acados_template`
 

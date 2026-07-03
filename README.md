@@ -30,6 +30,7 @@
 
 ## 三、按"我想做什么"导航
 
+- **我要在新机器上从零部署(一般电脑 / Jetson)** → [六、部署步骤](#六部署步骤一般电脑--jetson)
 - **我第一次用机械臂,想让它动起来** → [STUDENT_GUIDE.md](STUDENT_GUIDE.md)
 - **我要跑固定基 7 自由度臂的 NMPC** → [7DOF_ARM_NMPC_README.md](7DOF_ARM_NMPC_README.md)
 - **我要跑 LL100 的 NMPC demo(避障/画圆/贴桨盘)** → [LL100_LH420_MPC_README.md](LL100_LH420_MPC_README.md)
@@ -67,6 +68,127 @@
 
 ## 五、建议阅读顺序
 
+0. **新机器先部署**:[六、部署步骤](#六部署步骤一般电脑--jetson)(区分一般电脑 / Jetson)。
 1. **新手**:STUDENT_GUIDE → (选系统)7DOF_ARM_NMPC_README 或 LL100_LH420_MPC_README。
 2. **要精度**:上面之后 → MPC_TUNING_README(调参)。
 3. **要选/换求解器**:LL100_LH420_NMPC_Solver_README。
+
+---
+
+## 六、部署步骤(一般电脑 / Jetson)
+
+> 本章是**唯一的部署入口**。各分册 README 不再重复部署步骤,统一指回这里。
+> - **一般电脑** = x86_64 台式/笔记本,Ubuntu 22.04 + ROS 2 Humble。
+> - **Jetson** = NVIDIA Jetson(ARM64/aarch64,如 Orin NX,JetPack 6.x / Ubuntu 22.04)。
+>
+> 两类主体步骤相同,**只有 acados 编译和求解器取舍不同**;Jetson 的差异一律用 ⚠️ 标出。
+
+### 6.0 通用前提
+
+- 操作系统 Ubuntu 22.04,已装 ROS 2 Humble(`source /opt/ros/humble/setup.bash` 可用)。
+- 克隆到**固定路径** `~/code/windylab_ws`(脚本与文档默认此路径,别改):
+  ```bash
+  mkdir -p ~/code && git clone <本仓库地址> ~/code/windylab_ws
+  ```
+- ⚠️ Jetson 用户名通常是 `nvidia` 而非 `windylab`,命令里的 `~` 会自动展开成 `/home/nvidia`,没问题;**唯独**作图程序 `data_dir` 默认写死了 `/home/windylab/...`,Jetson 上跑作图时加参数覆盖:
+  `-p data_dir:=$HOME/code/windylab_ws/src/arm-platform/demo/data`。
+
+### 6.1 基础依赖(两类相同)
+
+```bash
+sudo apt update
+sudo apt install -y \
+  git cmake build-essential python3-pip pkg-config \
+  ros-humble-pinocchio ros-humble-robot-state-publisher ros-humble-rviz2 \
+  libeigen3-dev
+python3 -m pip install --user numpy scipy casadi
+```
+
+验证 Eigen ≥ 3.4(GRAMPC 需要):`pkg-config --modversion eigen3`。
+
+### 6.2 编译工作空间(两类相同)
+
+```bash
+cd ~/code/windylab_ws/src
+[ -d serial ] || git clone https://github.com/ZhaoXiangBox/serial.git serial
+
+cd ~/code/windylab_ws
+source /opt/ros/humble/setup.bash
+colcon build --packages-select serial dummy_interface manipulator
+source install/setup.bash
+```
+
+### 6.3 安装 acados(主力求解器)—— **这里区分两类**
+
+**一般电脑(x86_64):**
+
+```bash
+cd ~/code/windylab_ws/src/arm-platform
+scripts/install_acados.sh
+source scripts/setup_acados_env.sh
+python3 -c "import acados_template; print('acados ok')"
+```
+
+**⚠️ Jetson(ARM64):必须给 blasfeo 指定 ARM target**,否则默认按 x86 编,会编译失败或结果不对。安装脚本已支持用 `ACADOS_CMAKE_ARGS` 传入:
+
+```bash
+cd ~/code/windylab_ws/src/arm-platform
+export ACADOS_CMAKE_ARGS="-DBLASFEO_TARGET=ARMV8A_ARM_CORTEX_A57"
+scripts/install_acados.sh
+source scripts/setup_acados_env.sh
+python3 -c "import acados_template; print('acados ok')"
+```
+
+> Orin 是 Cortex-A78,blasfeo 无 A78 专项 target,用 `ARMV8A_ARM_CORTEX_A57` 覆盖全 ARMv8-A 即可;若编译报指令不支持,退到 `-DBLASFEO_TARGET=GENERIC`。首次编译在 Jetson 上明显更慢,耐心等。
+
+### 6.4(可选)对比 / benchmark 用的其它求解器
+
+只跑 LL100 demo **不需要**这步;要跑求解器对比(`benchmark_nmpc_solvers.py`)才装。各求解器的**选型状态与完整说明以 [Solver README](LL100_LH420_NMPC_Solver_README.md) 为准**,这里只给安装。
+
+- **GRAMPC(合格,对比要用)**:
+  ```bash
+  git clone https://github.com/grampc/pygrampc.git ~/code/pygrampc
+  cd ~/code/pygrampc && git submodule update --init --recursive
+  pip install --user --upgrade "packaging>=24" scikit-build-core pybind11 ninja cmake
+  pip install . --no-build-isolation --user
+  export PYGRAMPC_ROOT=~/code/pygrampc   # 建议写进 shell profile
+  ```
+- **OSQP 后端**(acados 重编,本环境判定不合格):见 Solver README §1.1。⚠️ Jetson 可跳过。
+- **Crocoddyl**(已淘汰,非实时,源码编译在 Jetson 上极慢):见 Solver README §1.5。⚠️ Jetson 建议跳过。
+
+> ⚠️ **Jetson 求解器取舍**:只装**能实时的合格解**—— acados(HPIPM/qpOASES,6.3 已含)+ GRAMPC。OSQP / Crocoddyl 跳过。
+
+### 6.5 环境自检 + 每次运行前激活
+
+一次性自检(只读,不改系统):
+
+```bash
+cd ~/code/windylab_ws/src/arm-platform
+source /opt/ros/humble/setup.bash
+source ~/code/windylab_ws/install/setup.bash
+source scripts/setup_acados_env.sh
+scripts/check_nmpc_env.sh
+```
+
+**每个新终端**跑 demo / 对比前,先激活环境:
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/code/windylab_ws/install/setup.bash
+source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
+export PYGRAMPC_ROOT=~/code/pygrampc      # 用到 GRAMPC 时
+```
+
+### 6.6 ⚠️ Jetson 专属注意
+
+1. **native 产物不能从 x86 搬**:别把 x86 机器上的 `build/`、`install/`、`~/code/acados/lib/`、acados 的 `c_generated_code/`、GRAMPC 的 `grampc_problem/*.so` 拷过来——架构不符。一律在 Jetson 上重新编。
+2. **acados target**:见 6.3(最常见的坑)。
+3. **编译慢**:acados、GRAMPC、colcon 首次编译比 x86 慢很多;acados 首次跑某配置还会现场生成 + 编译 C 求解器,属正常。
+4. **路径**:见 6.0 的 `data_dir` 提醒。
+
+### 6.7 部署完成后去哪
+
+- 跑 LL100 demo(避障/画圆/贴桨盘) → [LL100_LH420_MPC_README.md](LL100_LH420_MPC_README.md)
+- 跑固定基 7 自由度臂 demo → [7DOF_ARM_NMPC_README.md](7DOF_ARM_NMPC_README.md)
+- 跑求解器对比 / 选型 → [LL100_LH420_NMPC_Solver_README.md](LL100_LH420_NMPC_Solver_README.md)
+- 自动调参 → [MPC_TUNING_README.md](MPC_TUNING_README.md)

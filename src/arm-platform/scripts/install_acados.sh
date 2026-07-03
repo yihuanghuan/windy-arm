@@ -33,7 +33,11 @@ fi
 mkdir -p "${ACADOS_SOURCE_DIR}/build"
 cd "${ACADOS_SOURCE_DIR}/build"
 
-cmake -DACADOS_WITH_QPOASES=ON ..
+# 额外 cmake 参数,用于跨平台。例如 Jetson/ARM64 需指定 blasfeo target:
+#   export ACADOS_CMAKE_ARGS="-DBLASFEO_TARGET=ARMV8A_ARM_CORTEX_A57"
+# 一般 x86_64 电脑留空即可(blasfeo 自动探测)。
+echo "[ACADOS] extra cmake args: ${ACADOS_CMAKE_ARGS:-<none>}"
+cmake -DACADOS_WITH_QPOASES=ON ${ACADOS_CMAKE_ARGS:-} ..
 make install -j"${JOBS}"
 
 python3 -m pip install --user -e "${ACADOS_SOURCE_DIR}/interfaces/acados_template"
