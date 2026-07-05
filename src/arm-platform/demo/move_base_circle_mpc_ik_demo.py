@@ -70,8 +70,8 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.command_fk_step_warn_m = float(
             self.get_parameter('command_fk_step_warn_m').value)
 
-        if self.solver_backend not in ('acados', 'casadi', 'scipy'):
-            raise ValueError("solver_backend must be 'acados', 'casadi' or 'scipy'")
+        if self.solver_backend != 'acados':
+            raise ValueError("solver_backend must be 'acados'")
         if self.horizon_steps < 1:
             raise ValueError('horizon_steps must be >= 1')
         if self.max_joint_step <= 0.0:

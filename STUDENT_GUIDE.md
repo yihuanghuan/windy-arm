@@ -18,7 +18,7 @@ sudo apt install ros-humble-robot-state-publisher ros-humble-rviz2 \
 - Python 依赖(运行 IK 示例需要):
 
 ```bash
-pip3 install numpy scipy casadi
+pip3 install numpy casadi
 # pinocchio 的 python 绑定随 ros-humble-pinocchio 一起安装
 ```
 

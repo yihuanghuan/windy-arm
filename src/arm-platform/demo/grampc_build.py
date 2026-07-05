@@ -53,13 +53,11 @@ PYGRAMPC_ROOT = Path(os.environ.get("PYGRAMPC_ROOT", f"{_SCRATCH}/pygrampc"))
 def _pybind11_cmake_dir() -> str | None:
     """返回与已安装 pygrampc._core 内部 ABI 匹配的 pybind11 cmake 目录。
 
-    关键坑:本机有三套 pybind11——
-      /usr/include            2.9   (INTERNALS_VERSION=4)
-      ~/.local/.../pybind11   3.0.4 (INTERNALS_VERSION=11)
-    pygrampc._core 用的是 v11(`__pybind11_internals_v11_...`)。若用 /usr 的 2.9
-    头(CMake find_package 默认会选它)编译,我们的模块得到 v4 内部 type registry,
-    跨模块继承 grampc::ProblemDescription 失败,import 报 "unknown base type"。
-    必须强制用 .local 的 pybind11 3.0.4 cmake 目录(get_cmake_dir() 返回它)。
+    关键坑:ll100_grampc_problem 必须用与 pygrampc._core 相同的 pybind11 ABI。
+    pygrampc 的 pyproject.toml 钉住 pybind11==2.12.0(内部 registry v4);若本机
+    find_package 选到 3.x(v11),跨模块继承 grampc::ProblemDescription 会失败,
+    import 报 "unknown base type" 或 "ProblemDescription is not registered"。
+    默认使用当前 Python 环境里的 pybind11.get_cmake_dir();部署脚本会安装 2.12.0。
     """
     env = os.environ.get("PYBIND11_CMAKE_DIR")
     if env:

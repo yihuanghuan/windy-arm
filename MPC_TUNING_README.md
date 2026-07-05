@@ -249,9 +249,8 @@ Scenario("square", "move_arm_mpc_ik_demo.py", 8.0, False, _square, None,
 > 两个省事提示:
 > - 评估用的正运动学、奇异性判断都用一套**独立的**机器人模型算,跟你的算法内部无关 ——
 >   所以换算法**不用**自己再提供正运动学。
-> - 如果你只是想在内置 MPC 自带的后端(acados / casadi / scipy;casadi/scipy 已弃置为回退,另有 GRAMPC,
->   详见 [LL100_LH420_NMPC_Solver_README.md](LL100_LH420_NMPC_Solver_README.md))之间切换,**不用**动
->   `build_solver`,改 `_build_config()` 里的 `solver_backend` 一个字段就行。
+> - 当前共享 MPC 后端已裁剪为 acados;LL100 另有 GRAMPC 运行器。求解器部署与切换见
+>   [LL100_LH420_NMPC_Solver_README.md](LL100_LH420_NMPC_Solver_README.md)。
 
 #### 8.3 增加 / 减少"被调的参数"
 
@@ -408,16 +407,16 @@ if mode == "my_sweep":
 #### 8.2 切换 / 更换求解后端
 
 > 求解器的完整选型/对比/安装/筛选规则,以 **[LL100_LH420_NMPC_Solver_README.md](LL100_LH420_NMPC_Solver_README.md)** 为准。
-> 结论:合格解为 acados-HPIPM(默认)/ acados-qpOASES / GRAMPC;CasADi-IPOPT、SciPy-SLSQP 已弃置(慢,保留作离线参照)。
+> 结论:当前部署只保留 acados-HPIPM(默认)/ acados-qpOASES / GRAMPC。
 
-**本调参器**的 `--backend` 仍支持 acados / casadi / scipy(后两者为弃置回退,慢):
+**本调参器**的 `--backend` 只支持 acados:
 
 ```bash
-python3 tune_ll100_nmpc.py --path-mode avoidance_sweep --backend casadi   # 或 scipy(均为弃置回退)
+python3 tune_ll100_nmpc.py --path-mode avoidance_sweep --backend acados
 ```
 *效果:* 调参器与 demo 都会换用该后端求解,别的不用动。
 > 注:qpOASES 用 `-p acados_qp_solver:=FULL_CONDENSING_QPOASES`、GRAMPC 用 `-p solver_backend:=grampc`
-> 在 demo 里切换(见 Solver README §7);本调参器暂只覆盖 acados/casadi/scipy 三种 `--backend`。
+> 在 demo 里切换(见 Solver README §7);本调参器只覆盖 acados。
 
 想把内置 MPC 换成**你自己写的算法**:LL100 的求解器统一由共享的 `MpcPinocchioIK` 构造(与独立臂同一套),做法与「一、§8.2」一致 —— 把你的算法包成一个实现 `step()` 的对象(输入:未来目标序列 + 当前关节角 + 可选目标朝向;输出:下一拍关节角、成功标志、信息字典)。这属于共享求解器改动,改前建议先与独立臂那边协调。
 

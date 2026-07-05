@@ -3,6 +3,11 @@ set -euo pipefail
 
 # 从源码安装 ACADOS。默认安装到 $HOME/code/acados,也可提前设置:
 #   export ACADOS_SOURCE_DIR=/path/to/acados
+#
+# 本仓库只部署 acados SQP_RTI + HPIPM/qpOASES:
+#   - HPIPM 是 acados 默认 QP 后端
+#   - qpOASES 通过 ACADOS_WITH_QPOASES=ON 启用
+#   - OSQP/DAQP 显式关闭,避免安装无用后端
 
 ACADOS_SOURCE_DIR="${ACADOS_SOURCE_DIR:-${HOME}/code/acados}"
 ACADOS_REPO="${ACADOS_REPO:-https://github.com/acados/acados.git}"
@@ -37,7 +42,11 @@ cd "${ACADOS_SOURCE_DIR}/build"
 #   export ACADOS_CMAKE_ARGS="-DBLASFEO_TARGET=ARMV8A_ARM_CORTEX_A57"
 # 一般 x86_64 电脑留空即可(blasfeo 自动探测)。
 echo "[ACADOS] extra cmake args: ${ACADOS_CMAKE_ARGS:-<none>}"
-cmake -DACADOS_WITH_QPOASES=ON ${ACADOS_CMAKE_ARGS:-} ..
+cmake \
+  -DACADOS_WITH_QPOASES=ON \
+  -DACADOS_WITH_OSQP=OFF \
+  -DACADOS_WITH_DAQP=OFF \
+  ${ACADOS_CMAKE_ARGS:-} ..
 make install -j"${JOBS}"
 
 python3 -m pip install --user -e "${ACADOS_SOURCE_DIR}/interfaces/acados_template"

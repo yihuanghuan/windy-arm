@@ -19,47 +19,33 @@
 
 所有求解器都在 `src/arm-platform/demo/` 下运行,先激活环境(见 1.7)。
 
-### 1.1 acados(主力,提供 HPIPM / qpOASES / OSQP 三个 QP 后端)
+### 1.1 acados(主力,只部署 HPIPM / qpOASES 两个 QP 后端)
 acados 是一个 NMPC/OCP 求解框架:它做 SQP/RTI 迭代,每次迭代把问题线性化成一个 QP,交给一个 **QP 后端**求解。
-所以 "HPIPM / qpOASES / OSQP" 不是三个独立求解器,而是 acados 内部可换的 QP 后端。
+所以 "HPIPM / qpOASES" 不是两个独立求解器,而是 acados 内部可换的 QP 后端。
 
 - 安装位置:`~/code/acados`(源码 + 编译产物 `lib/`)。
 - QP 后端由编译开关决定。查当前开关:
   ```bash
-  grep -iE "ACADOS_WITH_(HPIPM|QPOASES|OSQP|DAQP):" ~/code/acados/build/CMakeCache.txt
+  grep -iE "ACADOS_WITH_(QPOASES|OSQP|DAQP):" ~/code/acados/build/CMakeCache.txt
   ```
-- 本环境已编译:**HPIPM + qpOASES + OSQP**(`ACADOS_WITH_OSQP=ON`)。DAQP 未编译。
-- **OSQP 是后加的**:acados 默认不含 OSQP,需重编。源码已在 `~/code/acados/external/osqp`,重编步骤:
+- 本仓库部署目标:**HPIPM + qpOASES**。安装脚本会显式设置 `ACADOS_WITH_QPOASES=ON`,
+  `ACADOS_WITH_OSQP=OFF`, `ACADOS_WITH_DAQP=OFF`。
+- 安装/重编:
   ```bash
-  cp -a ~/code/acados/lib ~/code/acados/lib_backup           # 先备份
-  cd ~/code/acados/build
-  /usr/bin/cmake -DACADOS_WITH_OSQP=ON .                     # 用系统 cmake(3.x),别用 pip 装的 cmake4
-  /usr/bin/cmake --build . --target install -j
-  # 验证:nm -D ~/code/acados/lib/libacados.so | grep ocp_qp_osqp 应有输出
+  cd ~/code/windylab_ws/src/arm-platform
+  scripts/install_acados.sh
+  source scripts/setup_acados_env.sh
   ```
-  ⚠️ 重编会替换共享的 `libacados.so`,若有别的进程在用 acados,先协调停手。
 
-### 1.2 CasADi + IPOPT(弃置回退,保留作离线高精度参照)
-- IPOPT 通过 CasADi 调用。安装:`pip install casadi`(或系统包 `python3-casadi`)。
-- 定位:太慢(~1100ms/步、实时率 0%),不进实时回路,**已弃置**;但完整收敛、精度高,留作离线 ground-truth。
-
-### 1.3 SciPy + SLSQP(弃置回退)
-- 用 `scipy.optimize.minimize(method="SLSQP")`,`pip install scipy` 即可。
-- 定位:~45ms/步、实时率低,**已弃置**。
-
-### 1.4 GRAMPC(增广拉格朗日 + 梯度法,C++ 编译问题描述)
+### 1.2 GRAMPC(增广拉格朗日 + 梯度法,C++ 编译问题描述)
 GRAMPC 通过 Python 绑定 **pygrampc** 使用,问题描述用 CasADi codegen 出 C 导数、编译成 C++ 模块(测速真实)。
 
 前置:**Eigen 3.4**(`pkg-config --modversion eigen3` 应 ≥ 3.4)、C++ 编译器。安装:
 ```bash
-# 1) 拉源码(pygrampc + grampc 子模块)。建议放持久目录,别放 /tmp
-git clone https://github.com/grampc/pygrampc.git ~/code/pygrampc
-cd ~/code/pygrampc && git submodule update --init --recursive
-# 2) 修构建依赖(旧 packaging 会报 InvalidName)
-pip install --user --upgrade "packaging>=24" scikit-build-core pybind11 ninja cmake
-# 3) 免构建隔离编译安装
-pip install . --no-build-isolation --user
-python3 -c "import pygrampc; print(pygrampc.__version__)"   # 应打印 2.2.2
+cd ~/code/windylab_ws/src/arm-platform
+scripts/install_grampc.sh
+source scripts/setup_acados_env.sh
+python3 -c "import pygrampc; print('pygrampc ok')"
 ```
 - 首次运行对比程序时,`grampc_build.ensure_module()` 会自动用 CasADi codegen + scikit-build 编译
   LL100 的 GRAMPC 问题模块到 `src/arm-platform/demo/grampc_problem/`(生成 `.c/.h/.so`),之后复用。
@@ -71,52 +57,20 @@ python3 -c "import pygrampc; print(pygrampc.__version__)"   # 应打印 2.2.2
   ```
   (放进 `setup_acados_env.sh` 或你的 shell profile,避免每次手动设。)
 
-### 1.5 Crocoddyl(DDP + mim_solvers CSQP 硬约束,源码编译;已实测淘汰)
-Crocoddyl 是 DDP/FDDP 最优控制框架,配 mim_solvers 的 CSQP 可做硬约束。已接入对比
-([crocoddyl_ll100.py](src/arm-platform/demo/crocoddyl_ll100.py)),但**实测非实时**(~100–250ms/步、fallback 上千、过不了安全门槛,见 §4.4 备注),仅作 DDP 路线对照,不进实时回路。
-
-- **务必 ABI 兼容**:本机 Pinocchio 是 apt 包 `ros-humble-pinocchio` 3.9.0(`/opt/ros/humble`)。
-  **绝不能 `pip install crocoddyl/pinocchio`**——会拉进第二个 Pinocchio 与 ROS 版冲突。apt 源无现成
-  `ros-humble-crocoddyl`,故针对 ROS 的 Pinocchio 从源码编译。
-- 依赖:`sudo apt-get install -y ros-humble-jrl-cmakemodules`。
-- 源码 + 版本(装到独立前缀,不污染系统):
-  ```bash
-  ROOT=~/.local/src/crocoddyl_ros_humble
-  PREFIX=~/.local/opt/crocoddyl_ros_humble_pinocchio39
-  git clone --depth 1 -b v2.0.0 https://github.com/jrl-umi3218/jrl-cmakemodules.git $ROOT/jrl-cmakemodules
-  git clone --depth 1 -b v3.2.1 https://github.com/loco-3d/crocoddyl.git             $ROOT/crocoddyl
-  git clone --depth 1 -b v0.3.0 https://github.com/machines-in-motion/mim_solvers.git $ROOT/mim_solvers
-  # 依次 cmake(-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PREFIX)构建 + install
-  # 提速:crocoddyl 的 CMakeLists 里 SCALAR_TYPES 只留 double(删 float),省一半绑定编译量
-  ```
-- 用前把前缀加进 `PYTHONPATH`,并验证 Pinocchio 仍是 ROS 版(没被换掉):
-  ```bash
-  export PYTHONPATH=$PREFIX/lib/python3.10/site-packages:$PYTHONPATH
-  python3 -c "import pinocchio,crocoddyl,mim_solvers; print(pinocchio.__version__)"   # 应仍是 3.9.0
-  ```
-- 跑对比:`python3 benchmark_nmpc_solvers.py --only crocoddyl --path-mode <场景> --periods 1.0`
-  (它 `status=pending`、单独 tier,不进默认扫描;单步超时上限由 `CROCODDYL_MAX_SOLVE_TIME` 控制,默认 0.25s)。
-
-### 1.6 各求解器速查
+### 1.3 各求解器速查
 
 | 求解器 | 载体 | 安装 | 状态 |
 |---|---|---|---|
 | acados + HPIPM | acados 内置 | 编译 acados | **合格(默认)** |
 | acados + qpOASES | acados(`ACADOS_WITH_QPOASES=ON`) | 编译 acados | **合格** |
-| acados + OSQP | acados(需 `-DACADOS_WITH_OSQP=ON` 重编) | 见 1.1 | 不合格(卡奇异) |
-| acados 全SQP | acados(`nlp_solver_type=SQP`) | 编译 acados | 不合格(卡奇异) |
-| GRAMPC | pygrampc + C++ codegen | 见 1.4 | **合格** |
-| Crocoddyl | crocoddyl + mim_solvers(源码编译) | 见 1.5 | **淘汰(非实时,~100–250ms/步)** |
-| CasADi + IPOPT | casadi | `pip install casadi` | 弃置回退 |
-| SciPy + SLSQP | scipy | `pip install scipy` | 弃置回退 |
+| GRAMPC | pygrampc + C++ codegen | 见 1.2 | **合格** |
 
-### 1.7 激活环境(每次跑之前)
+### 1.4 激活环境(每次跑之前)
 ```bash
 cd ~/code/windylab_ws/src/arm-platform/demo
 source /opt/ros/humble/setup.bash
 source ~/code/windylab_ws/install/setup.bash
 source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
-export PYGRAMPC_ROOT=~/code/pygrampc        # GRAMPC 用
 ```
 
 ---
@@ -145,16 +99,14 @@ python3 benchmark_nmpc_solvers.py --only acados_sqp_rti_hpipm,acados_sqp_rti_qpo
 | `--periods` | `0.3` | 跑几个轨迹周期。|
 | `--repeats` | `1` | 每个求解器重复跑几次。|
 | `--warmup-frac` | `0.5` | 稳态口径:跳过前 `frac×步数` 步排除启动暂态,让 RMS 反映真实稳态精度(需 `periods≥~0.7`) |
-| `--tier` | `all` | 只跑某一档:`A`=完整求解器 / `B`=固定 acados 换 QP 后端 / `all` |
-| `--only` | 无 | 逗号分隔的求解器 key,只跑指定的(无视 status,可复跑淘汰项) |
-| `--include-eliminated` | 关 | 连同弃置/待启用的一起跑(默认只跑 `status=active`) |
+| `--tier` | `all` | 只跑某一档:`acados` / `grampc` / `all` |
+| `--only` | 无 | 逗号分隔的求解器 key,只跑指定的 |
 | `--max-velocity` | `0.5` | 闭环 plant 的底层关节限速 rad/s(与 launch 一致) |
 | `--plot` / `--no-plot` | 开 | 是否出 P95 速度 + RMS 精度柱状图(需 matplotlib) |
 | `--quiet-build` / `--no-quiet-build` | 开 | 是否静音 acados/GRAMPC 的代码生成/编译输出 |
 | `--output-dir` | `demo/data` | CSV/图输出目录 |
 
-求解器 key:`acados_sqp_rti_hpipm` / `acados_sqp_rti_qpoases` / `acados_sqp_rti_osqp` /
-`acados_sqp_hpipm`(全SQP)/ `grampc` / `casadi_ipopt` / `scipy_slsqp`。
+求解器 key:`acados_sqp_rti_hpipm` / `acados_sqp_rti_qpoases` / `grampc`。
 
 ---
 
@@ -179,9 +131,8 @@ python3 benchmark_nmpc_solvers.py --only acados_sqp_rti_hpipm,acados_sqp_rti_qpo
 3. **命令可用**:`fallback == 0` —— 每步都要解出能用的命令(求解器失败会回退保持,fallback>0 说明它经常解不出)。
 
 > 为什么奇异按"稳态"判?机械臂的 **home(neutral)姿态本身就近奇异**(σ_min≈8e-6),离开 home 去追轨迹的
-> 启动段会短暂近奇异——这是初始条件伪信号,不是求解器的错。**稳态窗口**能正确区分:三合格解稳态
-> σ_min≈0.03–0.04(安全),而全SQP/OSQP 是**全程卡在奇异**(σ_min≈3e-5,真不合格)。避障(碰撞)则必须
-> 覆盖全程,因为接近段撞障碍是真风险。
+> 启动段会短暂近奇异——这是初始条件伪信号,不是求解器的错。**稳态窗口**只评价追踪稳定后的状态;
+> 避障(碰撞)则必须覆盖全程,因为接近段撞障碍是真风险。
 
 ### 4.3 决策优先级(合格者内部排序)
 
@@ -201,45 +152,30 @@ python3 benchmark_nmpc_solvers.py --only acados_sqp_rti_hpipm,acados_sqp_rti_qpo
 
 ### 4.4 测试结果（纯求解器版本）
 
-**测试条件**:部署避障几何(中心线胶囊 `capsule_points` + 斥力,前桨/机身共约 50 硬约束)、`periods=1.0`、稳态 RMS 口径。列三类场景(不含 `avoidance_sweep`;它每周期短暂穿近奇异,单列见下方备注)。"最大求解"= 单轮最坏单步(含启动尖峰,仍应 <20ms 实时预算)。
+**测试条件**:Jetson `nvpmodel` **40W** 模式(mode id `4`, 2026-07-03 实测)、部署避障几何(中心线胶囊 `capsule_points` + 斥力,前桨/机身共约 50 硬约束)、`periods=1.0`、`repeats=3`、稳态 RMS 口径。列三类场景(不含 `avoidance_sweep`;它每周期短暂穿近奇异,单列见下方备注)。"最大求解"= 三次重复中的最坏单步(含启动/重建尖峰);实时性主要看 P95 与 20ms 控制周期的裕度。原始数据在 `src/arm-platform/demo/data/jetson_40w_20260703/benchmark_nmpc_*.csv`。
 
 #### lower_obstacle_circle
-| 求解器配置 | 平均求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
-|---|---:|---:|---:|:---:|
-| acados SQP_RTI + qpOASES | 1.00 | 11.14 | 0.69 | ✅ |
-| acados SQP_RTI + HPIPM | 2.53 | 15.92 | 0.69 | ✅ |
-| GRAMPC | 4.23 | 8.79 | 0.59 | ✅ |
-| acados 全SQP + HPIPM | 43.72 | 55.37 | 198.87 | ❌ |
-| acados SQP_RTI + OSQP | 92.53 | 169.70 | 337.59 | ❌ |
-| CasADi + IPOPT | ~1100 | — | — | 弃置 |
-| SciPy + SLSQP | ~45 | — | — | 弃置 |
+| 求解器配置 | 平均求解(ms) | P95求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
+|---|---:|---:|---:|---:|:---:|
+| acados SQP_RTI + qpOASES | 4.92 | 12.00 | 22.42 | 0.69 | ✅ |
+| acados SQP_RTI + HPIPM | 15.98 | 35.65 | 84.99 | 0.69 | ✅ |
+| GRAMPC | 19.56 | 20.30 | 21.65 | 0.59 | ✅ |
 
 #### circle
-| 求解器配置 | 平均求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
-|---|---:|---:|---:|:---:|
-| acados SQP_RTI + qpOASES | 0.88 | 4.96 | 2.41 | ✅ |
-| acados SQP_RTI + HPIPM | 2.36 | 16.02 | 2.41 | ✅ |
-| GRAMPC | 4.28 | 6.33 | 0.96 | ✅ |
-| acados 全SQP + HPIPM | 3.40 | 55.75 | 2.41 | ✅ |
-| acados SQP_RTI + OSQP | 4.52 | 94.50 | 2.37 | ❌ |
-| CasADi + IPOPT | ~1100 | — | — | 弃置 |
-| SciPy + SLSQP | ~45 | — | — | 弃置 |
+| 求解器配置 | 平均求解(ms) | P95求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
+|---|---:|---:|---:|---:|:---:|
+| acados SQP_RTI + qpOASES | 3.98 | 4.27 | 13.60 | 2.41 | ✅ |
+| acados SQP_RTI + HPIPM | 14.10 | 14.39 | 85.45 | 2.41 | ✅ |
+| GRAMPC | 19.49 | 19.97 | 20.48 | 0.96 | ✅ |
 
 #### front_wing_arc
-| 求解器配置 | 平均求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
-|---|---:|---:|---:|:---:|
-| acados SQP_RTI + qpOASES | 1.12 | 9.17 | 2.37 | ✅ |
-| acados SQP_RTI + HPIPM | 2.87 | 13.04 | 2.38 | ✅ |
-| GRAMPC | 4.70 | 6.59 | 1.67 | ✅ |
-| acados 全SQP + HPIPM | 37.31 | 49.66 | 138.21 | ❌ |
-| acados SQP_RTI + OSQP | 118.89 | 180.19 | 234.37 | ❌ |
-| CasADi + IPOPT | ~1100 | — | — | 弃置 |
-| SciPy + SLSQP | ~45 | — | — | 弃置 |
+| 求解器配置 | 平均求解(ms) | P95求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
+|---|---:|---:|---:|---:|:---:|
+| acados SQP_RTI + qpOASES | 5.30 | 12.76 | 20.48 | 2.37 | ✅ |
+| acados SQP_RTI + HPIPM | 17.76 | 36.04 | 85.80 | 2.37 | ✅ |
+| GRAMPC | 19.68 | 20.18 | 21.37 | 1.67 | ✅ |
 
-> **弃置两项(CasADi-IPOPT / SciPy-SLSQP)**:实时率 0%/低,不进实时回路,故不在新几何逐场景重跑;
-> 平均求解为旧几何/离线实测量级(新几何约束更多只会更慢),仅作对照。IPOPT 完整收敛可作离线精度 ground-truth。
-
-**结论(三场景一致)**:qpOASES / HPIPM / GRAMPC 三者全 safe;按优先级(安全>求解时间>精度)**首选 acados qpOASES**(平均 0.9–1.1ms、最快),HPIPM 次之(均衡),GRAMPC 精度常最好(0.59–1.67mm)且最大求解最稳(无启动尖峰)。全SQP/OSQP 除 circle 外基本不合格。
+**结论(40W 纯求解器)**:qpOASES / HPIPM / GRAMPC 三者全 safe;按优先级(安全>求解时间>精度)**首选 acados qpOASES**。qpOASES 在三场景 P95 均低于 13ms,实时裕度最好;HPIPM 在 lower/front 场景有明显启动/重建尖峰(P95 35ms+、最大约 85ms);GRAMPC 的 RMS 往往最好,但 P95 接近或略高于 20ms,适合作为精度/鲁棒性参考而非默认最快后端。
 
 > **备注 `avoidance_sweep`**:该场景每周期短暂穿近奇异。新中心线胶囊几何下 qpOASES/HPIPM 已能保持 σ_min≈2.6e-3 过门槛(safe),但 **GRAMPC 在此场景擦障(viol≈14mm)+ 近奇异** → GRAMPC 的增广拉格朗日是软约束、苛刻场景可被突破,而 acados 是真硬约束。对"绝不碰撞"要求,acados 更可靠。
 
@@ -252,33 +188,33 @@ python3 benchmark_nmpc_solvers.py --only acados_sqp_rti_hpipm,acados_sqp_rti_qpo
 - **`compute`**:tick 入口 → publish(回调内全部计算:FK+雅可比+求解+marker+rclpy)。
 - **`end_to_end`** = feedback_age + compute:传感器 → 命令,真实控制延迟。
 
-**测试条件**:RMW=Fast-DDS、`taskset` 核隔离 + `nice` 降扰、独立 `ROS_DOMAIN_ID`、50Hz 反馈、跳过 5s 暖机、每格约 1500 样本;三后端各在三场景跑一次。GRAMPC 需先把问题模块重建到当前约束(见 §1.4)才能上机。
+**测试条件**:Jetson `nvpmodel` **40W** 模式(mode id `4`, 2026-07-03 实测)、RMW=Fast-DDS、`taskset -c 4-7` 固定 CPU、默认调度(`nice=0`)、独立 `ROS_DOMAIN_ID=81..89`、50Hz 反馈、跳过 5s 暖机、每格 1503-1520 个样本;三后端各在三场景跑一次。GRAMPC 已按当前约束重建问题模块。原始数据在 `src/arm-platform/demo/data/jetson_40w_20260703/latency_*.csv`,汇总见 `latency_summary_40w.csv`。
 
 #### lower_obstacle_circle
 | 求解器配置 | compute 均值(ms) | compute P95(ms) | end_to_end 均值(ms) | end_to_end P95(ms) |
 |---|---:|---:|---:|---:|
-| acados SQP_RTI + qpOASES | 7.06 | 7.44 | 12.90 | 13.08 |
-| acados SQP_RTI + HPIPM | 7.97 | 8.28 | 15.43 | 16.41 |
-| GRAMPC | 7.12 | 7.45 | 15.83 | 16.59 |
+| acados SQP_RTI + qpOASES | 17.80 | 18.24 | 18.26 | 18.74 |
+| acados SQP_RTI + HPIPM | 22.50 | 22.85 | 22.98 | 23.34 |
+| GRAMPC | 24.28 | 24.73 | 24.73 | 25.20 |
 
 #### circle
 | 求解器配置 | compute 均值(ms) | compute P95(ms) | end_to_end 均值(ms) | end_to_end P95(ms) |
 |---|---:|---:|---:|---:|
-| acados SQP_RTI + qpOASES | 9.25 | 9.72 | 15.80 | 16.85 |
-| acados SQP_RTI + HPIPM | 12.35 | 12.70 | 15.95 | 16.81 |
-| GRAMPC | 6.87 | 7.08 | 15.68 | 16.84 |
+| acados SQP_RTI + qpOASES | 16.74 | 17.21 | 17.20 | 17.70 |
+| acados SQP_RTI + HPIPM | 28.44 | 29.03 | 28.93 | 29.54 |
+| GRAMPC | 24.27 | 24.69 | 24.72 | 25.17 |
 
 #### front_wing_arc
 | 求解器配置 | compute 均值(ms) | compute P95(ms) | end_to_end 均值(ms) | end_to_end P95(ms) |
 |---|---:|---:|---:|---:|
-| acados SQP_RTI + qpOASES | 6.48 | 6.89 | 15.85 | 16.47 |
-| acados SQP_RTI + HPIPM | 9.57 | 10.18 | 15.32 | 15.65 |
-| GRAMPC | 7.01 | 7.50 | 15.81 | 16.75 |
+| acados SQP_RTI + qpOASES | 24.37 | 25.07 | 24.84 | 25.56 |
+| acados SQP_RTI + HPIPM | 40.72 | 41.29 | 41.22 | 41.79 |
+| GRAMPC | 24.38 | 24.89 | 24.84 | 25.38 |
 
 **结论(接入 ROS)**:
-1. **三后端 compute P95 全 ≤ 12.7ms、稳稳 <20ms** —— 接入 ROS 后仍全部实时可行。
-2. **约 6ms 的节点固定开销(FK+雅可比+marker+rclpy)压平了求解器差异**:纯求解 4.7 倍差距(qpOASES ~1ms / HPIPM ~2.5ms / GRAMPC ~4.7ms)上机后压缩到 <2 倍;唯一仍可见的规律是 **HPIPM 上机后一致最慢**(partial-condensing 每次调用开销更大,circle 场景 P95 12.7ms)。
-3. **`end_to_end` P95 稳定在 ~13–17ms,与后端/场景基本无关** —— compute 与 feedback_age 此消彼长、填满约一个 tick 周期。**上机后端到端延迟的瓶颈是控制周期时序,不是求解器速度。**
+1. **只有 lower/circle 的 qpOASES 保持在 20ms 周期内**(end_to_end P95 18.74/17.70ms);front_wing_arc + qpOASES 因 horizon=6、约束更重,端到端 P95 25.56ms。
+2. **HPIPM 上机后一致最慢**,尤其 front_wing_arc 的 compute P95 41.29ms、end_to_end P95 41.79ms,不适合作为当前 50Hz 默认后端。
+3. **GRAMPC 延迟稳定但约 25ms**,三场景 end_to_end P95 25.17-25.38ms,安全/精度可作为参考,但当前 50Hz 下实时裕度不足。若坚持 50Hz,优先用 qpOASES 并降低 front_wing_arc horizon/marker 开销;若使用 HPIPM/GRAMPC,建议降频到 25-40Hz 或进一步优化节点计算。
 
 > **口径**:零反馈源 + 本机 ROS 回环、Fast-DDS 默认 QoS。此回环下臂不动,故**只测延迟、不测 RMS/safe**(要测精度/避障需把真实 plant 仿真接进 ROS);**不含真机传感器/总线延迟**,真机会更大。插桩藏在 `latency_profiling` 参数后(默认关),不影响正常运行。
 
@@ -298,37 +234,30 @@ python3 move_ll100_lh420_nmpc_demo.py --ros-args -p latency_profiling:=true \
 ```python
 SolverConfig(
     key="acados_sqp_rti_qpoases",          # 唯一名字(--only 用它)
-    backend="acados",                      # 载体:acados / casadi / scipy / grampc
-    nlp_solver_type="SQP_RTI",             # acados 专用:SQP_RTI / SQP
+    backend="acados",                      # 载体:acados / grampc
+    nlp_solver_type="SQP_RTI",             # 本仓库只部署 SQP_RTI
     qp_solver="FULL_CONDENSING_QPOASES",   # acados 专用 QP 后端
-    tiers=("B",),                          # 属于哪档(A/B),仅用于 --tier 过滤
+    tiers=("acados",),                     # 用于 --tier 过滤
     label="acados SQP_RTI + qpOASES",      # 显示名
-    status="active",                       # active=参与对比 / eliminated=弃置只记录 / pending=待启用
+    status="active",                       # active=参与对比
     note="...",                            # 备注
     extra_overrides=(("acados_qp_solver_iter_max", 500),  # 覆盖 MpcIkConfig 的任意字段
                      ("acados_qp_warm_start", 1)),
 )
 ```
 
-### 5.1 增加一个 acados QP 后端变体(最简单,零重构)
-例:加 acados 的 DAQP 后端。
-1. 先确认 acados 编了 DAQP:`grep ACADOS_WITH_DAQP ~/code/acados/build/CMakeCache.txt`。没有就先重编(见 1.1)。
-2. 在 `solver_matrix()` 列表里加一行:
-   ```python
-   SolverConfig("acados_sqp_rti_daqp", "acados", "SQP_RTI",
-                "FULL_CONDENSING_DAQP", ("B",), "acados SQP_RTI + DAQP", status="active"),
-   ```
-3. 跑:`python3 benchmark_nmpc_solvers.py --only acados_sqp_rti_daqp --periods 1.0`。
-> 原理:不同 QP 后端会各自生成独立的 acados 编译目录(build_dir 后缀含 nlp/qp/iter/ws),互不污染。
+### 5.1 调整 acados QP 后端参数
+当前只保留 HPIPM 与 qpOASES。若要比较 qpOASES 在不同迭代上限下的表现,复制
+`acados_sqp_rti_qpoases` 那一行,修改 `key` 和 `extra_overrides` 即可。
 
 ### 5.2 增加一个"同求解器不同参数"的变体(用 extra_overrides)
 例:比较 qpOASES 在 iter_max=100 vs 1000。复制两行,`extra_overrides` 分别设不同 `acados_qp_solver_iter_max`,
 `key` 取不同名即可。`extra_overrides` 能覆盖 `MpcIkConfig` 的任意字段(权重、horizon、margin、
 `acados_hessian_approx` 等),改完自动进 build_dir 后缀,不同变体各自编译。
 
-### 5.3 弃置/淘汰一个求解器(不删除)
-把它那行的 `status` 从 `"active"` 改成 `"eliminated"`,补 `note` 说明原因。它就不再跑、只作为记录行
-出现在汇总表和 CSV 里(保留可追溯,想复跑用 `--only <key>`)。IPOPT/SLSQP 就是这么处理的。
+### 5.3 删除一个求解器
+直接从 `solver_matrix()` 删除对应配置,并同步移除 demo 参数校验和部署脚本中的相关依赖。当前仓库已经
+按部署目标裁剪,不再保留弃置求解器的运行路径。
 
 ### 5.4 增加一个全新求解器载体(工作量大,参考 GRAMPC)
 如果不是 acados 的 QP 变体,而是一个全新求解器(像 GRAMPC),要:
@@ -371,25 +300,18 @@ python3 move_ll100_lh420_nmpc_demo.py --ros-args -p acados_qp_solver:=FULL_CONDE
 # ③ GRAMPC(精度第一)
 python3 move_ll100_lh420_nmpc_demo.py --ros-args -p solver_backend:=grampc
 
-# ④ acados 全 SQP(不合格,仅试)
-python3 move_ll100_lh420_nmpc_demo.py --ros-args -p acados_nlp_solver_type:=SQP
-
-# ⑤ 弃置回退 IPOPT(会打印弃置警告,慢)
-python3 move_ll100_lh420_nmpc_demo.py --ros-args -p solver_backend:=casadi
 ```
 
 三个求解器选择参数:
 
 | ROS 参数 | 默认 | 取值 |
 |---|---|---|
-| `solver_backend` | `acados` | `acados` / `grampc` / `casadi`(IPOPT,弃置)/ `scipy`(SLSQP,弃置) |
-| `acados_nlp_solver_type` | `SQP_RTI` | `SQP_RTI` / `SQP`(仅 acados) |
-| `acados_qp_solver` | `PARTIAL_CONDENSING_HPIPM` | `..._HPIPM` / `FULL_CONDENSING_QPOASES` / `PARTIAL_CONDENSING_OSQP`(需重编 acados) |
+| `solver_backend` | `acados` | `acados` / `grampc` |
+| `acados_nlp_solver_type` | `SQP_RTI` | `SQP_RTI` |
+| `acados_qp_solver` | `PARTIAL_CONDENSING_HPIPM` | `PARTIAL_CONDENSING_HPIPM` / `FULL_CONDENSING_QPOASES` |
 
-> - OSQP 需先按 1.1 重编 acados 才能选。
-> - GRAMPC 需先按 1.4 装好 pygrampc 且设 `PYGRAMPC_ROOT`。
+> - GRAMPC 需先按 1.2 装好 pygrampc 且设 `PYGRAMPC_ROOT`。
 > - 组合示例:同时改 backend 和 qp,多个 `-p` 并列即可。
-> - 选 `casadi`/`scipy` 时节点会打印"弃置回退"警告——它们能跑但慢,不建议实时用。
 
 ---
 
@@ -397,7 +319,5 @@ python3 move_ll100_lh420_nmpc_demo.py --ros-args -p solver_backend:=casadi
 
 - 本 README 是求解器选型的单一事实源。
 - [LL100_LH420_MPC_README.md](LL100_LH420_MPC_README.md)(LL100 demo 说明)与
-  [MPC_TUNING_README.md](MPC_TUNING_README.md)(调参说明 §8.2"三种后端")建议各加一处指向本文的链接,
-  并把"三种后端 acados/casadi/scipy"更新为"三合格解 + 两弃置回退"。这两个文件由调参侧维护,改动需协调。
-- [7DOF_ARM_NMPC_README.md](7DOF_ARM_NMPC_README.md):7 自由度臂 demo 仍只支持 acados/casadi/scipy
-  (GRAMPC 是 LL100 专属),基本无需改;顶多注明 casadi/scipy 为弃置回退。
+  [MPC_TUNING_README.md](MPC_TUNING_README.md)(调参说明)应指向本文的部署口径。
+- [7DOF_ARM_NMPC_README.md](7DOF_ARM_NMPC_README.md):7 自由度臂 demo 只保留 acados 路径;GRAMPC 是 LL100 专属。

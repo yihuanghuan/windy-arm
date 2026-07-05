@@ -618,7 +618,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-velocity", type=float, default=DEFAULT_MAX_VELOCITY,
                         help="闭环 plant 的底层关节限速 rad/s(应与 student_arm max_velocity 一致;"
                              "max_joint_step 由它派生 = max_velocity·control_dt)")
-    parser.add_argument("--backend", choices=("acados", "casadi", "scipy"), default="acados")
+    parser.add_argument("--backend", choices=("acados",), default="acados")
     parser.add_argument("--period", type=float, default=EVAL_PERIOD_SEC,
                         help="一圈时长 s(完成时间;越长越精准)")
     parser.add_argument("--periods", type=float, default=1.0, help="计时跟踪的圈数")

@@ -38,7 +38,7 @@ check_python_module() {
   fi
 }
 
-echo "== NMPC / ACADOS 环境检查 =="
+echo "== NMPC / ACADOS / GRAMPC 环境检查 =="
 
 check_cmd python3 "请安装 python3。"
 check_cmd cmake "请安装: sudo apt install cmake"
@@ -46,13 +46,15 @@ check_cmd make "请安装: sudo apt install build-essential"
 check_cmd git "请安装: sudo apt install git"
 
 check_python_module numpy "请安装: python3 -m pip install --user numpy"
-check_python_module scipy "请安装: sudo apt install python3-scipy 或 pip 安装 scipy"
-check_python_module casadi "请安装: python3 -m pip install --user casadi"
+check_python_module casadi "acados/GRAMPC 代码生成需要 CasADi。请安装: python3 -m pip install --user casadi"
 check_python_module pinocchio "请安装: sudo apt install ros-humble-pinocchio,并 source /opt/ros/humble/setup.bash"
 check_python_module acados_template "请先运行 scripts/install_acados.sh,然后 source scripts/setup_acados_env.sh"
+check_python_module pygrampc "请先运行 scripts/install_grampc.sh,然后 source scripts/setup_acados_env.sh"
 
 ACADOS_SOURCE_DIR="${ACADOS_SOURCE_DIR:-${HOME}/code/acados}"
+PYGRAMPC_ROOT="${PYGRAMPC_ROOT:-${HOME}/code/pygrampc}"
 echo "[信息] ACADOS_SOURCE_DIR=${ACADOS_SOURCE_DIR}"
+echo "[信息] PYGRAMPC_ROOT=${PYGRAMPC_ROOT}"
 
 if [ -d "${ACADOS_SOURCE_DIR}" ]; then
   pass "ACADOS 源码目录存在"
@@ -64,6 +66,25 @@ if [ -f "${ACADOS_SOURCE_DIR}/lib/libacados.so" ]; then
   pass "找到 libacados.so"
 else
   fail "未找到 ${ACADOS_SOURCE_DIR}/lib/libacados.so。ACADOS 可能尚未 make install。"
+fi
+
+if [ -f "${ACADOS_SOURCE_DIR}/build/CMakeCache.txt" ]; then
+  if grep -q "ACADOS_WITH_QPOASES:BOOL=ON" "${ACADOS_SOURCE_DIR}/build/CMakeCache.txt"; then
+    pass "acados 已启用 qpOASES"
+  else
+    fail "acados 未启用 qpOASES。请重新运行 scripts/install_acados.sh"
+  fi
+  if grep -q "ACADOS_WITH_OSQP:BOOL=ON" "${ACADOS_SOURCE_DIR}/build/CMakeCache.txt"; then
+    fail "acados 仍启用了 OSQP。请用 scripts/install_acados.sh 重新配置为 OSQP=OFF"
+  else
+    pass "acados 未启用 OSQP"
+  fi
+fi
+
+if [ -d "${PYGRAMPC_ROOT}/grampc/include" ] && [ -d "${PYGRAMPC_ROOT}/src" ]; then
+  pass "找到 pygrampc 源码树和 GRAMPC 头文件"
+else
+  fail "未找到完整 pygrampc 源码树:${PYGRAMPC_ROOT}。请运行 scripts/install_grampc.sh"
 fi
 
 if [ -n "${AMENT_PREFIX_PATH:-}" ]; then
@@ -87,8 +108,9 @@ cat <<EOF
   1. source /opt/ros/humble/setup.bash
   2. cd ~/code/windylab_ws/src/arm-platform
   3. scripts/install_acados.sh
-  4. source scripts/setup_acados_env.sh
-  5. scripts/check_nmpc_env.sh
+  4. scripts/install_grampc.sh
+  5. source scripts/setup_acados_env.sh
+  6. scripts/check_nmpc_env.sh
 EOF
 
 exit 1

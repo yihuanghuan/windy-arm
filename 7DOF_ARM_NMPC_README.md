@@ -227,7 +227,7 @@ MPC 版本可调参数:
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `solver_backend` | `acados` | 求解后端:`acados` / `casadi` / `scipy` |
+| `solver_backend` | `acados` | 求解后端:`acados` |
 | `horizon_steps` | `2` | MPC 预测步数 |
 | `max_joint_step` | `0.02` | 单步最大关节变化量(rad) |
 | `terminal_tolerance` | `0.01` | 终端位置误差 warning 阈值(m) |
@@ -288,7 +288,7 @@ expected_world(t) = p_ref_world(t)
 |---|---|---|
 | `trajectory_mode` | `circle` | 运动轨迹:`circle` 垂直圆 / `horizontal_circle` 水平圆 / `line` 直线 |
 | `terminal_tolerance` | `0.01` | MPC IK 末端位置误差容忍值,单位 m |
-| `solver_backend` | `acados` | 求解器后端:`acados` / `casadi` / `scipy` |
+| `solver_backend` | `acados` | 求解器后端:`acados` |
 | `horizon_steps` | `2` | MPC 预测步数 |
 | `max_joint_step` | `0.02` | 每个控制周期最大关节步长,单位 rad |
 | `lock_orientation` | `False` | 是否启用末端姿态软约束 |
@@ -300,7 +300,7 @@ expected_world(t) = p_ref_world(t)
 
 - `move_arm_mpc_ik_demo.py`:核心启动 demo —— 内部生成期望末端轨迹、按 50 Hz 调用 MPC 求解、把关节命令发布到 `/student/joint_command`,并负责 reset→track 切换与求解失败降级。
 - `move_arm_horizontal_circle_mpc_ik_demo.py`:上面那个节点类的水平圆封装(同一个类,仅把默认 `trajectory_mode` 设为 `horizontal_circle`)。
-- `MpcPinocchioIK`(`mpc_pinocchio_ik.py`):NMPC 公式与求解器调用(Pinocchio 从 URDF 建模 + acados/casadi/scipy 后端)。
+- `MpcPinocchioIK`(`mpc_pinocchio_ik.py`):NMPC 公式与求解器调用(Pinocchio 从 URDF 建模 + acados 后端)。
 - 期望轨迹:固定臂没有单独的轨迹发布节点,`circle`/`horizontal_circle`/`line` 由 demo 内部的 `_target()` 直接生成。
 
 
@@ -363,16 +363,12 @@ python3 move_arm_mpc_ik_demo.py --ros-args -p horizon_steps:=4
 
 再根据跟踪误差调整 `max_joint_step` 和姿态权重。机械臂 demo 默认 50 Hz,每个控制周期是 20 ms。
 
-### ACADOS 后端失败但想先跑通 demo
+### ACADOS 后端失败
 
-切换回退后端:
-
-```bash
-python3 move_arm_mpc_ik_demo.py --ros-args -p solver_backend:=casadi
-```
-
-如果 CasADi/IPOPT 也不可用,再用:
+本仓库已裁剪为只部署 acados 后端。先确认已完成部署并激活环境:
 
 ```bash
-python3 move_arm_mpc_ik_demo.py --ros-args -p solver_backend:=scipy
+cd ~/code/windylab_ws/src/arm-platform
+source scripts/setup_acados_env.sh
+scripts/check_nmpc_env.sh
 ```

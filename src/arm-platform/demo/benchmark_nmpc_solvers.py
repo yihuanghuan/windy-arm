@@ -8,10 +8,10 @@
   - 安全(硬门槛):obstacle_violation_max 必须为 0、最小 margin >= 0
   - 奇异(硬门槛):末端雅可比最小奇异值 sigma_min / 条件数
 
-两档对比共用一个配置矩阵:
-  A 档(完整求解器):acados-SQP_RTI / acados-全SQP / CasADi-IPOPT / SciPy-SLSQP
-  B 档(固定 acados,只换 QP 后端):HPIPM / qpOASES(OSQP 需 acados 编译 OSQP 后启用)
-其中 acados-SQP_RTI+HPIPM 同时属于 A、B 两档(去重,只跑一次)。
+配置矩阵只保留部署目标:
+  - acados SQP_RTI + HPIPM
+  - acados SQP_RTI + qpOASES
+  - GRAMPC
 
 门槛逻辑(安全优先于精度):任一步 violation>0 或 sigma_min<阈值 -> 该配置标记 unsafe,
 排在所有合格配置之后;合格配置之间再按求解速度 / 精度排序。
@@ -21,7 +21,7 @@
 
 用法:
     python3 benchmark_nmpc_solvers.py --path-mode front_wing_arc
-    python3 benchmark_nmpc_solvers.py --path-mode front_wing_arc --periods 0.3 --tier B
+    python3 benchmark_nmpc_solvers.py --path-mode front_wing_arc --periods 0.3 --tier acados
 需先 source ROS + 工作空间 + ACADOS(setup_acados_env.sh)。
 """
 
@@ -71,14 +71,12 @@ class SolverConfig:
 
     status:
       active     - 参与实时对比(默认会跑)
-      eliminated - 已淘汰(只记录,不再跑;见 note)
-      pending    - 待启用(前置条件未满足,如 acados 未编译 OSQP / GRAMPC 未集成)
     """
     key: str
-    backend: str                       # acados / casadi / scipy / grampc
-    nlp_solver_type: Optional[str]     # acados 专用:SQP_RTI / SQP
+    backend: str                       # acados / grampc
+    nlp_solver_type: Optional[str]     # acados 固定 SQP_RTI
     qp_solver: Optional[str]           # acados 专用 QP 后端
-    tiers: Tuple[str, ...]             # 该配置属于哪些档(A / B)
+    tiers: Tuple[str, ...]             # 该配置属于哪些档(acados / grampc)
     label: str
     status: str = "active"
     note: str = ""
@@ -86,42 +84,21 @@ class SolverConfig:
     extra_overrides: Tuple[Tuple[str, object], ...] = ()
 
 
-# ===== 7 种求解器配置 =====
-# active(继续对比):HPIPM-RTI / HPIPM-全SQP / qpOASES / OSQP / GRAMPC
-# eliminated(弃置回退,保留不删、只记录):CasADi-IPOPT / SciPy-SLSQP —— 速度太慢,不进实时回路
-# 注:OSQP 已通过 -DACADOS_WITH_OSQP=ON 重编 acados 启用;GRAMPC 已集成(grampc_ll100.py)。
+# ===== 目标求解器配置 =====
 def solver_matrix() -> List[SolverConfig]:
     return [
         SolverConfig("acados_sqp_rti_hpipm", "acados", "SQP_RTI",
-                     "PARTIAL_CONDENSING_HPIPM", ("A", "B"), "acados SQP_RTI + HPIPM",
-                     status="active"),
-        SolverConfig("acados_sqp_hpipm", "acados", "SQP",
-                     "PARTIAL_CONDENSING_HPIPM", ("A",), "acados 全SQP + HPIPM",
+                     "PARTIAL_CONDENSING_HPIPM", ("acados",), "acados SQP_RTI + HPIPM",
                      status="active"),
         SolverConfig("acados_sqp_rti_qpoases", "acados", "SQP_RTI",
-                     "FULL_CONDENSING_QPOASES", ("B",), "acados SQP_RTI + qpOASES",
+                     "FULL_CONDENSING_QPOASES", ("acados",), "acados SQP_RTI + qpOASES",
                      status="active",
                      note="active-set,放开迭代上限 + primal 热启动",
                      extra_overrides=(("acados_qp_solver_iter_max", 500),
                                       ("acados_qp_warm_start", 1))),
-        SolverConfig("acados_sqp_rti_osqp", "acados", "SQP_RTI",
-                     "PARTIAL_CONDENSING_OSQP", ("B",), "acados SQP_RTI + OSQP",
-                     status="active",
-                     note="一阶 ADMM,放开迭代上限(需很多) + primal 热启动",
-                     extra_overrides=(("acados_qp_solver_iter_max", 4000),
-                                      ("acados_qp_warm_start", 1))),
-        SolverConfig("grampc", "grampc", None, None, ("A",), "GRAMPC (增广拉格朗日+梯度法)",
+        SolverConfig("grampc", "grampc", None, None, ("grampc",), "GRAMPC (增广拉格朗日+梯度法)",
                      status="active",
                      note="pygrampc + CasADi codegen 的 C++ 问题描述(grampc_ll100.py)"),
-        SolverConfig("crocoddyl", "crocoddyl", None, None, ("C",), "Crocoddyl (DDP+CSQP硬约束)",
-                     status="pending",
-                     note="mim_solvers CSQP + Crocoddyl Python action model;需 ABI 对齐 ROS Pinocchio"),
-        SolverConfig("casadi_ipopt", "casadi", None, None, ("A",), "CasADi + IPOPT",
-                     status="eliminated",
-                     note="弃置回退(保留不删):~1100ms/步、实时率0%,只能离线;仍用作高精度 ground-truth 参照"),
-        SolverConfig("scipy_slsqp", "scipy", None, None, ("A",), "SciPy + SLSQP",
-                     status="eliminated",
-                     note="弃置回退(保留不删):~45ms/步、实时率低,不进实时回路"),
     ]
 
 
@@ -268,12 +245,10 @@ def evaluate(sc: SolverConfig, path_mode: str, periods: float,
             from grampc_ll100 import GrampcRunner
 
             mpc = GrampcRunner(urdf_path=urdf, ee_frame=EE_FRAME, config=cfg)
-        elif sc.backend == "crocoddyl":
-            from crocoddyl_ll100 import CrocoddylRunner
-
-            mpc = CrocoddylRunner(urdf_path=urdf, ee_frame=EE_FRAME, config=cfg)
-        else:
+        elif sc.backend == "acados":
             mpc = MpcPinocchioIK(urdf_path=urdf, ee_frame=EE_FRAME, config=cfg)
+        else:
+            raise ValueError(f"未部署的求解器后端: {sc.backend}")
 
     count = max(20, int(round(EVAL_PERIOD_SEC / CONTROL_DT)))
     path = build_ll100_path(path_mode, count)
@@ -343,7 +318,7 @@ def evaluate(sc: SolverConfig, path_mode: str, periods: float,
         # 奇异 + 精度:只看稳态窗口。理由:neutral home 姿态本身就近奇异(σ_min≈8e-6),
         # 机械臂离开 home 的启动接近段会短暂近奇异(实测仅 ~3 步 σ<1e-3),这是初始条件
         # 伪信号、非求解器把臂开进奇异。稳态窗口能正确区分:三合格解稳态 σ_min≈0.04(安全)
-        # vs 全SQP/OSQP 全程卡在奇异 σ_min≈1e-5(不合格)。
+        # 启动段的近奇异不计入求解器稳态评价。
         if step >= accuracy_warmup:
             actual_pos, _ = mpc.forward(q_plant)
             pos_errs.append(float(np.linalg.norm(actual_pos - path[base])))
@@ -501,21 +476,20 @@ def aggregate_runs(runs: List[BenchResult]) -> BenchResult:
 def run(args: argparse.Namespace) -> int:
     matrix = solver_matrix()
     configs = matrix
-    if args.tier in ("A", "B"):
+    if args.tier in ("acados", "grampc"):
         configs = [c for c in configs if args.tier in c.tiers]
     if args.only:
         # 显式指定时按名跑,无视 status(便于复跑被淘汰/待启用的配置)。
         wanted = set(args.only.split(","))
         configs = [c for c in configs if c.key in wanted]
-    elif not args.include_eliminated:
-        # 默认只跑 active;eliminated/pending 仅记录不跑。
+    else:
         configs = [c for c in configs if c.status == "active"]
     if not configs:
         print("没有匹配的求解器配置(检查 --tier / --only / status)")
         return 1
 
     run_keys = {c.key for c in configs}
-    # 在矩阵里但本轮没跑的配置(淘汰/待启用),作为记录行写进表格与 CSV。
+    # 在矩阵里但本轮没跑的配置,作为记录行写进表格与 CSV。
     record_configs = [c for c in matrix if c.key not in run_keys and c.status != "active"]
 
     print(f"[NMPC 求解器对比] path_mode={args.path_mode} 运行={len(configs)} "
@@ -570,8 +544,7 @@ def run(args: argparse.Namespace) -> int:
               f"{r.rms_position_error*1000:>7.2f} {r.min_sigma_min:>9.2e} {r.violation_max:>9.2e}")
     # 记录行:淘汰 / 待启用
     for c in record_configs:
-        tag = "淘汰" if c.status == "eliminated" else "待启用"
-        print(f" - {c.key:<26} [{tag}] {c.note}")
+        print(f" - {c.key:<26} [{c.status}] {c.note}")
 
     if args.plot:
         maybe_plot(results, args.output_dir, args.path_mode, stamp)
@@ -590,14 +563,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="LL100 NMPC 求解器对比基准")
     parser.add_argument("--path-mode", default="front_wing_arc",
                         help="路径模式(ll100_traj_pub 支持的模式)")
-    parser.add_argument("--tier", choices=("A", "B", "all"), default="all",
-                        help="只跑 A 档(完整求解器)、B 档(QP 后端)或全部")
+    parser.add_argument("--tier", choices=("acados", "grampc", "all"), default="all",
+                        help="只跑 acados 后端、GRAMPC 或全部")
     parser.add_argument("--only", default=None,
                         help="逗号分隔的 SolverConfig.key,只跑指定配置(无视 status)")
-    parser.add_argument("--include-eliminated", action="store_true",
-                        help="连同已淘汰/待启用的配置一起跑(默认只跑 status=active)")
     parser.add_argument("--periods", type=float, default=0.3,
-                        help="离线仿真路径周期数;SciPy/SLSQP 较慢,默认较小")
+                        help="离线仿真路径周期数")
     parser.add_argument("--repeats", type=int, default=1,
                         help="每个配置重复运行次数;耗时取跨次均值±std/最坏,精度确定性应跨次一致")
     parser.add_argument("--warmup-frac", type=float, default=0.5,

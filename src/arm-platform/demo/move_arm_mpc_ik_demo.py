@@ -64,8 +64,8 @@ class MoveArmMpcIkDemo(Node):
         self.terminal_orientation_weight = float(self.get_parameter("terminal_orientation_weight").value)
         if self.trajectory_mode not in ("circle", "horizontal_circle", "line"):
             raise ValueError("trajectory_mode must be 'circle', 'horizontal_circle' or 'line'")
-        if self.solver_backend not in ("casadi", "acados", "scipy"):
-            raise ValueError("solver_backend must be 'casadi', 'acados' or 'scipy'")
+        if self.solver_backend != "acados":
+            raise ValueError("solver_backend must be 'acados'")
         if self.orientation_target not in ("initial", "vertical_down"):
             raise ValueError("orientation_target must be 'initial' or 'vertical_down'")
         if self.horizon_steps < 1:

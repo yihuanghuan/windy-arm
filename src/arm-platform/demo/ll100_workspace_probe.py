@@ -83,7 +83,7 @@ class LL100WorkspaceProbe(Node):
         self.body_obstacle_margin = float(self.declare_parameter("body_obstacle_margin", 0.005).value)
 
         cfg = MpcIkConfig(
-            solver_backend="casadi",  # 只用 FK + numpy 碰撞,不 solve/编译 acados
+            solver_backend="acados",  # 只用 FK + numpy 碰撞,不 solve/编译 acados
             obstacle_avoidance_enabled=True,
             obstacle_safety_margin=self.obstacle_safety_margin,
             obstacle_disk_half_thickness=0.02,

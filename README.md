@@ -101,7 +101,7 @@ sudo apt install -y \
   git cmake build-essential python3-pip pkg-config \
   ros-humble-pinocchio ros-humble-robot-state-publisher ros-humble-rviz2 \
   libeigen3-dev
-python3 -m pip install --user numpy scipy casadi
+python3 -m pip install --user numpy casadi
 ```
 
 验证 Eigen ≥ 3.4(GRAMPC 需要):`pkg-config --modversion eigen3`。
@@ -141,22 +141,17 @@ python3 -c "import acados_template; print('acados ok')"
 
 > Orin 是 Cortex-A78,blasfeo 无 A78 专项 target,用 `ARMV8A_ARM_CORTEX_A57` 覆盖全 ARMv8-A 即可;若编译报指令不支持,退到 `-DBLASFEO_TARGET=GENERIC`。首次编译在 Jetson 上明显更慢,耐心等。
 
-### 6.4(可选)对比 / benchmark 用的其它求解器
+### 6.4 安装 GRAMPC
 
-只跑 LL100 demo **不需要**这步;要跑求解器对比(`benchmark_nmpc_solvers.py`)才装。各求解器的**选型状态与完整说明以 [Solver README](LL100_LH420_NMPC_Solver_README.md) 为准**,这里只给安装。
+本仓库只部署三类求解器:acados + HPIPM、acados + qpOASES、GRAMPC。GRAMPC 通过
+`pygrampc` 源码树提供头文件,并由 demo 首次运行时自动生成/编译 LL100 问题模块。
 
-- **GRAMPC(合格,对比要用)**:
-  ```bash
-  git clone https://github.com/grampc/pygrampc.git ~/code/pygrampc
-  cd ~/code/pygrampc && git submodule update --init --recursive
-  pip install --user --upgrade "packaging>=24" scikit-build-core pybind11 ninja cmake
-  pip install . --no-build-isolation --user
-  export PYGRAMPC_ROOT=~/code/pygrampc   # 建议写进 shell profile
-  ```
-- **OSQP 后端**(acados 重编,本环境判定不合格):见 Solver README §1.1。⚠️ Jetson 可跳过。
-- **Crocoddyl**(已淘汰,非实时,源码编译在 Jetson 上极慢):见 Solver README §1.5。⚠️ Jetson 建议跳过。
-
-> ⚠️ **Jetson 求解器取舍**:只装**能实时的合格解**—— acados(HPIPM/qpOASES,6.3 已含)+ GRAMPC。OSQP / Crocoddyl 跳过。
+```bash
+cd ~/code/windylab_ws/src/arm-platform
+scripts/install_grampc.sh
+source scripts/setup_acados_env.sh
+python3 -c "import pygrampc; print('pygrampc ok')"
+```
 
 ### 6.5 环境自检 + 每次运行前激活
 

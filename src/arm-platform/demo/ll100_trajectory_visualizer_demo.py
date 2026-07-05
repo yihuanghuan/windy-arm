@@ -38,6 +38,7 @@ from trajectory_visualizer_demo import MatplotlibPlotter
 JOINT_COUNT = 6
 PUBLISH_RATE_HZ = 10.0
 PATH_DISTANCE_SUBDIVISIONS = 50
+DEFAULT_DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 def to_point(p: np.ndarray) -> Point:
@@ -56,7 +57,7 @@ class LL100TrajectoryVisualizerDemo(Node):
         self.period_sec = float(self.declare_parameter("period_sec", 60.0).value)
         self.expected_path_points = int(self.declare_parameter("expected_path_points", 240).value)
         self.max_actual_points = int(self.declare_parameter("max_actual_points", 2000).value)
-        self.show_matplotlib = bool(self.declare_parameter("show_matplotlib", True).value)
+        self.show_matplotlib = bool(self.declare_parameter("show_matplotlib", False).value)
         self.start_on_command = bool(self.declare_parameter("start_on_command", True).value)
         self.use_message_stamp = bool(self.declare_parameter("use_message_stamp", False).value)
         self.start_when_on_expected_path = bool(
@@ -76,7 +77,7 @@ class LL100TrajectoryVisualizerDemo(Node):
         self.capsule_radius = float(self.declare_parameter("capsule_radius", 0.018).value)
         self.data_dir = Path(str(self.declare_parameter(
             "data_dir",
-            "/home/windylab/code/windylab_ws/src/arm-platform/demo/data").value))
+            str(DEFAULT_DATA_DIR)).value))
 
         if self.trajectory_mode not in SUPPORTED_PATH_MODES:
             raise ValueError(f"trajectory_mode 必须是 {SUPPORTED_PATH_MODES}")
@@ -155,6 +156,7 @@ class LL100TrajectoryVisualizerDemo(Node):
         self.get_logger().info(
             "LL100 trajectory visualizer started: "
             f"mode={self.trajectory_mode}, expected_points={len(self.expected_path)}, "
+            f"show_matplotlib={self.show_matplotlib}, "
             f"use_message_stamp={self.use_message_stamp}, "
             f"start_when_on_expected_path={self.start_when_on_expected_path}, "
             "actual_topic=/joint_states, command_topic=/student/joint_command"

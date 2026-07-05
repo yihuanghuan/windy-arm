@@ -15,7 +15,6 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 import pinocchio as pin
-from scipy.optimize import Bounds, LinearConstraint, minimize
 
 from pinocchio_ik import DEFAULT_URDF, EE_FRAME
 
@@ -46,9 +45,9 @@ class MpcIkConfig:
     solver_backend: str = "acados"
     acados_build_dir: str = "/tmp/windylab_acados_mpc_ik"
     acados_rti_iterations: int = 3  # SQP_RTI 每次 solve 只做一次线性化;这里允许重复几次提高终端精度。
-    acados_nlp_solver_type: str = "SQP_RTI"  # acados NLP 类型:SQP_RTI(实时迭代)或 SQP(完整收敛)。
-    acados_qp_solver: str = "PARTIAL_CONDENSING_HPIPM"  # acados QP 后端:HPIPM/OSQP/QPOASES/DAQP 等。
-    acados_qp_solver_iter_max: int = 50  # QP 内层最大迭代数;active-set/一阶法(qpOASES/OSQP)可能需调大。
+    acados_nlp_solver_type: str = "SQP_RTI"  # 只部署实时迭代 SQP_RTI。
+    acados_qp_solver: str = "PARTIAL_CONDENSING_HPIPM"  # 允许:PARTIAL_CONDENSING_HPIPM/FULL_CONDENSING_QPOASES。
+    acados_qp_solver_iter_max: int = 50  # QP 内层最大迭代数;qpOASES 可能需调大。
     acados_qp_warm_start: int = 0  # QP 热启动:0 冷启动 / 1 primal / 2 primal+dual。
     obstacle_avoidance_enabled: bool = False
     obstacle_safety_margin: float = 0.04
@@ -116,9 +115,9 @@ class MpcPinocchioIK:
         self.q_center = 0.5 * (self.q_lower + self.q_upper)
         # 保存上一轮预测轨迹,下一轮可右移一格作为 warm start。
         self._last_plan = None
-        # 从 Pinocchio/URDF 提取运动链,生成 CasADi 符号 FK。CasADi/ACADOS 后端共用它。
+        # 从 Pinocchio/URDF 提取运动链,生成 CasADi 符号 FK,供 acados 代码生成使用。
         self._symbolic_fk = _CasadiFkFromPinocchio(self.model, self.frame_id, self.urdf_path)
-        # 避障恒为硬约束(已移除软约束选项),三后端(acados/casadi/scipy)复用同一组 CasADi 符号 margin 函数。
+        # 避障恒为硬约束,由 acados 复用同一组 CasADi 符号 margin 函数。
         self._obstacle_keypoint_frame_ids = (
             self._resolve_obstacle_keypoint_frames()
             if self.config.obstacle_avoidance_enabled
@@ -129,7 +128,6 @@ class MpcPinocchioIK:
         self._capsule_frame_ids = self._resolve_capsule_frames()
         self._capsule_points = self._resolve_capsule_points()
         self._acados_solver = None
-        # SciPy 后端避障约束用的 CasADi 值/雅可比函数缓存(惰性构建)。
         self._obstacle_margin_fns = None
 
     def forward(self, q: np.ndarray):
@@ -164,7 +162,7 @@ class MpcPinocchioIK:
         terminal_error = self._position_error(terminal_q, targets[-1])
         plan_feasible = self._plan_feasible(q0, plan)
         tracking_ok = terminal_error <= self.config.success_tolerance
-        # IPOPT 可能达到迭代上限但解已经足够好,因此 ok 按轨迹质量判定。
+        # acados 状态码不单独决定可执行性,上层还会结合轨迹质量/约束可行性判定。
         ok = bool(tracking_ok and plan_feasible)
 
         info = self._make_info(
@@ -517,164 +515,9 @@ class MpcPinocchioIK:
         initial_plan: np.ndarray,
     ):
         """根据配置选择求解器后端。"""
-        if self.config.solver_backend == "casadi":
-            return self._optimize_casadi(q0, targets, rotations, initial_plan)
         if self.config.solver_backend == "acados":
             return self._optimize_acados(q0, targets, rotations, initial_plan)
-        if self.config.solver_backend == "scipy":
-            return self._optimize_scipy(q0, targets, rotations, initial_plan)
-        raise ValueError("solver_backend 必须是 'casadi', 'acados' 或 'scipy'")
-
-    def _optimize_scipy(
-        self,
-        q0: np.ndarray,
-        targets: np.ndarray,
-        rotations: np.ndarray,
-        initial_plan: np.ndarray,
-    ):
-        """SciPy SLSQP 后端:非线性目标 + 线性步长约束 + box 边界。"""
-        bounds = self._bounds()
-        constraints = [self._step_constraint(q0)]
-        # 避障硬约束:与 CasADi/ACADOS 后端复用同一组符号 margin 函数。
-        obstacle_constraint = self._obstacle_constraint_scipy()
-        if obstacle_constraint is not None:
-            constraints.append(obstacle_constraint)
-
-        return minimize(
-            fun=lambda x: self._objective(x, q0, targets, rotations),
-            x0=initial_plan.reshape(-1),
-            method="SLSQP",
-            bounds=bounds,
-            constraints=constraints,
-            options={
-                "maxiter": self.config.max_iter,
-                "ftol": self.config.ftol,
-                "disp": False,
-            },
-        )
-
-    def _optimize_casadi(
-        self,
-        q0: np.ndarray,
-        targets: np.ndarray,
-        rotations: np.ndarray,
-        initial_plan: np.ndarray,
-    ):
-        try:
-            import casadi as ca
-        except Exception as exc:
-            raise RuntimeError(
-                "已选择 CasADi 后端,但没有安装 casadi。"
-                "请安装 python3-casadi/casadi,或设置 solver_backend='scipy'。"
-            ) from exc
-
-        cfg = self.config
-        opti = ca.Opti()
-        # 决策变量:q 是 N x nq 的矩阵,每一行是一帧预测关节角。
-        q = opti.variable(cfg.horizon_steps, self.nq)
-
-        for i in range(cfg.horizon_steps):
-            # 约束 1:每一帧关节都必须在 URDF 限位内。
-            opti.subject_to(opti.bounded(ca.DM(self.q_lower), q[i, :].T, ca.DM(self.q_upper)))
-            if i == 0:
-                dq = q[i, :].T - ca.DM(q0)
-            else:
-                dq = q[i, :].T - q[i - 1, :].T
-            # 约束 2:相邻两帧关节变化不能超过 max_joint_step。
-            opti.subject_to(opti.bounded(-cfg.max_joint_step, dq, cfg.max_joint_step))
-            # 约束 3:避障硬约束。与 ACADOS 后端复用同一组符号 margin 函数,保证三后端解同一套约束。
-            if cfg.obstacle_avoidance_enabled:
-                front_margins = self._front_obstacle_margins_ca(q[i, :].T)
-                if front_margins.shape[0] > 0:
-                    opti.subject_to(front_margins >= 0)
-            if cfg.body_obstacle_enabled:
-                body_margins = self._body_obstacle_margins_ca(q[i, :].T)
-                if body_margins.shape[0] > 0:
-                    opti.subject_to(body_margins >= 0)
-
-        cost = 0
-        previous_q = ca.DM(q0)
-        previous_dq = ca.DM.zeros(self.nq, 1)
-        for i in range(cfg.horizon_steps):
-            q_i = q[i, :].T
-            # 纯符号 FK:CasADi 能看到完整计算图,可以自动求导。
-            pos = self._symbolic_fk.position(q_i)
-            rot = self._symbolic_fk.rotation(q_i)
-            pos_error = pos - ca.DM(targets[i])
-            rot_error = self._orientation_error_ca(rot, ca.DM(rotations[i]))
-            dq = q_i - previous_q
-            ddq = dq - previous_dq
-
-            # 代价项 1:末端位置误差,让机械臂末端靠近目标。
-            cost += cfg.position_weight * ca.sumsqr(pos_error)
-            # 代价项 1b:末端姿态软约束。默认权重为 0,不影响位置-only 行为。
-            cost += cfg.orientation_weight * ca.sumsqr(rot_error)
-            # 代价项 2:关节每步变化越小越好,轨迹会更柔和。
-            cost += cfg.joint_delta_weight * ca.sumsqr(dq)
-            # 代价项 3:关节变化的变化越小越好,减少抖动/突变。
-            cost += cfg.joint_delta_change_weight * ca.sumsqr(ddq)
-            # 代价项 4:弱约束,避免为了够到目标而远离当前姿态太多。
-            cost += cfg.current_posture_weight * ca.sumsqr(q_i - ca.DM(q0))
-            # 代价项 5:弱约束,让解不要总贴着关节限位。
-            cost += cfg.center_posture_weight * ca.sumsqr(q_i - ca.DM(self.q_center))
-
-            previous_q = q_i
-            previous_dq = dq
-
-        terminal_pos = self._symbolic_fk.position(q[-1, :].T)
-        terminal_rot = self._symbolic_fk.rotation(q[-1, :].T)
-        terminal_error = terminal_pos - ca.DM(targets[-1])
-        terminal_rot_error = self._orientation_error_ca(terminal_rot, ca.DM(rotations[-1]))
-        # 终端误差权重更大:鼓励预测时域末尾真正到达目标。
-        cost += cfg.terminal_position_weight * ca.sumsqr(terminal_error)
-        cost += cfg.terminal_orientation_weight * ca.sumsqr(terminal_rot_error)
-        opti.minimize(cost)
-        # 初值来自上一轮 warm start 或当前姿态重复展开,对非线性优化很重要。
-        opti.set_initial(q, initial_plan)
-
-        opti.solver(
-            "ipopt",
-            {
-                "expand": False,
-                "print_time": False,
-                "ipopt.print_level": 0,
-                "ipopt.sb": "yes",
-                "ipopt.max_iter": cfg.max_iter,
-                "ipopt.tol": cfg.ftol,
-                "ipopt.acceptable_tol": max(cfg.ftol * 10.0, 1e-7),
-                # 符号 FK 已可自动求导;limited-memory 可减少 IPOPT 二阶 Hessian 开销。
-                "ipopt.hessian_approximation": "limited-memory",
-            },
-        )
-
-        try:
-            # 正常收敛:直接读取最优解。
-            sol = opti.solve()
-            plan = np.array(sol.value(q), dtype=float)
-            cost_value = float(sol.value(cost))
-            stats = opti.stats()
-            return _CasadiResult(
-                x=plan.reshape(-1),
-                success=bool(stats.get("success", True)),
-                status=0,
-                message=str(stats.get("return_status", "Solve_Succeeded")),
-                nit=int(stats.get("iter_count", 0)),
-                fun=cost_value,
-            )
-        except RuntimeError as exc:
-            # IPOPT 可能达到迭代上限,但 debug.value 里仍有一条可用轨迹。
-            # 上层会用终端误差和约束检查决定 ok,而不是只看 solver 状态。
-            plan = np.array(opti.debug.value(q), dtype=float)
-            cost_value = float(opti.debug.value(cost))
-            stats = opti.stats()
-            return _CasadiResult(
-                x=plan.reshape(-1),
-                success=False,
-                status=1,
-                message=str(stats.get("return_status", exc)),
-                nit=int(stats.get("iter_count", 0)),
-                fun=cost_value,
-            )
+        raise ValueError("solver_backend 只支持 'acados';LL100 的 GRAMPC 走 grampc_ll100.GrampcRunner")
 
     def _optimize_acados(
         self,
@@ -736,128 +579,6 @@ class MpcPinocchioIK:
         if self._acados_solver is None:
             self._acados_solver = _AcadosMpcBackend(self)
         return self._acados_solver
-
-    def _bounds(self) -> Bounds:
-        """SciPy 后端使用的关节上下限。"""
-        lower = np.tile(self.q_lower, self.config.horizon_steps)
-        upper = np.tile(self.q_upper, self.config.horizon_steps)
-        return Bounds(lower, upper)
-
-    def _step_constraint(self, q0: np.ndarray) -> LinearConstraint:
-        """SciPy 后端使用的线性步长约束。
-
-        约束形式是 -step <= q_i - q_{i-1} <= step。
-        对第一步来说 q_{i-1} 是当前真实关节 q0。
-        """
-        n = self.nq
-        horizon = self.config.horizon_steps
-        rows = horizon * n
-        mat = np.zeros((rows, horizon * n))
-        lb = np.full(rows, -self.config.max_joint_step)
-        ub = np.full(rows, self.config.max_joint_step)
-
-        for step in range(horizon):
-            for joint in range(n):
-                row = step * n + joint
-                col = step * n + joint
-                mat[row, col] = 1.0
-                if step == 0:
-                    lb[row] += q0[joint]
-                    ub[row] += q0[joint]
-                else:
-                    mat[row, col - n] = -1.0
-
-        return LinearConstraint(mat, lb, ub)
-
-    def _obstacle_margin_functions(self):
-        """惰性构建并缓存单帧障碍物 margin 的 CasADi 值/雅可比函数。
-
-        返回 ((value_fn, jac_fn), m) 或 (None, 0)。m 是单帧 margin 数量。
-        只纳入硬约束项(软约束 fallback 仅 acados 实现)。
-        """
-        if self._obstacle_margin_fns is not None:
-            return self._obstacle_margin_fns
-        import casadi as ca
-
-        cfg = self.config
-        q_sym = ca.MX.sym("q", self.nq)
-        exprs = []
-        if cfg.obstacle_avoidance_enabled:
-            exprs.append(self._front_obstacle_margins_ca(q_sym))
-        if cfg.body_obstacle_enabled:
-            exprs.append(self._body_obstacle_margins_ca(q_sym))
-        exprs = [e for e in exprs if e.shape[0] > 0]
-        if not exprs:
-            self._obstacle_margin_fns = (None, 0)
-            return self._obstacle_margin_fns
-        margin = ca.vertcat(*exprs)
-        value_fn = ca.Function("obstacle_margin", [q_sym], [margin])
-        jac_fn = ca.Function("obstacle_margin_jac", [q_sym], [ca.jacobian(margin, q_sym)])
-        self._obstacle_margin_fns = ((value_fn, jac_fn), int(margin.shape[0]))
-        return self._obstacle_margin_fns
-
-    def _obstacle_constraint_scipy(self):
-        """SciPy SLSQP 的避障不等式约束(margin >= 0),逐帧块对角组装雅可比。"""
-        fns, m = self._obstacle_margin_functions()
-        if fns is None:
-            return None
-        value_fn, jac_fn = fns
-        horizon = self.config.horizon_steps
-        nq = self.nq
-
-        def constraint_fun(x: np.ndarray) -> np.ndarray:
-            plan = x.reshape(horizon, nq)
-            return np.concatenate(
-                [np.asarray(value_fn(plan[i])).reshape(-1) for i in range(horizon)]
-            )
-
-        def constraint_jac(x: np.ndarray) -> np.ndarray:
-            plan = x.reshape(horizon, nq)
-            jac = np.zeros((horizon * m, horizon * nq))
-            for i in range(horizon):
-                jac[i * m:(i + 1) * m, i * nq:(i + 1) * nq] = np.asarray(jac_fn(plan[i]))
-            return jac
-
-        return {"type": "ineq", "fun": constraint_fun, "jac": constraint_jac}
-
-    def _objective(
-        self,
-        x: np.ndarray,
-        q0: np.ndarray,
-        targets: np.ndarray,
-        rotations: np.ndarray,
-    ) -> float:
-        """SciPy 后端的目标函数,和 CasADi 后端使用同一组代价项。"""
-        plan = x.reshape(self.config.horizon_steps, self.nq)
-        cfg = self.config
-
-        cost = 0.0
-        previous_q = q0
-        previous_dq = np.zeros(self.nq)
-
-        for i, q in enumerate(plan):
-            pos, rot = self.forward(q)
-            pos_error = pos - targets[i]
-            rot_error = self._orientation_error(rot, rotations[i])
-            dq = q - previous_q
-            ddq = dq - previous_dq
-
-            cost += cfg.position_weight * float(pos_error @ pos_error)
-            cost += cfg.orientation_weight * float(rot_error @ rot_error)
-            cost += cfg.joint_delta_weight * float(dq @ dq)
-            cost += cfg.joint_delta_change_weight * float(ddq @ ddq)
-            cost += cfg.current_posture_weight * float((q - q0) @ (q - q0))
-            cost += cfg.center_posture_weight * float((q - self.q_center) @ (q - self.q_center))
-
-            previous_q = q
-            previous_dq = dq
-
-        terminal_pos, terminal_rot = self.forward(plan[-1])
-        terminal_error = terminal_pos - targets[-1]
-        terminal_rot_error = self._orientation_error(terminal_rot, rotations[-1])
-        cost += cfg.terminal_position_weight * float(terminal_error @ terminal_error)
-        cost += cfg.terminal_orientation_weight * float(terminal_rot_error @ terminal_rot_error)
-        return cost
 
     def _position_error(self, q: np.ndarray, target: np.ndarray) -> float:
         """计算某个关节角对应的末端位置误差范数。"""
@@ -947,6 +668,30 @@ class MpcPinocchioIK:
         if not margins:
             return ca.MX.zeros(0, 1)
         return ca.vertcat(*margins)
+
+    def _obstacle_margin_functions(self):
+        """生成避障 margin 及 Jacobian 函数,供 GRAMPC 代码生成复用。"""
+        if self._obstacle_margin_fns is not None:
+            return self._obstacle_margin_fns
+
+        import casadi as ca
+
+        q = ca.MX.sym("q", self.nq)
+        parts = []
+        if self.config.obstacle_avoidance_enabled:
+            parts.append(self._front_obstacle_margins_ca(q))
+        if self.config.body_obstacle_enabled:
+            parts.append(self._body_obstacle_margins_ca(q))
+        parts = [part for part in parts if int(part.shape[0]) > 0]
+        if not parts:
+            self._obstacle_margin_fns = (None, 0)
+            return self._obstacle_margin_fns
+
+        margin = ca.vertcat(*parts)
+        value_fn = ca.Function("obstacle_margin", [q], [margin])
+        jac_fn = ca.Function("obstacle_margin_jac", [q], [ca.jacobian(margin, q)])
+        self._obstacle_margin_fns = ((value_fn, jac_fn), int(margin.shape[0]))
+        return self._obstacle_margin_fns
 
     def _front_capsule_active(self) -> bool:
         """前桨是否走 capsule 模式(需开启开关且 capsule 链≥2 frame)。"""
@@ -1198,8 +943,8 @@ class MpcPinocchioIK:
         return info
 
 
-class _CasadiResult:
-    """把 CasADi/IPOPT 的结果包装成和 SciPy OptimizeResult 类似的结构。"""
+class _SolverResult:
+    """求解结果的轻量包装,供 acados 后端和通用诊断信息复用。"""
 
     def __init__(self, x, success, status, message, nit, fun):
         self.x = x
@@ -1210,7 +955,7 @@ class _CasadiResult:
         self.fun = fun
 
 
-class _AcadosResult(_CasadiResult):
+class _AcadosResult(_SolverResult):
     def __init__(self, x, success, status, message, nit, fun, solve_time):
         super().__init__(x, success, status, message, nit, fun)
         self.solve_time = solve_time
@@ -1396,8 +1141,7 @@ class _CasadiFkFromPinocchio:
 class _AcadosMpcBackend:
     """ACADOS 实时 NMPC 后端。
 
-    ACADOS 是外部可选依赖。没有安装时,只有选择 solver_backend='acados'
-    才会报错,不影响 casadi/scipy 后端。
+    ACADOS 是外部依赖。没有安装时,构造求解器会给出部署提示。
     """
 
     def __init__(self, owner: MpcPinocchioIK):
@@ -1407,8 +1151,7 @@ class _AcadosMpcBackend:
         except Exception as exc:
             raise RuntimeError(
                 "已选择 ACADOS 后端,但当前环境没有 acados_template。"
-                "请外部安装 ACADOS Python 接口并 source scripts/setup_acados_env.sh; "
-                "或改用 solver_backend='casadi' / 'scipy'。"
+                "请外部安装 ACADOS Python 接口并 source scripts/setup_acados_env.sh。"
             ) from exc
 
         self.owner = owner
@@ -1558,7 +1301,7 @@ class _AcadosMpcBackend:
         ocp.solver_options.qp_solver = cfg.acados_qp_solver
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.print_level = 0
-        # QP 内层迭代上限 / 热启动:让 active-set(qpOASES)、一阶法(OSQP)有机会真正收敛。
+        # QP 内层迭代上限 / 热启动:qpOASES 会用到更高迭代上限和 primal 热启动。
         ocp.solver_options.qp_solver_iter_max = max(1, int(cfg.acados_qp_solver_iter_max))
         ocp.solver_options.qp_solver_warm_start = int(cfg.acados_qp_warm_start)
         # 全 SQP(非 RTI)需要允许多次迭代,才能收敛到可作精度参照的高精度解。
@@ -1604,8 +1347,7 @@ class _AcadosMpcBackend:
             else:
                 raise RuntimeError(
                     "ACADOS 求解器已生成,但动态库加载失败。请先运行: "
-                    "source src/arm-platform/scripts/setup_acados_env.sh; "
-                    "或改用 solver_backend='casadi' / 'scipy'。原始错误: "
+                    "source src/arm-platform/scripts/setup_acados_env.sh。原始错误: "
                     f"{exc}"
                 ) from exc
         # 权重不在签名里,复用旧 .so 时必须用当前 cfg 的权重运行时覆盖(否则会静默沿用占位权重)。

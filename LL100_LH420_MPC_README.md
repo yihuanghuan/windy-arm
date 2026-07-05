@@ -9,7 +9,7 @@
 - NMPC 模型:`ll100_lh420_nmpc.urdf`,只保留 A-F 六轴机械臂用于求解。
 - 求解器:默认 acados(SQP_RTI + HPIPM);demo 可切 qpOASES / GRAMPC。
   **求解器选型/对比/安装/切换的完整说明,以 [LL100_LH420_NMPC_Solver_README.md](LL100_LH420_NMPC_Solver_README.md) 为准。**
-  合格解:acados-HPIPM(默认)/ acados-qpOASES / GRAMPC;CasADi-IPOPT、SciPy-SLSQP 已弃置(慢,保留作离线参照)。
+  当前部署只保留:acados-HPIPM(默认)/ acados-qpOASES / GRAMPC。
 - 避障:前桨圆盘 SDF + 机身/安装架简化 box + 连杆 capsule 采样点,默认使用 ACADOS 非线性硬约束。
 - 当前用途:仿真/RViz 演示和算法验证,不直接控制真实 LL100 硬件。
 
@@ -268,10 +268,12 @@ source /opt/ros/humble/setup.bash
 source ~/code/windylab_ws/install/setup.bash
 python3 ll100_trajectory_visualizer_demo.py --ros-args \
   -p trajectory_mode:=lower_obstacle_circle \
-  -p period_sec:=20.0
+  -p period_sec:=20.0 \
+  -p show_matplotlib:=false
 ```
 
 这个合并话题同时包含期望轨迹、实际轨迹、command FK、当前点、前桨圆盘和机身 box。
+实时显示推荐在 RViz 里添加 `MarkerArray` 话题 `/ll100_trajectory/markers`。
 
 仍然保留以下单独 topic,方便调试:
 
@@ -298,8 +300,8 @@ src/arm-platform/demo/data
 | `trajectory_mode` | `lower_obstacle_circle` | 期望轨迹模式,共 4 种,与 demo 相同，但single_target不计入，因为单目标点没有连续路径可绘制;必须和路径 demo 的 `path_mode` 一致 |
 | `period_sec` | `60.0` | 绘图期望轨迹的时间周期 |
 | `expected_path_points` | `240` | RViz/Matplotlib 中期望路径采样点数 |
+| `show_matplotlib` | `false` | 是否尝试打开实时 Matplotlib 窗口;Qt backend 在 ROS 线程中可能空白或停止,推荐用 RViz + 退出保存 PNG |
 | `max_actual_points` | `2000` | RViz 中保留的实际轨迹点数 |
-| `show_matplotlib` | `True` | 是否打开实时 Matplotlib 窗口 |
 | `start_on_command` | `True` | 收到 `/student/joint_command` 后开始记录 |
 | `use_message_stamp` | `False` | 默认用可视化节点接收时钟统一 `/student/joint_command` 和 `/joint_states` 时间 |
 | `start_when_on_expected_path` | `True` | 实际末端进入期望轨迹入口点容差后才把记录时间置零 |
@@ -366,6 +368,16 @@ ros2 launch manipulator ll100_lh420_control.launch.py
 ```
 
 RViz 里需要手动添加 `MarkerArray`。
+
+### `ll100_trajectory_visualizer_demo.py` 窗口空白
+
+这通常不是没装。该节点主要发布 RViz marker;Matplotlib 实时窗口在 Qt 后端下可能因为 GUI 不在主线程而空白或停止。按推荐命令保持 `show_matplotlib:=false`,然后在 RViz 里添加:
+
+```text
+/ll100_trajectory/markers
+```
+
+如果日志一直显示 `recorded actual samples=0, command FK samples=0`,说明只启动了可视化节点,还没有控制节点向 `/student/joint_command` 发布命令,或没有 `/joint_states` 反馈。
 
 ### ACADOS 每次都重新 build
 

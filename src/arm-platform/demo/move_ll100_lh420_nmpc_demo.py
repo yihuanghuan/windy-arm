@@ -311,7 +311,7 @@ class MoveLL100LH420NmpcDemo(Node):
         self.declare_parameter("joint_delta_change_weight", -1.0)  # 二阶平滑(惩罚 ΔΔq/抑抖),NMPC 代价权重
         self.declare_parameter("metrics_log_sec", 0.0)
         self.declare_parameter("latency_profiling", False)
-        # 求解器选择(用于求解器对比;默认与原行为一致)。
+        # 求解器选择:只部署 acados(SQP_RTI + HPIPM/qpOASES) 与 GRAMPC。
         self.declare_parameter("solver_backend", "acados")
         self.declare_parameter("acados_nlp_solver_type", "SQP_RTI")
         self.declare_parameter("acados_qp_solver", "PARTIAL_CONDENSING_HPIPM")
@@ -395,6 +395,14 @@ class MoveLL100LH420NmpcDemo(Node):
         self.acados_nlp_solver_type = str(self.get_parameter("acados_nlp_solver_type").value)
         self.acados_qp_solver = str(self.get_parameter("acados_qp_solver").value)
 
+        if self.solver_backend not in ("acados", "grampc"):
+            raise ValueError("solver_backend 只支持 'acados' 或 'grampc'")
+        if self.acados_nlp_solver_type != "SQP_RTI":
+            raise ValueError("acados_nlp_solver_type 只部署 'SQP_RTI'")
+        if self.acados_qp_solver not in ("PARTIAL_CONDENSING_HPIPM", "FULL_CONDENSING_QPOASES"):
+            raise ValueError(
+                "acados_qp_solver 只支持 'PARTIAL_CONDENSING_HPIPM' 或 'FULL_CONDENSING_QPOASES'"
+            )
         if self.period_sec <= 0.0:
             raise ValueError("period_sec 必须 > 0")
         if self.horizon_steps < 1:
@@ -449,19 +457,12 @@ class MoveLL100LH420NmpcDemo(Node):
             joint_delta_weight=self.joint_delta_weight,
             joint_delta_change_weight=self.joint_delta_change_weight,
         )
-        # 三种成功求解器:acados(HPIPM 默认 / qpOASES,走 MpcPinocchioIK)、GRAMPC(GrampcRunner)。
-        # IPOPT(casadi)/SLSQP(scipy)为已弃置的回退求解器,保留但不推荐(慢、不进实时回路)。
+        # 三种部署目标:acados(HPIPM 默认 / qpOASES,走 MpcPinocchioIK)、GRAMPC(GrampcRunner)。
         if self.solver_backend == "grampc":
             from grampc_ll100 import GrampcRunner
             self.mpc_ik = GrampcRunner(urdf_path=LL100_NMPC_URDF, ee_frame="F_Link", config=cfg)
         else:
             self.mpc_ik = MpcPinocchioIK(urdf_path=LL100_NMPC_URDF, ee_frame="F_Link", config=cfg)
-            if self.solver_backend in ("casadi", "scipy"):
-                self.get_logger().warn(
-                    f"solver_backend='{self.solver_backend}' 是已弃置的回退求解器"
-                    "(IPOPT/SLSQP,慢、不进实时回路),仅供离线参照;"
-                    "推荐 acados(HPIPM 默认 / qpOASES)或 grampc。"
-                )
         self.path = _build_path(
             self.path_mode,
             self.period_sec,

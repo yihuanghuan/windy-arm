@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.15...3.26)
 project(ll100_grampc_problem LANGUAGES CXX C)
 
 find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
-# 必须用与已安装 pygrampc._core 相同的 pybind11 版本(2.12.0),
+# 必须用与已安装 pygrampc._core 相同的 pybind11 ABI(当前部署为 2.12.0),
 # 否则 pybind11 内部 type registry 版本号不匹配,导致 import 时
 # "referenced unknown base type grampc::ProblemDescription"。
 if(DEFINED PYBIND11_CMAKE_DIR)

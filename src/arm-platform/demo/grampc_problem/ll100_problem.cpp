@@ -14,6 +14,7 @@ extern "C" {
 }
 
 #include <vector>
+#include <typeindex>
 #include <pybind11/pybind11.h>
 
 using namespace grampc;
@@ -51,6 +52,25 @@ struct CasadiFn {
         eval(arg.data(), res.data(), iw.data(), w.data(), 0);
     }
 };
+
+void alias_pygrampc_problem_description() {
+    namespace py = pybind11;
+
+    py::object base = py::module_::import("pygrampc._core").attr("ProblemDescription");
+    auto* base_info = py::detail::get_type_info(reinterpret_cast<PyTypeObject*>(base.ptr()));
+    if (base_info == nullptr) {
+        throw std::runtime_error("pygrampc._core.ProblemDescription is not registered");
+    }
+
+    auto& internals = py::detail::get_internals();
+    auto local_type = std::type_index(typeid(ProblemDescription));
+    if (internals.registered_types_cpp.find(local_type) == internals.registered_types_cpp.end()) {
+        internals.registered_types_cpp[local_type] = base_info;
+    }
+#if PYBIND11_INTERNALS_VERSION >= 12
+    internals.registered_types_cpp_fast[&typeid(ProblemDescription)] = base_info;
+#endif
+}
 
 }  // namespace
 
@@ -128,6 +148,8 @@ private:
 };
 
 PYBIND11_MODULE(ll100_grampc_problem, m) {
+    alias_pygrampc_problem_description();
+
     pybind11::class_<LL100Problem, ProblemDescription, std::shared_ptr<LL100Problem>>(m, "LL100Problem")
         .def(pybind11::init<typeInt, typeInt, typeInt, typeInt>())
         .def_readonly("Nx", &LL100Problem::Nx)
