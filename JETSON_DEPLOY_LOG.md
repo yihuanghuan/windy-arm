@@ -53,8 +53,7 @@ MAXN_SUPER + jetson_clocks（已开机自启）
 ### 风险与注意
 
 - **RT 节流隐患**：front_wing_arc 的 qpOASES compute ~17.9ms/20ms 周期 = 90% 占空比，离 95% 节流线不远，
-  尖峰密集时可能瞬时触发。备选缓解：`sudo sysctl -w kernel.sched_rt_runtime_us=-1` 关 RT 节流
-  （机器人控制器常规做法；风险是 RT 进程死循环会占死 4-7 核，0-3 核仍可救，尚未实施）。
+  尖峰密集时可能瞬时触发。→ **已于 07-06 下午关闭 RT 节流并持久化**，实施与复位方法见下文《2026-07-06（下午）工作站远程验收 + 关闭 RT 节流》。
 - 复测时桌面会话未关闭；RT 优先级下影响很小，但极限复测应经 SSH 关 GUI 后进行。
 - `latency_lower_obstacle_circle_qpoases.csv` 有 7994 样本（其余 ~1700），系首轮有效运行停止较晚，P95 统计不受影响。
 
@@ -68,18 +67,35 @@ MAXN_SUPER + jetson_clocks（已开机自启）
 
 ---
 
-## 2026-07-06（下午）工作站远程验收
+## 2026-07-06（下午）工作站远程验收 + 关闭 RT 节流
 
-从 windylab 工作站经 SSH（密码认证）远程核实：
+从 windylab 工作站经 SSH 远程核实（免密已配好，工作站可直接 `ssh nvidia@172.16.20.135`）：
 
 - SSH **登录**会话 `ulimit -r`=95 ✅（PAM limits 正常继承，经 SSH 跑测试不再需要 prlimit 补丁）
 - CPU 锁频保持 1984000 ✅；`jetson-clocks.service` enabled ✅；tj 51.5°C
 - `sched_rt_runtime_us`=**950000** → **坐实** §07-06 复测中 HPIPM 数据无效的 RT 节流判断
 
+### 关闭 RT 节流（经用户批准，已实施并持久化）
+
+front_wing_arc 的 qpOASES 占空比 ~90%，离内核默认 95% 节流线过近，故拆除该限制：
+
+- 立即生效：`sudo sysctl -w kernel.sched_rt_runtime_us=-1`（已执行，核实读回 -1）
+- 开机持久化：新建 `/etc/sysctl.d/99-rt-no-throttle.conf`，内容一行 `kernel.sched_rt_runtime_us=-1`
+
+**复位方法**（如后续需要恢复内核默认的 95% RT 上限）：
+
+```bash
+sudo rm /etc/sysctl.d/99-rt-no-throttle.conf   # 删掉持久化配置
+sudo sysctl -w kernel.sched_rt_runtime_us=950000   # 立即恢复默认值(或直接重启)
+```
+
+**关闭后的风险与自救**：若 SCHED_FIFO 进程死循环，其绑定的 4-7 核会被占死；
+0-3 核不受影响，SSH 进去 `kill` 该进程即可恢复。切勿把 RT 进程绑到全部 8 核。
+
 ## 遗留事项 / 下一步
 
-- [ ] 本机（windylab 工作站）→ Jetson 免密 SSH：密码认证已通，公钥（注释 `windylab-ll100-lh420`）
-      待用户自行 `ssh-copy-id nvidia@172.16.20.135` 授权持久免密。
+- [x] 本机（windylab 工作站）→ Jetson 免密 SSH：用户已 `ssh-copy-id` 授权（2026-07-06），
+      工作站可直接 `ssh nvidia@172.16.20.135` 免密操作。
 - [x] 求解器 README §4.6 已补 MAXN_SUPER 基线小节（2026-07-06）。
-- [ ] 决定是否关闭 RT 节流（`sched_rt_runtime_us=-1`），或 front_wing_arc 降为普通优先级运行。
+- [x] RT 节流已关闭并持久化（2026-07-06，复位方法见上文）。
 - [ ] 真机接入后复测端到端延迟（当前均为零反馈源回环，不含真实传感器/总线延迟）。
