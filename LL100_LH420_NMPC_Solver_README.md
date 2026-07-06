@@ -225,6 +225,29 @@ python3 move_ll100_lh420_nmpc_demo.py --ros-args -p latency_profiling:=true \
   -p path_mode:=circle -p acados_qp_solver:=FULL_CONDENSING_QPOASES   # 换后端/场景改这两个参数
 ```
 
+### 4.6 测试结果（Jetson MAXN_SUPER 锁频,部署定稿基线）
+
+§4.5 的 40W 数据促成了一轮系统调优(过程记录见 [JETSON_DEPLOY_LOG.md](JETSON_DEPLOY_LOG.md)):
+功耗档切 **MAXN_SUPER**(CPU 1497.6→1984 MHz,+32%)、`jetson_clocks` 锁频(已做成开机 systemd 服务)、
+NMPC 节点以 **SCHED_FIFO 80** 实时优先级运行(`chrt -f 80 taskset -c 4-7`)。
+2026-07-06 复测,其余口径与 §4.5 完全一致;原始数据在
+`src/arm-platform/demo/data/jetson_maxn_super_20260706/`,汇总见 `latency_summary_maxn_super.csv`。
+
+**end_to_end P95(ms),40W → MAXN_SUPER:**
+
+| 场景 | qpOASES | GRAMPC | HPIPM |
+|---|---|---|---|
+| circle | 17.70 → **13.70** ✅ | 25.17 → 19.90 | 29.54 → (无效,见下) |
+| lower_obstacle_circle | 18.74 → **14.54** ✅ | 25.20 → 20.13 | 23.34 → (无效,见下) |
+| front_wing_arc | 25.56 → **18.28** ✅ | 25.37 → 20.06 | 41.79 → (无效,见下) |
+
+**结论(部署定稿)**:
+1. **qpOASES 三场景全部进入 20ms 周期**,提速比 1.29~1.40× 与主频提升(×1.325)吻合——纯频率收益,零代码改动。50Hz 部署推荐配置:**MAXN_SUPER + jetson_clocks + qpOASES + `chrt -f 80 taskset -c 4-7`**。
+2. **GRAMPC** 压在 20ms 线上(19.9~20.1ms),50Hz 下仍不作默认后端,≤40Hz 可用。
+3. **HPIPM 本轮数据无效**:compute P95 飙到 115~226ms,是 **Linux RT 节流伪影**而非求解器变慢——内核默认限制 SCHED_FIFO 任务每秒占用 ≤95% CPU(`sched_rt_runtime_us=950000`,已在机上核实),HPIPM 占空比本就 >100%(40W 时 compute 22~41ms>20ms 周期),挂实时优先级后触顶被周期性挂起、延迟雪崩。40W 批次未用 RT 优先级故未触发。HPIPM 已非候选默认后端,不再重测。
+
+> **RT 节流注意**:front_wing_arc 的 qpOASES compute ~17.9ms/20ms = 90% 占空比,离 95% 节流线不远。若部署中观测到周期性 ~50ms 卡顿,考虑 `sudo sysctl -w kernel.sched_rt_runtime_us=-1` 关闭 RT 节流(仅绑 4-7 核,0-3 核保底可救),详见部署日志。
+
 ## 5. 教程:如何自己增 / 减求解器
 
 **唯一事实源**是 [benchmark_nmpc_solvers.py](src/arm-platform/demo/benchmark_nmpc_solvers.py) 里的
