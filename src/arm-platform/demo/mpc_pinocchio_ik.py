@@ -46,9 +46,9 @@ class MpcIkConfig:
     acados_build_dir: str = "/tmp/windylab_acados_mpc_ik"
     acados_rti_iterations: int = 3  # SQP_RTI 每次 solve 只做一次线性化;这里允许重复几次提高终端精度。
     acados_nlp_solver_type: str = "SQP_RTI"  # 只部署实时迭代 SQP_RTI。
-    acados_qp_solver: str = "PARTIAL_CONDENSING_HPIPM"  # 允许:PARTIAL_CONDENSING_HPIPM/FULL_CONDENSING_QPOASES。
-    acados_qp_solver_iter_max: int = 50  # QP 内层最大迭代数;qpOASES 可能需调大。
-    acados_qp_warm_start: int = 0  # QP 热启动:0 冷启动 / 1 primal / 2 primal+dual。
+    acados_qp_solver: str = "FULL_CONDENSING_QPOASES"  # 允许:PARTIAL_CONDENSING_HPIPM/FULL_CONDENSING_QPOASES。
+    acados_qp_solver_iter_max: int = 500  # QP 内层最大迭代数;qpOASES 需要较高上限。
+    acados_qp_warm_start: int = 1  # QP 热启动:0 冷启动 / 1 primal / 2 primal+dual。
     obstacle_avoidance_enabled: bool = False
     obstacle_safety_margin: float = 0.04
     obstacle_soft_eps: float = 1e-6  # 硬约束 SDF(smooth_max/圆盘距离)的平滑常量,避免不可导拐点。

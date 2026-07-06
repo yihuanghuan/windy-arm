@@ -7,9 +7,9 @@
 - 控制对象:LL100-LH420 整机模型中的六轴机械臂 `A_Joint` ~ `F_Joint`。
 - 可视化对象:整机 `ll100_lh420.urdf`,包含机体、4 个旋翼和机械臂。
 - NMPC 模型:`ll100_lh420_nmpc.urdf`,只保留 A-F 六轴机械臂用于求解。
-- 求解器:默认 acados(SQP_RTI + HPIPM);demo 可切 qpOASES / GRAMPC。
+- 求解器:默认 acados(SQP_RTI + qpOASES);demo 可切 HPIPM / GRAMPC。
   **求解器选型/对比/安装/切换的完整说明,以 [LL100_LH420_NMPC_Solver_README.md](LL100_LH420_NMPC_Solver_README.md) 为准。**
-  当前部署只保留:acados-HPIPM(默认)/ acados-qpOASES / GRAMPC。
+  当前部署只保留:acados-qpOASES(默认)/ acados-HPIPM / GRAMPC。
 - 避障:前桨圆盘 SDF + 机身/安装架简化 box + 连杆 capsule 采样点,默认使用 ACADOS 非线性硬约束。
 - 当前用途:仿真/RViz 演示和算法验证,不直接控制真实 LL100 硬件。
 
@@ -142,6 +142,9 @@ python3 move_ll100_lh420_nmpc_demo.py
 | `target_switch_tolerance` | `0.005` | 启动贴紧首点/路径点切换阈值,m(收紧→启动残差小、max 误差小) |
 | `stuck_steps_before_advance` | `120` | 当前点误差长时间不下降时自动推进 |
 | `stuck_advance_points` | `10` | 卡住时一次跳过的路径点数 |
+| `command_filter_enabled` | `True` | 发布 `/student/joint_command` 前做限速/限加速度滤波,抑制相邻 tick 命令反向尖峰 |
+| `command_velocity_limit` | `0.35` | 命令滤波速度上限,rad/s;略低于底层默认 `max_velocity=0.5` |
+| `command_accel_limit` | `1.5` | 命令滤波加速度上限,rad/s²;越小越柔,但跟踪滞后会变大 |
 | `body_obstacle_margin` | `0.005` | 机身/安装架 box 避障的 NMPC 硬约束余量(额外安全距离),m;小正余量保证实际不接触 |
 | `capsule_radius` | `0.018` | 回退标量碰撞半径,m(仅在中心线模型与分段半径都为空时用) |
 | `capsule_joint_radii` | `[0.052,0.062,0.058,0.050,0.049,0.040]` | 回退-各关节(电机)半径,m,A~F 帧(**当前被代码常量 `capsule_points` 中心线模型取代**,见下) |
@@ -180,15 +183,15 @@ python3 move_ll100_lh420_nmpc_demo.py
 | 参数 | lower_obstacle_circle | avoidance_sweep | circle | front_wing_arc |
 |---|---:|---:|---:|---:|
 | `horizon_steps` | 6 | 8 | 4 | 6 |
-| `position_weight` | 180 | 252 | 120 | 180 |
-| `terminal_position_weight` | 1400 | 2800 | 1020 | 1200 |
-| `orientation_weight` | 0.105 | 0.105 | 0.30 | 0.30 |
+| `position_weight` | 252 | 252 | 120 | 180 |
+| `terminal_position_weight` | 1200 | 2800 | 1020 | 1200 |
+| `orientation_weight` | 0.21 | 0.105 | 0.30 | 0.30 |
 | `terminal_orientation_weight` | 3.0 | 1.05 | 2.1 | 3.0 |
-| `joint_delta_weight` | 0.028 | 0.224 | 0.224 | 0.16 |
-| `joint_delta_change_weight` | 0.175 | 0.70 | 0.70 | 0.50 |
-| `current_posture_weight` | 0.014 | 0.0085 | 0.007 | 0.002 |
-| `center_posture_weight` | 0.0043 | 0.0043 | 0.0035 | 0.0085 |
-| 效果 rms/max/hf/求解 | 0.4/1.7mm/**0.00**/1.6ms | 5.3/14.1mm/0.33/2.0ms | 2.5/5.7mm/0.05/**1.0ms** | 3.0/7.4mm/0.11/1.5ms |
+| `joint_delta_weight` | 0.112 | 0.224 | 0.224 | 0.16 |
+| `joint_delta_change_weight` | 0.35 | 0.70 | 0.70 | 0.50 |
+| `current_posture_weight` | 0.010 | 0.0085 | 0.007 | 0.002 |
+| `center_posture_weight` | 0.0050 | 0.0043 | 0.0035 | 0.0085 |
+| 效果 rms/max/hf/求解 | 0.48/1.97mm/**0.001**/3.0ms(qpOASES) | 5.3/14.1mm/0.33/2.0ms | 2.5/5.7mm/0.05/**1.0ms** | 3.0/7.4mm/0.11/1.5ms |
 
 hf = 稳态误差去 0.5s 趋势后的 RMS(高频震荡量,mm)。相比旧版(无平滑度项):高频震荡从 0.4-0.9mm 压到 0-0.33mm;circle/front_wing_arc 用少量 rms 换平滑(用户要求"误差不能有高频震荡"优先)。front_wing_arc 的命令抖动 acc≈7 rad/s² 仍偏高(该路径 min-manip ~0.003 近奇异所致,物理上限)。可视化验证看 visualizer 新增的 `path_distance_error` 曲线(到路径曲线的几何距离,不受期望时间轴相位伪影影响;旧的 expected−actual 误差曲线含 100mm 级相位伪影,勿用来判跟踪精度)。
 
@@ -388,6 +391,8 @@ RViz 里需要手动添加 `MarkerArray`。
 优先检查 `max_joint_step` 是否大于底层 `max_velocity * 0.02`。上层 NMPC 走得比底层限速快时,实际机械臂会滞后。路径版默认先进入稳定弧线并入点,进入容差后按 `period_sec` 推进目标;如果要严格等实际末端接近每个路径点后再推进,设置 `advance_on_feedback:=true`。
 
 如果 command FK 也明显落后或变形,优先调大 `path_preview_stride` 到 `6` 或 `8`,并保持 `max_joint_step` 不超过底层实际速度能力。`circle` 模式的期望轨迹是半径 `0.08 m` 的真圆;如果图上不是圆,先确认控制节点和 `ll100_trajectory_visualizer_demo.py` 使用相同的 `trajectory_mode` 和 `period_sec`。
+
+如果肉眼看到“一下往前、一下退后”的卡顿,先保留默认 `command_filter_enabled:=true`。该滤波在 NMPC 输出后、发布 `/student/joint_command` 前限制命令速度/加速度,用于压掉在线闭环相邻 tick 的反向尖峰。若要排查求解器原始输出,可临时加 `-p command_filter_enabled:=false` 对比;若仍有轻微抖动,优先降低 `command_velocity_limit` 或 `command_accel_limit`,代价是轨迹会更滞后。
 
 如果只有作图结果显示一个固定相位差,先检查 `ll100_trajectory_visualizer_demo.py` 是否仍用 `use_message_stamp:=true`。LL100 path 控制命令的 stamp 是内部轨迹时间,而 `/joint_states` 是真实时间;默认 `use_message_stamp:=false` 可以避免两套时间基准混在同一张误差图里。
 

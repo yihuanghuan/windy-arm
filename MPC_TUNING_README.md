@@ -335,7 +335,7 @@ python3 tune_ll100_nmpc.py --path-mode avoidance_sweep --max-combinations 2 --pe
 | `--coarse-passes` | `2` | coarse 坐标下降扫描遍数(每遍逐维扫一次) |
 | `--skip-fine` | 关 | 只跑 coarse,不做局部细化 |
 | `--max-combinations` | 全部 | 限制最多评估多少组(冒烟用) |
-| `--top-k` / `--backend` / `--output-dir` / `--quiet-build` | 同一 | 打印数 / 后端 / CSV 目录 / 静音编译 |
+| `--top-k` / `--backend` / `--acados-qp-solver` / `--output-dir` / `--quiet-build` | 同一 | 打印数 / 后端 / QP 后端 / CSV 目录 / 静音编译 |
 
 ### 4. 评分与硬约束(优先级 安全 > 求解时间 > 精度 > 完成时间)
 
@@ -369,10 +369,10 @@ python3 tune_ll100_nmpc.py --path-mode avoidance_sweep --max-combinations 2 --pe
 | 模式 | 20s/圈 max 误差(9 维调后) | 最优要点(相对基线) |
 |---|---|---|
 | `avoidance_sweep` | 3.3 mm(rms 1.7) | `horizon_steps=4`、`position_weight=252`、`terminal_position_weight=1680`|
-| `lower_obstacle_circle` | 1.9 mm(rms 0.5) | `h=6`、`pw=180`、`tpw=800`|
+| `lower_obstacle_circle` | 2.0 mm(rms 0.48, hf≈0.001mm) | `h=6`、`pw=252`、`tpw=1200`、`jd=0.112`、`jdc=0.35`|
 | `circle` | 2.3 mm(rms 0.9) | `h=4`、`pw=216`、`tpw=1200`|
 
-> 每模式的完整最优 `-p …` 命令见调参器终端输出末行,或 `demo/data/tune_ll100_<mode>_<时间戳>.csv` 的 `recommended_command` 列。demo 默认是一套通用参数;要拿到某模式的最优,用该模式的推荐命令覆盖。
+> 每模式的完整最优 `-p …` 命令见调参器终端输出末行,或 `demo/data/tune_ll100_<mode>_<qp_tag>_<时间戳>.csv` 的 `recommended_command` 列。demo 默认是一套通用参数;要拿到某模式的最优,用该模式的推荐命令覆盖。
 
 ### 7. 调参经验
 
@@ -380,7 +380,7 @@ python3 tune_ll100_nmpc.py --path-mode avoidance_sweep --max-combinations 2 --pe
 - **某段误差特别大 + manip 很低?** 路径经过**奇异区**,调参降不动,要**改路径几何**绕开(如 `avoidance_sweep` 把前中心外推到高 manip 区)。
 - **要更小误差?** 在不破坏安全的前提下**放慢 `period_sec`**,误差随周期单调下降到各自地板。
 - **跟不上 / 想更快?** `max_joint_step` 已锁死 = `max_velocity·control_dt`,不再单独调;要更快只能(真机允许时)提 `max_velocity`,它会自动放大 `max_joint_step`。
-- **输出**:CSV 在 `demo/data/tune_ll100_<path_mode>_<时间戳>.csv`;终端 Top-K(先看 `safe`,再看 `max/rms`)+ 一条可直接跑的 `move_ll100_lh420_nmpc_demo.py` 命令。
+- **输出**:CSV 在 `demo/data/tune_ll100_<path_mode>_<qp_tag>_<时间戳>.csv`;终端 Top-K(先看 `safe`,再看 `max/rms`)+ 一条可直接跑的 `move_ll100_lh420_nmpc_demo.py` 命令。
 
 ### 8. 扩展教程
 
@@ -407,7 +407,7 @@ if mode == "my_sweep":
 #### 8.2 切换 / 更换求解后端
 
 > 求解器的完整选型/对比/安装/筛选规则,以 **[LL100_LH420_NMPC_Solver_README.md](LL100_LH420_NMPC_Solver_README.md)** 为准。
-> 结论:当前部署只保留 acados-HPIPM(默认)/ acados-qpOASES / GRAMPC。
+> 结论:当前部署只保留 acados-qpOASES(默认)/ acados-HPIPM / GRAMPC。
 
 **本调参器**的 `--backend` 只支持 acados:
 
@@ -415,8 +415,8 @@ if mode == "my_sweep":
 python3 tune_ll100_nmpc.py --path-mode avoidance_sweep --backend acados
 ```
 *效果:* 调参器与 demo 都会换用该后端求解,别的不用动。
-> 注:qpOASES 用 `-p acados_qp_solver:=FULL_CONDENSING_QPOASES`、GRAMPC 用 `-p solver_backend:=grampc`
-> 在 demo 里切换(见 Solver README §7);本调参器只覆盖 acados。
+> 注:调参器默认使用 qpOASES(`--acados-qp-solver FULL_CONDENSING_QPOASES`、`iter_max=500`、`warm_start=1`)。
+> 在 demo 里切 HPIPM 用 `-p acados_qp_solver:=PARTIAL_CONDENSING_HPIPM`,切 GRAMPC 用 `-p solver_backend:=grampc`。
 
 想把内置 MPC 换成**你自己写的算法**:LL100 的求解器统一由共享的 `MpcPinocchioIK` 构造(与独立臂同一套),做法与「一、§8.2」一致 —— 把你的算法包成一个实现 `step()` 的对象(输入:未来目标序列 + 当前关节角 + 可选目标朝向;输出:下一拍关节角、成功标志、信息字典)。这属于共享求解器改动,改前建议先与独立臂那边协调。
 

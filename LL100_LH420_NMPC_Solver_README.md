@@ -61,8 +61,8 @@ python3 -c "import pygrampc; print('pygrampc ok')"
 
 | 求解器 | 载体 | 安装 | 状态 |
 |---|---|---|---|
-| acados + HPIPM | acados 内置 | 编译 acados | **合格(默认)** |
-| acados + qpOASES | acados(`ACADOS_WITH_QPOASES=ON`) | 编译 acados | **合格** |
+| acados + qpOASES | acados(`ACADOS_WITH_QPOASES=ON`) | 编译 acados | **合格(默认)** |
+| acados + HPIPM | acados 内置 | 编译 acados | **合格** |
 | GRAMPC | pygrampc + C++ codegen | 见 1.2 | **合格** |
 
 ### 1.4 激活环境(每次跑之前)
@@ -308,17 +308,17 @@ GRAMPC_MAX_MULT_ITER=2     ...                                                  
 ## 7. 在 LL100 demo 里运行不同的求解器
 
 实机/仿真 demo [move_ll100_lh420_nmpc_demo.py](src/arm-platform/demo/move_ll100_lh420_nmpc_demo.py)
-已暴露求解器参数(默认 = acados SQP_RTI + HPIPM,与原行为一致)。切换只需传 ROS 参数:
+已暴露求解器参数(默认 = acados SQP_RTI + qpOASES)。切换只需传 ROS 参数:
 
 ```bash
 cd ~/code/windylab_ws/src/arm-platform/demo
 # (先 source 环境,见 1.6)
 
-# ① 默认:acados HPIPM
+# ① 默认:acados qpOASES
 python3 move_ll100_lh420_nmpc_demo.py
 
-# ② acados qpOASES(速度第一)
-python3 move_ll100_lh420_nmpc_demo.py --ros-args -p acados_qp_solver:=FULL_CONDENSING_QPOASES
+# ② acados HPIPM
+python3 move_ll100_lh420_nmpc_demo.py --ros-args -p acados_qp_solver:=PARTIAL_CONDENSING_HPIPM
 
 # ③ GRAMPC(精度第一)
 python3 move_ll100_lh420_nmpc_demo.py --ros-args -p solver_backend:=grampc
@@ -331,7 +331,9 @@ python3 move_ll100_lh420_nmpc_demo.py --ros-args -p solver_backend:=grampc
 |---|---|---|
 | `solver_backend` | `acados` | `acados` / `grampc` |
 | `acados_nlp_solver_type` | `SQP_RTI` | `SQP_RTI` |
-| `acados_qp_solver` | `PARTIAL_CONDENSING_HPIPM` | `PARTIAL_CONDENSING_HPIPM` / `FULL_CONDENSING_QPOASES` |
+| `acados_qp_solver` | `FULL_CONDENSING_QPOASES` | `FULL_CONDENSING_QPOASES` / `PARTIAL_CONDENSING_HPIPM` |
+| `acados_qp_solver_iter_max` | `500` | 正整数 |
+| `acados_qp_warm_start` | `1` | `0` / `1` / `2` |
 
 > - GRAMPC 需先按 1.2 装好 pygrampc 且设 `PYGRAMPC_ROOT`。
 > - 组合示例:同时改 backend 和 qp,多个 `-p` 并列即可。

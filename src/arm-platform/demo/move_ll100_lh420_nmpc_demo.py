@@ -64,14 +64,14 @@ DEFAULT_PATH_PREVIEW_STRIDE = 4
 SCENARIO_TUNED_PRESETS = {
     "lower_obstacle_circle": dict(
         horizon_steps=6,
-        position_weight=180.0,
-        terminal_position_weight=1400.0,
-        orientation_weight=0.105,
+        position_weight=252.0,
+        terminal_position_weight=1200.0,
+        orientation_weight=0.21,
         terminal_orientation_weight=3.0,
-        joint_delta_weight=0.028,
-        joint_delta_change_weight=0.175,
-        current_posture_weight=0.014,
-        center_posture_weight=0.0043,
+        joint_delta_weight=0.112,
+        joint_delta_change_weight=0.35,
+        current_posture_weight=0.01,
+        center_posture_weight=0.005,
     ),
     "avoidance_sweep": dict(
         horizon_steps=8,
@@ -301,10 +301,13 @@ class MoveLL100LH420NmpcDemo(Node):
         self.declare_parameter("approach_lead", 0.04)  # carrot 最多领先实际末端距离,m;跟不上则暂停推进
         self.declare_parameter("start_reach_timeout_sec", 8.0)  # 启动到位等待超时,s
         self.declare_parameter("start_relaxed_tolerance", 0.02)  # 超时后启动滚动跟踪的放宽阈值,m
-        self.declare_parameter("min_manip_warn", 0.012)  # 可操作度低于此值时提示接近奇异
+        self.declare_parameter("min_manip_warn", 0.0085)  # 可操作度低于此值时提示接近奇异
         self.declare_parameter("stuck_error_epsilon", 0.002)
         self.declare_parameter("stuck_steps_before_advance", 120)
         self.declare_parameter("stuck_advance_points", 10)
+        self.declare_parameter("command_filter_enabled", True)  # 输出命令限速/限加速度,抑制在线闭环反向抽动
+        self.declare_parameter("command_velocity_limit", 0.35)  # rad/s,略低于底层 max_velocity=0.5
+        self.declare_parameter("command_accel_limit", 1.5)      # rad/s^2,比底层 5.0 更柔顺
         self.declare_parameter("current_posture_weight", -1.0)
         self.declare_parameter("center_posture_weight", -1.0)
         self.declare_parameter("joint_delta_weight", -1.0)         # 一阶平滑(惩罚 Δq),NMPC 代价权重
@@ -314,7 +317,9 @@ class MoveLL100LH420NmpcDemo(Node):
         # 求解器选择:只部署 acados(SQP_RTI + HPIPM/qpOASES) 与 GRAMPC。
         self.declare_parameter("solver_backend", "acados")
         self.declare_parameter("acados_nlp_solver_type", "SQP_RTI")
-        self.declare_parameter("acados_qp_solver", "PARTIAL_CONDENSING_HPIPM")
+        self.declare_parameter("acados_qp_solver", "FULL_CONDENSING_QPOASES")
+        self.declare_parameter("acados_qp_solver_iter_max", 500)
+        self.declare_parameter("acados_qp_warm_start", 1)
 
         self.path_mode = str(self.get_parameter("path_mode").value)
         self.single_target_position = np.array(
@@ -351,6 +356,9 @@ class MoveLL100LH420NmpcDemo(Node):
         self.stuck_error_epsilon = float(self.get_parameter("stuck_error_epsilon").value)
         self.stuck_steps_before_advance = int(self.get_parameter("stuck_steps_before_advance").value)
         self.stuck_advance_points = int(self.get_parameter("stuck_advance_points").value)
+        self.command_filter_enabled = bool(self.get_parameter("command_filter_enabled").value)
+        self.command_velocity_limit = float(self.get_parameter("command_velocity_limit").value)
+        self.command_accel_limit = float(self.get_parameter("command_accel_limit").value)
         raw_nmpc_params = {
             "horizon_steps": int(self.get_parameter("horizon_steps").value),
             "position_weight": float(self.get_parameter("position_weight").value),
@@ -394,6 +402,8 @@ class MoveLL100LH420NmpcDemo(Node):
         self.solver_backend = str(self.get_parameter("solver_backend").value)
         self.acados_nlp_solver_type = str(self.get_parameter("acados_nlp_solver_type").value)
         self.acados_qp_solver = str(self.get_parameter("acados_qp_solver").value)
+        self.acados_qp_solver_iter_max = int(self.get_parameter("acados_qp_solver_iter_max").value)
+        self.acados_qp_warm_start = int(self.get_parameter("acados_qp_warm_start").value)
 
         if self.solver_backend not in ("acados", "grampc"):
             raise ValueError("solver_backend 只支持 'acados' 或 'grampc'")
@@ -403,6 +413,10 @@ class MoveLL100LH420NmpcDemo(Node):
             raise ValueError(
                 "acados_qp_solver 只支持 'PARTIAL_CONDENSING_HPIPM' 或 'FULL_CONDENSING_QPOASES'"
             )
+        if self.acados_qp_solver_iter_max < 1:
+            raise ValueError("acados_qp_solver_iter_max 必须 >= 1")
+        if self.acados_qp_warm_start not in (0, 1, 2):
+            raise ValueError("acados_qp_warm_start 只支持 0/1/2")
         if self.period_sec <= 0.0:
             raise ValueError("period_sec 必须 > 0")
         if self.horizon_steps < 1:
@@ -411,6 +425,10 @@ class MoveLL100LH420NmpcDemo(Node):
             raise ValueError("max_joint_step 必须 > 0")
         if self.path_preview_stride < 1:
             raise ValueError("path_preview_stride 必须 >= 1")
+        if self.command_velocity_limit <= 0.0:
+            raise ValueError("command_velocity_limit 必须 > 0")
+        if self.command_accel_limit <= 0.0:
+            raise ValueError("command_accel_limit 必须 > 0")
         if self.orientation_target not in ("initial", "vertical_down"):
             raise ValueError("orientation_target 必须是 'initial' 或 'vertical_down'")
         if self.path_mode == "single_target" and self.single_target_position.shape != (3,):
@@ -428,6 +446,8 @@ class MoveLL100LH420NmpcDemo(Node):
             acados_build_dir=f"/tmp/windylab_acados_ll100_lh420_path_{self.path_mode}",
             acados_nlp_solver_type=self.acados_nlp_solver_type,
             acados_qp_solver=self.acados_qp_solver,
+            acados_qp_solver_iter_max=self.acados_qp_solver_iter_max,
+            acados_qp_warm_start=self.acados_qp_warm_start,
             position_weight=self.position_weight,
             terminal_position_weight=self.terminal_position_weight,
             orientation_weight=self.orientation_weight if self.lock_orientation else 0.0,
@@ -457,7 +477,7 @@ class MoveLL100LH420NmpcDemo(Node):
             joint_delta_weight=self.joint_delta_weight,
             joint_delta_change_weight=self.joint_delta_change_weight,
         )
-        # 三种部署目标:acados(HPIPM 默认 / qpOASES,走 MpcPinocchioIK)、GRAMPC(GrampcRunner)。
+        # 三种部署目标:acados(qpOASES 默认 / HPIPM,走 MpcPinocchioIK)、GRAMPC(GrampcRunner)。
         if self.solver_backend == "grampc":
             from grampc_ll100 import GrampcRunner
             self.mpc_ik = GrampcRunner(urdf_path=LL100_NMPC_URDF, ee_frame="F_Link", config=cfg)
@@ -471,6 +491,8 @@ class MoveLL100LH420NmpcDemo(Node):
             single_target=self.single_target_position,
         )
         self.q_last = np.clip(pin.neutral(self.mpc_ik.model), self.mpc_ik.q_lower, self.mpc_ik.q_upper)
+        self._command_filter_initialized = False
+        self._last_command_velocity = np.zeros(len(JOINT_NAMES), dtype=float)
         self.q_feedback = None
         self.path_index_initialized = False
         self.locked_rotation = self._orientation_target_rotation(self.q_last)
@@ -479,6 +501,8 @@ class MoveLL100LH420NmpcDemo(Node):
         self.path_index = 0
         self.path_time_offset_index = 0
         self.path_time_tracking_started = not self.hold_start_until_reached
+        self.path_time_start_sec = None
+        self.path_time_start_index = 0
         self.best_current_target_error = float("inf")
         self.stuck_steps = 0
         self.trajectory_start_time_sec = None
@@ -519,6 +543,8 @@ class MoveLL100LH420NmpcDemo(Node):
             f"lock_orientation={self.lock_orientation}, orientation_target={self.orientation_target}, "
             f"advance_on_feedback={self.advance_on_feedback}, start_nearest={self.start_from_nearest_path_point}, "
             f"hold_start={self.hold_start_until_reached}, "
+            f"command_filter={self.command_filter_enabled}(v={self.command_velocity_limit:.2f}, "
+            f"a={self.command_accel_limit:.2f}), "
             f"front_obstacle={self.obstacle_avoidance_enabled}(hard-only), "
             f"body_obstacle={self.body_obstacle_enabled}(hard-only)"
         )
@@ -619,11 +645,22 @@ class MoveLL100LH420NmpcDemo(Node):
             if self.gentle_start and self._approach_carrot is not None:
                 return np.repeat(self._approach_carrot.reshape(1, 3), self.horizon_steps, axis=0)
             return np.repeat(self.path[self.path_index].reshape(1, 3), self.horizon_steps, axis=0)
-        start = (self._time_path_index() + self.path_time_offset_index) % len(self.path)
+        start = (self.path_time_start_index + self._time_path_index()) % len(self.path)
         indices = (start + offsets) % len(self.path)
         return self.path[indices]
 
+    def _now_sec(self) -> float:
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def _tracking_elapsed_sec(self) -> float:
+        if self.path_time_start_sec is None:
+            return 0.0
+        return max(0.0, self._now_sec() - self.path_time_start_sec)
+
     def _time_path_index(self) -> int:
+        if self.path_time_tracking_started and self.path_time_start_sec is not None:
+            elapsed = self._tracking_elapsed_sec()
+            return int(round((elapsed % self.period_sec) / self.dt)) % len(self.path)
         return int(round((self.t % self.period_sec) / self.dt)) % len(self.path)
 
     def _initialize_path_index(self, actual_pos: np.ndarray):
@@ -654,17 +691,20 @@ class MoveLL100LH420NmpcDemo(Node):
         self.stuck_steps = 0
 
     def _start_time_tracking(self, error: float, log_prefix: str):
-        self.path_time_offset_index = (self.path_index - self._time_path_index()) % len(self.path)
+        self.path_time_start_sec = self._now_sec()
+        self.path_time_start_index = self.path_index
+        self.path_time_offset_index = self.path_index
+        self.t = 0.0
         self.path_time_tracking_started = True
         self._start_wait_start_time_sec = None
         self.get_logger().info(
             f"{log_prefix}: "
             f"path_index={self.path_index}, error={error:.4f}, "
-            f"time_offset={self.path_time_offset_index}"
+            f"wall_clock_tracking=True"
         )
 
     def _start_wait_elapsed_sec(self) -> float:
-        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        now_sec = self._now_sec()
         if self._start_wait_start_time_sec is None:
             self._start_wait_start_time_sec = now_sec
         return now_sec - self._start_wait_start_time_sec
@@ -689,10 +729,40 @@ class MoveLL100LH420NmpcDemo(Node):
             return
         self._approach_carrot = self._approach_carrot + (step / distance) * delta
 
+    def _filtered_command(self, q_desired: np.ndarray, q_current: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Limit the published command's velocity and acceleration to avoid online tick-to-tick reversals."""
+        if not self.command_filter_enabled:
+            dq_cmd = (q_desired - q_current) / self.dt
+            self.q_last = np.clip(q_desired, self.mpc_ik.q_lower, self.mpc_ik.q_upper)
+            self._last_command_velocity = np.clip(dq_cmd, -self.command_velocity_limit, self.command_velocity_limit)
+            self._command_filter_initialized = True
+            return self.q_last.copy(), dq_cmd
+
+        if not self._command_filter_initialized:
+            self.q_last = q_current.copy()
+            self._last_command_velocity = np.zeros(len(JOINT_NAMES), dtype=float)
+            self._command_filter_initialized = True
+
+        v_des = (q_desired - self.q_last) / self.dt
+        v_des = np.clip(v_des, -self.command_velocity_limit, self.command_velocity_limit)
+        dv = self.command_accel_limit * self.dt
+        v_cmd = np.clip(v_des, self._last_command_velocity - dv, self._last_command_velocity + dv)
+        q_cmd = np.clip(self.q_last + v_cmd * self.dt, self.mpc_ik.q_lower, self.mpc_ik.q_upper)
+        # Recompute actual velocity after joint-limit clipping.
+        v_cmd = (q_cmd - self.q_last) / self.dt
+        self.q_last = q_cmd
+        self._last_command_velocity = v_cmd
+        return q_cmd.copy(), v_cmd.copy()
+
     def _advance_path_index_if_ready(self, actual_pos: np.ndarray):
         if not self.path_index_initialized:
             self._initialize_path_index(actual_pos)
         if not self.advance_on_feedback:
+            if self.path_time_tracking_started and self.path_time_start_sec is None:
+                target = self.path[self.path_index]
+                error = float(np.linalg.norm(actual_pos - target))
+                self._start_time_tracking(error, "启动按真实时间推进")
+                return
             if not self.path_time_tracking_started:
                 target = self.path[self.path_index]
                 error = float(np.linalg.norm(actual_pos - target))
@@ -774,9 +844,9 @@ class MoveLL100LH420NmpcDemo(Node):
         command_usable = bool(info.get("command_usable", ok))
         dq_cmd = np.zeros(len(JOINT_NAMES))
         if command_usable:
-            self.q_last = q_next
-            dq_cmd = (q_next - q_current) / self.dt
+            _, dq_cmd = self._filtered_command(q_next, q_current)
         else:
+            self._last_command_velocity = np.zeros(len(JOINT_NAMES), dtype=float)
             self.get_logger().warn(
                 "路径 NMPC 命令不可用,保持上一帧: "
                 f"terminal_error={info['terminal_error']:.4f}, "
@@ -796,6 +866,8 @@ class MoveLL100LH420NmpcDemo(Node):
             )
 
         msg = JointState()
+        if self.path_time_tracking_started and self.path_time_start_sec is not None and not self.advance_on_feedback:
+            self.t = self._tracking_elapsed_sec()
         msg.header.stamp = self._trajectory_stamp(self.t)
         msg.name = JOINT_NAMES
         msg.position = self.q_last.tolist()
@@ -825,7 +897,7 @@ class MoveLL100LH420NmpcDemo(Node):
                 f"usable={command_usable} tracking_ok={info.get('tracking_ok')}",
                 throttle_duration_sec=self.metrics_log_sec,
             )
-        if self.advance_on_feedback or self.path_time_tracking_started or not self.hold_start_until_reached:
+        if self.advance_on_feedback:
             self.t += self.dt
 
     def _publish_markers(self, current_target: np.ndarray, actual_pos: np.ndarray, q_actual: np.ndarray):

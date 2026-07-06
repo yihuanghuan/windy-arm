@@ -48,6 +48,7 @@ import numpy as np
 from mpc_pinocchio_ik import MpcIkConfig, MpcPinocchioIK
 
 
+DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "data"
 PUBLISH_RATE_HZ = 50.0
 CONTROL_DT = 1.0 / PUBLISH_RATE_HZ
 
@@ -202,7 +203,14 @@ def _dir_tag(p: ParamSet, max_joint_step: float) -> str:
     return f"h{p.horizon_steps}_s{int(round(max_joint_step * 1000))}"
 
 
-def build_config(p: ParamSet, backend: str, max_velocity: float) -> Tuple[MpcIkConfig, str]:
+def build_config(
+    p: ParamSet,
+    backend: str,
+    max_velocity: float,
+    acados_qp_solver: str,
+    acados_qp_solver_iter_max: int,
+    acados_qp_warm_start: int,
+) -> Tuple[MpcIkConfig, str]:
     from mpc_pinocchio_ik import DEFAULT_LL100_URDF
     from move_ll100_lh420_nmpc_demo import (
         DEFAULT_LL100_BODY_OBSTACLE_BOXES,
@@ -222,6 +230,9 @@ def build_config(p: ParamSet, backend: str, max_velocity: float) -> Tuple[MpcIkC
         success_tolerance=TERMINAL_TOLERANCE,
         solver_backend=backend,
         acados_build_dir=build_dir,
+        acados_qp_solver=acados_qp_solver,
+        acados_qp_solver_iter_max=acados_qp_solver_iter_max,
+        acados_qp_warm_start=acados_qp_warm_start,
         position_weight=p.position_weight,
         terminal_position_weight=p.terminal_position_weight,
         orientation_weight=p.orientation_weight,
@@ -303,11 +314,22 @@ def _command_acceleration_rms(q_cmds: np.ndarray) -> float:
     return rms(acc)
 
 
-def recommended_command(p: ParamSet, path_mode: str, max_velocity: float, period_sec: float) -> str:
+def recommended_command(
+    p: ParamSet,
+    path_mode: str,
+    max_velocity: float,
+    period_sec: float,
+    acados_qp_solver: str,
+    acados_qp_solver_iter_max: int,
+    acados_qp_warm_start: int,
+) -> str:
     max_joint_step = max_velocity * CONTROL_DT
     return (
         "python3 move_ll100_lh420_nmpc_demo.py --ros-args "
         f"-p path_mode:={path_mode} -p period_sec:={period_sec:.1f} "
+        f"-p acados_qp_solver:={acados_qp_solver} "
+        f"-p acados_qp_solver_iter_max:={acados_qp_solver_iter_max} "
+        f"-p acados_qp_warm_start:={acados_qp_warm_start} "
         f"-p horizon_steps:={p.horizon_steps} "
         f"-p max_joint_step:={max_joint_step:.4f} "
         f"-p position_weight:={p.position_weight:.1f} "
@@ -335,13 +357,21 @@ def _plant_step(q_plant, q_cmd, qdot_ref, last_v, max_velocity, q_lower, q_upper
     return q_new, (q_new - q_plant) / CONTROL_DT
 
 
-def evaluate(p: ParamSet, path_mode: str, backend: str,
+def evaluate(p: ParamSet, path_mode: str, backend: str, acados_qp_solver: str,
+             acados_qp_solver_iter_max: int, acados_qp_warm_start: int,
              periods: float, quiet_build: bool, max_velocity: float,
              period_sec: float = EVAL_PERIOD_SEC) -> TrialResult:
     import pinocchio as pin
     from ll100_traj_pub import _build_path as build_ll100_path
 
-    cfg, urdf = build_config(p, backend, max_velocity)
+    cfg, urdf = build_config(
+        p,
+        backend,
+        max_velocity,
+        acados_qp_solver,
+        acados_qp_solver_iter_max,
+        acados_qp_warm_start,
+    )
     with suppress_native_output(quiet_build):
         mpc = MpcPinocchioIK(urdf_path=urdf, ee_frame=EE_FRAME, config=cfg)
 
@@ -457,7 +487,15 @@ def evaluate(p: ParamSet, path_mode: str, backend: str,
         rms_position_error=rms_pos, max_position_error=max_pos,
         hf_err_rms=hf_err_rms, cmd_acc_rms=cmd_acc_rms, lag_mm=lag_mm,
         mean_solve_time_ms=mean_ms, samples=len(pos_errs),
-        recommended_command=recommended_command(p, path_mode, max_velocity, period_sec),
+        recommended_command=recommended_command(
+            p,
+            path_mode,
+            max_velocity,
+            period_sec,
+            acados_qp_solver,
+            acados_qp_solver_iter_max,
+            acados_qp_warm_start,
+        ),
     )
 
 
@@ -478,8 +516,18 @@ def run(args: argparse.Namespace) -> int:
 
     def evaluate_cached(p: ParamSet) -> TrialResult:
         if p not in cache:
-            r = evaluate(p, args.path_mode, args.backend, args.periods, args.quiet_build,
-                         args.max_velocity, args.period)
+            r = evaluate(
+                p,
+                args.path_mode,
+                args.backend,
+                args.acados_qp_solver,
+                args.acados_qp_solver_iter_max,
+                args.acados_qp_warm_start,
+                args.periods,
+                args.quiet_build,
+                args.max_velocity,
+                args.period,
+            )
             cache[p] = r
             print(
                 f"    [{len(cache)}] safe={r.safe} score={r.score:.2f} viol={r.violation_max:.6f} "
@@ -492,6 +540,7 @@ def run(args: argparse.Namespace) -> int:
         return cache[p]
 
     print(f"[ll100 避障 NMPC 调参] path_mode={args.path_mode} 周期={args.period}s "
+          f"backend={args.backend}/{args.acados_qp_solver} "
           f"max_velocity={args.max_velocity} (max_joint_step 派生={args.max_velocity * CONTROL_DT:.4f}) "
           f"坐标下降 coarse{'' if args.skip_fine else '→fine'} 预算={budget}", flush=True)
 
@@ -552,12 +601,14 @@ def run(args: argparse.Namespace) -> int:
         return 1
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_path = args.output_dir / f"tune_ll100_{args.path_mode}_{stamp}.csv"
+    qp_tag = args.acados_qp_solver.lower().replace("full_condensing_", "").replace("partial_condensing_", "")
+    csv_path = args.output_dir / f"tune_ll100_{args.path_mode}_{qp_tag}_{stamp}.csv"
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
-            "rank", "safe", "score", "path_mode",
+            "rank", "safe", "score", "path_mode", "backend", "acados_qp_solver",
+            "acados_qp_solver_iter_max", "acados_qp_warm_start",
             "horizon_steps", "position_weight", "terminal_position_weight",
             "orientation_weight", "terminal_orientation_weight",
             "joint_delta_weight", "joint_delta_change_weight",
@@ -571,7 +622,8 @@ def run(args: argparse.Namespace) -> int:
         for rank, r in enumerate(results, 1):
             q = r.params
             writer.writerow([
-                rank, r.safe, f"{r.score:.4f}", r.path_mode,
+                rank, r.safe, f"{r.score:.4f}", r.path_mode, args.backend,
+                args.acados_qp_solver, args.acados_qp_solver_iter_max, args.acados_qp_warm_start,
                 q.horizon_steps, f"{q.position_weight:.3f}", f"{q.terminal_position_weight:.3f}",
                 f"{q.orientation_weight:.4f}", f"{q.terminal_orientation_weight:.4f}",
                 f"{q.joint_delta_weight:.4f}", f"{q.joint_delta_change_weight:.4f}",
@@ -619,6 +671,14 @@ def parse_args() -> argparse.Namespace:
                         help="闭环 plant 的底层关节限速 rad/s(应与 student_arm max_velocity 一致;"
                              "max_joint_step 由它派生 = max_velocity·control_dt)")
     parser.add_argument("--backend", choices=("acados",), default="acados")
+    parser.add_argument("--acados-qp-solver",
+                        choices=("PARTIAL_CONDENSING_HPIPM", "FULL_CONDENSING_QPOASES"),
+                        default="FULL_CONDENSING_QPOASES",
+                        help="acados 的 QP 后端;默认 qpOASES,和路径 demo 裸启动一致")
+    parser.add_argument("--acados-qp-solver-iter-max", type=int, default=500,
+                        help="acados QP 内层最大迭代数;qpOASES 默认 500")
+    parser.add_argument("--acados-qp-warm-start", type=int, choices=(0, 1, 2), default=1,
+                        help="acados QP warm-start:0 冷启动 / 1 primal / 2 primal+dual")
     parser.add_argument("--period", type=float, default=EVAL_PERIOD_SEC,
                         help="一圈时长 s(完成时间;越长越精准)")
     parser.add_argument("--periods", type=float, default=1.0, help="计时跟踪的圈数")
@@ -626,8 +686,7 @@ def parse_args() -> argparse.Namespace:
                         help="coarse 坐标下降扫描遍数(每遍逐维扫描一次)")
     parser.add_argument("--skip-fine", action="store_true", help="只跑 coarse,不做局部细化")
     parser.add_argument("--top-k", type=int, default=10, help="终端打印前 K 名")
-    parser.add_argument("--output-dir", type=Path,
-                        default=Path("/home/windylab/code/windylab_ws/src/arm-platform/demo/data"))
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--quiet-build", action=argparse.BooleanOptionalAction, default=True,
                         help="是否静音 ACADOS 代码生成/编译输出,默认静音")
     parser.add_argument("--max-combinations", type=int, default=None,
