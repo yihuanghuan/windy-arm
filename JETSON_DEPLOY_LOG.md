@@ -92,6 +92,32 @@ sudo sysctl -w kernel.sched_rt_runtime_us=950000   # 立即恢复默认值(或�
 **关闭后的风险与自救**：若 SCHED_FIFO 进程死循环，其绑定的 4-7 核会被占死；
 0-3 核不受影响，SSH 进去 `kill` 该进程即可恢复。切勿把 RT 进程绑到全部 8 核。
 
+## 2026-07-06（午后）关节流确认 + HPIPM 归因修正 + 节点热路径优化
+
+全程从工作站免密 SSH 远程执行,测试脚本 `/tmp/run_latency.sh`(Jetson 上,零反馈源 + 45s 采样)。
+
+### 确认测试与归因修正
+
+- qpOASES front_wing_arc(部署默认参数):compute P95 16.90ms,**max 从 67ms 收敛到 18.9ms**
+  ——RT 节流关闭对长尾确有实效。
+- **HPIPM 异常归因修正**:此前"RT 节流伪影"判断**错误**。真因是部署调参引入的
+  `acados_qp_solver_iter_max=500` 默认值:HPIPM 在本问题上每步跑满迭代上限
+  (iter=500→173ms、iter=50→31.6ms,耗时恒定=铁证;31.6 = 40W 的 41.3 ÷ 1.325 主频比,完全吻合)。
+  qpOASES 热启动早收敛不受影响。**用 HPIPM 须显式 `-p acados_qp_solver_iter_max:=50`**。
+  注意:改 iter_max 是结构量,触发 acados 全量重编,Jetson 上约 5 分钟。
+
+### 热路径优化(cProfile 剖析驱动)
+
+- 剖析发现:①避障诊断在 `_plan_feasible`/`_make_info` 重复计算(~25% tick);②marker 每 tick
+  重建 2500 点尾迹(~40% tick,在延迟打点外但挤占周期)。
+- 修复:诊断去重(mpc_pinocchio_ik.py,语义等价);demo 节点新增 `marker_publish_hz`(默认 10Hz)。
+- **效果(compute P95)**:circle 13.29→9.33ms,lower 14.06→8.69ms,front_wing_arc 17.86→12.34ms;
+  front_wing_arc 有效控制频率 **34.7→49.7Hz**(优化前 tick 超 20ms,节点一直欠频饱和运行,
+  此前基线的 e2e 是饱和态测得,feedback_age 假性 0.4ms;详见求解器 README §4.7)。
+- 数据:`src/arm-platform/demo/data/jetson_maxn_super_opt_20260706/`。
+- 注意:优化改动先经 scp 直推 Jetson 验证,Jetson 工作区这两个文件是脏的;下次 git pull 前先
+  `git checkout -- src/arm-platform/demo/mpc_pinocchio_ik.py src/arm-platform/demo/move_ll100_lh420_nmpc_demo.py`。
+
 ## 遗留事项 / 下一步
 
 - [x] 本机（windylab 工作站）→ Jetson 免密 SSH：用户已 `ssh-copy-id` 授权（2026-07-06），

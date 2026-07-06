@@ -244,9 +244,31 @@ NMPC 节点以 **SCHED_FIFO 80** 实时优先级运行(`chrt -f 80 taskset -c 4-
 **结论(部署定稿)**:
 1. **qpOASES 三场景全部进入 20ms 周期**,提速比 1.29~1.40× 与主频提升(×1.325)吻合——纯频率收益,零代码改动。50Hz 部署推荐配置:**MAXN_SUPER + jetson_clocks + qpOASES + `chrt -f 80 taskset -c 4-7`**。
 2. **GRAMPC** 压在 20ms 线上(19.9~20.1ms),50Hz 下仍不作默认后端,≤40Hz 可用。
-3. **HPIPM 本轮数据无效**:compute P95 飙到 115~226ms,是 **Linux RT 节流伪影**而非求解器变慢——内核默认限制 SCHED_FIFO 任务每秒占用 ≤95% CPU(`sched_rt_runtime_us=950000`,已在机上核实),HPIPM 占空比本就 >100%(40W 时 compute 22~41ms>20ms 周期),挂实时优先级后触顶被周期性挂起、延迟雪崩。40W 批次未用 RT 优先级故未触发。HPIPM 已非候选默认后端,不再重测。
+3. **HPIPM 本轮数据无效,真因是 `acados_qp_solver_iter_max=500`**(2026-07-06 下午复测定论,推翻最初的"RT 节流"归因):部署调参把 QP 迭代上限默认设为 500,而 HPIPM 在本问题上**每步都跑满迭代上限**(500 次≈173ms、50 次≈31.6ms,耗时呈"恒定值"特征即为铁证;31.6ms 恰等于 40W 的 41.3ms ÷ 主频比 1.325)。qpOASES 靠热启动早收敛,不受该默认值影响。→ **若用 HPIPM,须显式传 `-p acados_qp_solver_iter_max:=50`**。原始数据见 `data/jetson_maxn_super_opt_20260706/latency_front_wing_arc_hpipm_iter{50,500}.csv`。
 
-> **RT 节流注意**:front_wing_arc 的 qpOASES compute ~17.9ms/20ms = 90% 占空比,离 95% 节流线不远。若部署中观测到周期性 ~50ms 卡顿,考虑 `sudo sysctl -w kernel.sched_rt_runtime_us=-1` 关闭 RT 节流(仅绑 4-7 核,0-3 核保底可救),详见部署日志。
+> **RT 节流**:已在 Jetson 上永久关闭(`sched_rt_runtime_us=-1`,见部署日志,含复位方法)。关闭后 qpOASES 的最坏单步从 67ms 收敛到 18.9ms——节流确实影响长尾,但不是 HPIPM 异常的主因。
+
+### 4.7 节点热路径优化(诊断去重 + marker 降频,2026-07-06)
+
+cProfile 剖析(front_wing_arc, 720 tick)发现两处大头:①`step()` 里避障诊断被 `_plan_feasible` 和
+`_make_info` **各算一遍**(全时域 FK+数百次符号距离,约占 tick 的 1/4);②`_publish_markers` 每 tick
+重建整套 MarkerArray(含最多 2500 点尾迹,约占 40%,虽在延迟打点之后、不计入 compute,但挤占 20ms 周期)。
+两项修复:诊断算一遍两处复用([mpc_pinocchio_ik.py](src/arm-platform/demo/mpc_pinocchio_ik.py) 的
+`step/solve`,语义等价);新增 `marker_publish_hz` 参数(默认 10Hz,≤0 关闭,≥50 恢复逐 tick)。
+
+**优化效果(MAXN_SUPER + chrt -f 80,compute P95,ms):**
+
+| 场景 | 优化前 | 优化后 | 有效控制频率 |
+|---|---:|---:|---|
+| circle | 13.29 | **9.33** | 49.7Hz |
+| lower_obstacle_circle | 14.06 | **8.69** | 49.7Hz |
+| front_wing_arc | 17.86 | **12.34** | **34.7 → 49.7Hz** |
+
+**重要发现**:优化前 front_wing_arc 的 tick 总耗时(compute+marker)>20ms,节点实际只跑出 **~35Hz**
+——此前各基线的 end_to_end"达标"是在欠频饱和状态下测得的(饱和时 tick 紧跟反馈消息执行,
+feedback_age 假性≈0.4ms)。优化后恢复真 50Hz,feedback_age 变为 0~20ms 锯齿(50Hz 轮询回环的
+相位伪影,非软件栈变慢),故新旧 end_to_end 不可直接比,**软件栈横向对比一律看 compute**。
+原始数据与汇总:`data/jetson_maxn_super_opt_20260706/`(`latency_summary_opt.csv`)。
 
 ## 5. 教程:如何自己增 / 减求解器
 

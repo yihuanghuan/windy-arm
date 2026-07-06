@@ -314,6 +314,9 @@ class MoveLL100LH420NmpcDemo(Node):
         self.declare_parameter("joint_delta_change_weight", -1.0)  # 二阶平滑(惩罚 ΔΔq/抑抖),NMPC 代价权重
         self.declare_parameter("metrics_log_sec", 0.0)
         self.declare_parameter("latency_profiling", False)
+        # RViz marker 发布频率 Hz。可视化不需要 50Hz,降频可省下每 tick 重建
+        # MarkerArray(含尾迹最多 2500 个 Point)的 CPU;<=0 完全关闭,>=50 每 tick 发。
+        self.declare_parameter("marker_publish_hz", 10.0)
         # 求解器选择:只部署 acados(SQP_RTI + HPIPM/qpOASES) 与 GRAMPC。
         self.declare_parameter("solver_backend", "acados")
         self.declare_parameter("acados_nlp_solver_type", "SQP_RTI")
@@ -399,6 +402,12 @@ class MoveLL100LH420NmpcDemo(Node):
         )
         self.metrics_log_sec = float(self.get_parameter("metrics_log_sec").value)
         self.latency_profiling = bool(self.get_parameter("latency_profiling").value)
+        marker_publish_hz = float(self.get_parameter("marker_publish_hz").value)
+        if marker_publish_hz <= 0.0:
+            self._marker_stride = 0  # 0 = 不发布 marker
+        else:
+            self._marker_stride = max(1, int(round(PUBLISH_RATE_HZ / marker_publish_hz)))
+        self._marker_tick_count = 0
         self.solver_backend = str(self.get_parameter("solver_backend").value)
         self.acados_nlp_solver_type = str(self.get_parameter("acados_nlp_solver_type").value)
         self.acados_qp_solver = str(self.get_parameter("acados_qp_solver").value)
@@ -885,7 +894,9 @@ class MoveLL100LH420NmpcDemo(Node):
         self.actual_trail.append(actual_pos.copy())
         if len(self.actual_trail) > MAX_TRAIL_POINTS:
             self.actual_trail.pop(0)
-        self._publish_markers(targets[0], actual_pos, q_current)
+        self._marker_tick_count += 1
+        if self._marker_stride and self._marker_tick_count % self._marker_stride == 0:
+            self._publish_markers(targets[0], actual_pos, q_current)
         if self.metrics_log_sec > 0.0:
             self.get_logger().info(
                 f"[metrics] mode={self.path_mode} "

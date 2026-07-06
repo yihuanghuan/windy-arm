@@ -160,13 +160,16 @@ class MpcPinocchioIK:
         plan = result.x.reshape(self.config.horizon_steps, self.nq)
         terminal_q = np.clip(plan[-1], self.q_lower, self.q_upper)
         terminal_error = self._position_error(terminal_q, targets[-1])
-        plan_feasible = self._plan_feasible(q0, plan)
+        # 避障诊断只算一遍,feasible 判定与 info 共用(全时域 FK+符号距离是热路径大头)。
+        obstacle_diag = self._obstacle_diagnostics(plan)
+        plan_feasible = self._plan_feasible(q0, plan, obstacle_diag)
         tracking_ok = terminal_error <= self.config.success_tolerance
         # acados 状态码不单独决定可执行性,上层还会结合轨迹质量/约束可行性判定。
         ok = bool(tracking_ok and plan_feasible)
 
         info = self._make_info(
-            result, plan, targets, rotations, terminal_error, orientation_active, plan_feasible, tracking_ok
+            result, plan, targets, rotations, terminal_error, orientation_active, plan_feasible, tracking_ok,
+            obstacle_diag=obstacle_diag,
         )
         self._last_plan = plan
         return terminal_q, ok, info
@@ -190,12 +193,15 @@ class MpcPinocchioIK:
         q_next = np.clip(plan[0], self.q_lower, self.q_upper)
         terminal_error = self._position_error(plan[-1], targets[-1])
         first_error = self._position_error(q_next, targets[0])
-        plan_feasible = self._plan_feasible(q0, plan)
+        # 避障诊断只算一遍,feasible 判定与 info 共用(全时域 FK+符号距离是热路径大头)。
+        obstacle_diag = self._obstacle_diagnostics(plan)
+        plan_feasible = self._plan_feasible(q0, plan, obstacle_diag)
         tracking_ok = terminal_error <= self.config.success_tolerance
         ok = bool(tracking_ok and plan_feasible)
 
         info = self._make_info(
-            result, plan, targets, rotations, terminal_error, orientation_active, plan_feasible, tracking_ok
+            result, plan, targets, rotations, terminal_error, orientation_active, plan_feasible, tracking_ok,
+            obstacle_diag=obstacle_diag,
         )
         info["first_error"] = first_error
         self._last_plan = plan
@@ -882,8 +888,13 @@ class MpcPinocchioIK:
             "body_obstacle_violation_max": float(max_violation),
         }
 
-    def _plan_feasible(self, q0: np.ndarray, plan: np.ndarray) -> bool:
-        """检查预测轨迹是否满足数值有效、关节限位、步长和硬避障约束。"""
+    def _plan_feasible(
+        self, q0: np.ndarray, plan: np.ndarray, obstacle_diag: Optional[Dict[str, object]] = None
+    ) -> bool:
+        """检查预测轨迹是否满足数值有效、关节限位、步长和硬避障约束。
+
+        obstacle_diag 可传入 _obstacle_diagnostics(plan) 的结果以复用,避免重复计算。
+        """
         if not np.all(np.isfinite(plan)):
             return False
         if np.any(plan < self.q_lower - 1e-6) or np.any(plan > self.q_upper + 1e-6):
@@ -892,12 +903,18 @@ class MpcPinocchioIK:
         if not np.all(np.abs(step_diffs) <= self.config.max_joint_step + 1e-6):
             return False
         if self.config.obstacle_avoidance_enabled:
-            front = self._front_obstacle_diagnostics(plan)
-            if float(front["front_obstacle_violation_max"] or 0.0) > 1e-4:
+            if obstacle_diag is not None:
+                front_violation = obstacle_diag.get("front_obstacle_violation_max")
+            else:
+                front_violation = self._front_obstacle_diagnostics(plan)["front_obstacle_violation_max"]
+            if float(front_violation or 0.0) > 1e-4:
                 return False
         if self.config.body_obstacle_enabled:
-            body = self._body_obstacle_diagnostics(plan)
-            return bool(float(body["body_obstacle_violation_max"] or 0.0) <= 1e-4)
+            if obstacle_diag is not None:
+                body_violation = obstacle_diag.get("body_obstacle_violation_max")
+            else:
+                body_violation = self._body_obstacle_diagnostics(plan)["body_obstacle_violation_max"]
+            return bool(float(body_violation or 0.0) <= 1e-4)
         return True
 
     def _make_info(
@@ -910,6 +927,7 @@ class MpcPinocchioIK:
         orientation_active: bool,
         plan_feasible: bool,
         tracking_ok: bool,
+        obstacle_diag: Optional[Dict[str, object]] = None,
     ) -> Dict[str, object]:
         """整理诊断信息,方便 demo 打印、画图或后续调参。"""
         terminal_orientation_error = None
@@ -939,7 +957,7 @@ class MpcPinocchioIK:
         }
         if hasattr(result, "solve_time"):
             info["solve_time"] = float(result.solve_time)
-        info.update(self._obstacle_diagnostics(plan))
+        info.update(obstacle_diag if obstacle_diag is not None else self._obstacle_diagnostics(plan))
         return info
 
 
