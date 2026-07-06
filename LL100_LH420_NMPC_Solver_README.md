@@ -256,7 +256,7 @@ cProfile 剖析(front_wing_arc, 720 tick)发现两处大头:①`step()` 里避�
 两项修复:诊断算一遍两处复用([mpc_pinocchio_ik.py](src/arm-platform/demo/mpc_pinocchio_ik.py) 的
 `step/solve`,语义等价);新增 `marker_publish_hz` 参数(默认 10Hz,≤0 关闭,≥50 恢复逐 tick)。
 
-**优化效果(MAXN_SUPER + chrt -f 80,compute P95,ms):**
+**优化前→后 qpOASES compute P95(ms):**
 
 | 场景 | 优化前 | 优化后 | 有效控制频率 |
 |---|---:|---:|---|
@@ -264,11 +264,44 @@ cProfile 剖析(front_wing_arc, 720 tick)发现两处大头:①`step()` 里避�
 | lower_obstacle_circle | 14.06 | **8.69** | 49.7Hz |
 | front_wing_arc | 17.86 | **12.34** | **34.7 → 49.7Hz** |
 
-**重要发现**:优化前 front_wing_arc 的 tick 总耗时(compute+marker)>20ms,节点实际只跑出 **~35Hz**
-——此前各基线的 end_to_end"达标"是在欠频饱和状态下测得的(饱和时 tick 紧跟反馈消息执行,
-feedback_age 假性≈0.4ms)。优化后恢复真 50Hz,feedback_age 变为 0~20ms 锯齿(50Hz 轮询回环的
-相位伪影,非软件栈变慢),故新旧 end_to_end 不可直接比,**软件栈横向对比一律看 compute**。
-原始数据与汇总:`data/jetson_maxn_super_opt_20260706/`(`latency_summary_opt.csv`)。
+#### 优化后三后端完整对照（MAXN_SUPER + chrt -f 80 + 节点优化,2026-07-06）
+
+口径同 §4.5(接入 ROS、50Hz 零反馈源、跳 5s 暖机);HPIPM 一律 `iter_max=50`(见 §4.6)。
+**"有效频率"列 = 节点实测控制频率**,是判断是否真正实时的关键;`e2e` 两列的读法见表后说明。
+
+**lower_obstacle_circle**
+| 求解器配置 | compute 均值 | compute P95 | e2e 均值 | e2e P95 | 有效频率 |
+|---|---:|---:|---:|---:|---:|
+| acados SQP_RTI + qpOASES | 8.22 | **8.69** | 21.92 | 44.05 | **49.7Hz** |
+| acados SQP_RTI + HPIPM | 13.03 | 13.67 | 23.25 | 42.84 | 50.0Hz |
+| GRAMPC | 18.12 | 18.80 | 19.57 | 19.43 | 43.9Hz |
+
+**circle**
+| 求解器配置 | compute 均值 | compute P95 | e2e 均值 | e2e P95 | 有效频率 |
+|---|---:|---:|---:|---:|---:|
+| acados SQP_RTI + qpOASES | 8.60 | **9.33** | 22.18 | 44.88 | **49.7Hz** |
+| acados SQP_RTI + HPIPM | 18.28 | 18.97 | 19.92 | 20.24 | 47.2Hz† |
+| GRAMPC | 18.11 | 18.75 | 19.73 | 19.54 | 43.9Hz |
+
+**front_wing_arc**
+| 求解器配置 | compute 均值 | compute P95 | e2e 均值 | e2e P95 | 有效频率 |
+|---|---:|---:|---:|---:|---:|
+| acados SQP_RTI + qpOASES | 11.67 | **12.34** | 23.47 | 47.94 | **49.7Hz** |
+| acados SQP_RTI + HPIPM | 30.69 | 31.64 | 31.07 | 32.05 | 20.9Hz |
+| GRAMPC | 18.16 | 18.82 | 19.59 | 19.49 | 43.5Hz |
+
+> † circle HPIPM 样本较少(n=326,重编占用采样窗),P95 供参考。单位均为 ms。
+> 原始数据与汇总:`data/jetson_maxn_super_opt_20260706/`(`latency_summary_opt.csv`)。
+
+**怎么读这张表(重要,别被 e2e 误导)**:
+- **选型只看 `compute` 和有效频率**。`compute`=回调内真实计算耗时(FK+雅可比+求解+诊断),越小越好;
+  有效频率越接近 50Hz 说明实时裕度越足。结论一目了然:**qpOASES compute 全场景 <13ms、稳稳真 50Hz,
+  裕度最好**;GRAMPC 恒定 ~18ms、只能跑到 ~44Hz;HPIPM 随场景波动,front_wing_arc 达 31ms、掉到 20.9Hz。
+- **`e2e` 两列反直觉、不能横向比谁快**。e2e = feedback_age + compute,而 feedback_age 取决于"节点是否
+  真跑满 50Hz":qpOASES 算得快、轻松跑满,每个 tick 要等下一帧反馈,feedback_age 出现 0~20ms 锯齿,
+  于是 e2e P95 反而"最高"(~44ms);GRAMPC/HPIPM 算得慢、tick 紧贴反馈饱和执行,feedback_age≈0,e2e 看着"最低"。
+  **即"e2e 越低往往说明它越慢(越饱和)",与 §4.5 的低 e2e 同理**——所以 §4.5 与本节 e2e 不可直接比,
+  务必以 compute 为准。
 
 ## 5. 教程:如何自己增 / 减求解器
 
