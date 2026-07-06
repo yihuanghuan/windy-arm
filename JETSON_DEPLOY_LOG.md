@@ -118,6 +118,101 @@ sudo sysctl -w kernel.sched_rt_runtime_us=950000   # 立即恢复默认值(或�
 - 注意:优化改动先经 scp 直推 Jetson 验证,Jetson 工作区这两个文件是脏的;下次 git pull 前先
   `git checkout -- src/arm-platform/demo/mpc_pinocchio_ik.py src/arm-platform/demo/move_ll100_lh420_nmpc_demo.py`。
 
+## 历史性能基线数据（README 第4章演进留档）
+
+以下是求解器 README 第 4 章曾经收录、后因文档改为纯"使用说明"口径而移出的历史基线数据、对比表与踩坑归因。作为演进记录留档于此(日志允许对比与时间线);README 只保留 MAXN_SUPER 定稿口径下的现状陈述。
+
+### 40W 基线：纯求解器测试结果（2026-07-03）
+
+测试条件:Jetson `nvpmodel` **40W** 模式(mode id `4`)、部署避障几何(中心线胶囊 `capsule_points` + 斥力,前桨/机身共约 50 硬约束)、`periods=1.0`、`repeats=3`、稳态 RMS 口径。"最大求解"= 三次重复中的最坏单步(含启动/重建尖峰)。原始数据在 `src/arm-platform/demo/data/jetson_40w_20260703/benchmark_nmpc_*.csv`。
+
+**lower_obstacle_circle**
+| 求解器配置 | 平均求解(ms) | P95求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
+|---|---:|---:|---:|---:|:---:|
+| acados SQP_RTI + qpOASES | 4.92 | 12.00 | 22.42 | 0.69 | ✅ |
+| acados SQP_RTI + HPIPM | 15.98 | 35.65 | 84.99 | 0.69 | ✅ |
+| GRAMPC | 19.56 | 20.30 | 21.65 | 0.59 | ✅ |
+
+**circle**
+| 求解器配置 | 平均求解(ms) | P95求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
+|---|---:|---:|---:|---:|:---:|
+| acados SQP_RTI + qpOASES | 3.98 | 4.27 | 13.60 | 2.41 | ✅ |
+| acados SQP_RTI + HPIPM | 14.10 | 14.39 | 85.45 | 2.41 | ✅ |
+| GRAMPC | 19.49 | 19.97 | 20.48 | 0.96 | ✅ |
+
+**front_wing_arc**
+| 求解器配置 | 平均求解(ms) | P95求解(ms) | 最大求解(ms) | 稳态RMS(mm) | safe |
+|---|---:|---:|---:|---:|:---:|
+| acados SQP_RTI + qpOASES | 5.30 | 12.76 | 20.48 | 2.37 | ✅ |
+| acados SQP_RTI + HPIPM | 17.76 | 36.04 | 85.80 | 2.37 | ✅ |
+| GRAMPC | 19.68 | 20.18 | 21.37 | 1.67 | ✅ |
+
+结论(40W 纯求解器):三者全 safe;按优先级(安全>求解时间>精度)首选 acados qpOASES。qpOASES 在三场景 P95 均低于 13ms,实时裕度最好;HPIPM 在 lower/front 场景有明显启动/重建尖峰(P95 35ms+、最大约 85ms);GRAMPC 的 RMS 往往最好,但 P95 接近或略高于 20ms,适合作为精度/鲁棒性参考而非默认最快后端。
+
+备注 `avoidance_sweep`:该场景每周期短暂穿近奇异。新中心线胶囊几何下 qpOASES/HPIPM 已能保持 σ_min≈2.6e-3 过门槛(safe),但 GRAMPC 在此场景擦障(viol≈14mm)+ 近奇异 → GRAMPC 的增广拉格朗日是软约束、苛刻场景可被突破,而 acados 是真硬约束。对"绝不碰撞"要求,acados 更可靠。
+
+### 40W 基线：接入 ROS 端到端延迟（2026-07-03）
+
+测试条件:Jetson **40W** 模式、RMW=Fast-DDS、`taskset -c 4-7` 固定 CPU、默认调度(`nice=0`)、独立 `ROS_DOMAIN_ID=81..89`、50Hz 反馈、跳过 5s 暖机、每格 1503-1520 个样本;三后端各在三场景跑一次。原始数据在 `src/arm-platform/demo/data/jetson_40w_20260703/latency_*.csv`,汇总见 `latency_summary_40w.csv`。
+
+**lower_obstacle_circle**
+| 求解器配置 | compute 均值(ms) | compute P95(ms) | end_to_end 均值(ms) | end_to_end P95(ms) |
+|---|---:|---:|---:|---:|
+| acados SQP_RTI + qpOASES | 17.80 | 18.24 | 18.26 | 18.74 |
+| acados SQP_RTI + HPIPM | 22.50 | 22.85 | 22.98 | 23.34 |
+| GRAMPC | 24.28 | 24.73 | 24.73 | 25.20 |
+
+**circle**
+| 求解器配置 | compute 均值(ms) | compute P95(ms) | end_to_end 均值(ms) | end_to_end P95(ms) |
+|---|---:|---:|---:|---:|
+| acados SQP_RTI + qpOASES | 16.74 | 17.21 | 17.20 | 17.70 |
+| acados SQP_RTI + HPIPM | 28.44 | 29.03 | 28.93 | 29.54 |
+| GRAMPC | 24.27 | 24.69 | 24.72 | 25.17 |
+
+**front_wing_arc**
+| 求解器配置 | compute 均值(ms) | compute P95(ms) | end_to_end 均值(ms) | end_to_end P95(ms) |
+|---|---:|---:|---:|---:|
+| acados SQP_RTI + qpOASES | 24.37 | 25.07 | 24.84 | 25.56 |
+| acados SQP_RTI + HPIPM | 40.72 | 41.29 | 41.22 | 41.79 |
+| GRAMPC | 24.38 | 24.89 | 24.84 | 25.38 |
+
+结论(40W 接入 ROS):只有 lower/circle 的 qpOASES 保持在 20ms 周期内(e2e P95 18.74/17.70ms);front_wing_arc + qpOASES 端到端 P95 25.56ms;HPIPM 上机后一致最慢(front_wing_arc e2e P95 41.79ms);GRAMPC 延迟稳定但约 25ms。此批 e2e 于饱和态测得(节点欠频满负荷、feedback_age 假性偏小),不能与 MAXN_SUPER 定稿批次的 e2e 直接横比。
+
+### 40W → MAXN_SUPER 对比（2026-07-06 复测）
+
+功耗档切 MAXN_SUPER(CPU 1497.6→1984 MHz,+32%)、`jetson_clocks` 锁频、NMPC 节点以 SCHED_FIFO 80 运行(`chrt -f 80 taskset -c 4-7`);其余口径与 40W ROS 批次一致。原始数据在 `src/arm-platform/demo/data/jetson_maxn_super_20260706/`,汇总见 `latency_summary_maxn_super.csv`。
+
+**end_to_end P95(ms),40W → MAXN_SUPER:**
+
+| 场景 | qpOASES | GRAMPC | HPIPM |
+|---|---|---|---|
+| circle | 17.70 → **13.70** ✅ | 25.17 → 19.90 | 29.54 → (无效,见下) |
+| lower_obstacle_circle | 18.74 → **14.54** ✅ | 25.20 → 20.13 | 23.34 → (无效,见下) |
+| front_wing_arc | 25.56 → **18.28** ✅ | 25.37 → 20.06 | 41.79 → (无效,见下) |
+
+- qpOASES 三场景全部进入 20ms 周期,提速比 1.29~1.40× 与主频提升(×1.325)吻合——纯频率收益,零代码改动。
+- GRAMPC 压在 20ms 线上(19.9~20.1ms),50Hz 下仍不作默认后端,≤40Hz 可用。
+
+### HPIPM 数据无效的归因修正（2026-07-06 下午定论）
+
+最初判断为 **RT 节流伪影**,后经复测**推翻**:真因是部署调参把 QP 迭代上限默认设为 `acados_qp_solver_iter_max=500`,而 HPIPM 在本问题上**每步都跑满迭代上限**(iter=500→约 173ms、iter=50→31.6ms,耗时呈"恒定值"特征即为铁证;31.6ms 恰等于 40W 的 41.3ms ÷ 主频比 1.325)。qpOASES 靠热启动早收敛,不受该默认值影响。→ 若用 HPIPM,须显式传 `-p acados_qp_solver_iter_max:=50`。原始数据见 `data/jetson_maxn_super_opt_20260706/latency_front_wing_arc_hpipm_iter{50,500}.csv`。
+
+**RT 节流**:虽非 HPIPM 异常主因,但已在 Jetson 上永久关闭(`sched_rt_runtime_us=-1`)。关闭后 qpOASES 的最坏单步从 67ms 收敛到 18.9ms——节流确实影响长尾。
+
+### 节点热路径优化：cProfile 剖析 + 优化前→后（2026-07-06）
+
+cProfile 剖析(front_wing_arc, 720 tick)发现两处大头:①`step()` 里避障诊断被 `_plan_feasible` 和 `_make_info` **各算一遍**(全时域 FK+数百次符号距离,约占 tick 的 1/4);②`_publish_markers` 每 tick 重建整套 MarkerArray(含最多 2500 点尾迹,约占 40%,虽在延迟打点之后、不计入 compute,但挤占 20ms 周期)。两项修复:诊断算一遍两处复用(`mpc_pinocchio_ik.py` 的 `step/solve`,语义等价);新增 `marker_publish_hz` 参数(默认 10Hz,≤0 关闭,≥50 恢复逐 tick)。
+
+**优化前→后 qpOASES compute P95(ms):**
+
+| 场景 | 优化前 | 优化后 | 有效控制频率 |
+|---|---:|---:|---|
+| circle | 13.29 | **9.33** | 49.7Hz |
+| lower_obstacle_circle | 14.06 | **8.69** | 49.7Hz |
+| front_wing_arc | 17.86 | **12.34** | **34.7 → 49.7Hz** |
+
+front_wing_arc 优化前 tick 超 20ms、节点一直欠频饱和运行,此前基线的 e2e 是饱和态测得(feedback_age 假性 0.4ms);优化后三后端完整对照(即 README 现 §4.5 三张表)数据在 `data/jetson_maxn_super_opt_20260706/latency_summary_opt.csv`。
+
 ## 遗留事项 / 下一步
 
 - [x] 本机（windylab 工作站）→ Jetson 免密 SSH：用户已 `ssh-copy-id` 授权（2026-07-06），
