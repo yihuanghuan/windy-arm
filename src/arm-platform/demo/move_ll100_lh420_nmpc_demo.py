@@ -323,6 +323,8 @@ class MoveLL100LH420NmpcDemo(Node):
         self.declare_parameter("acados_qp_solver", "FULL_CONDENSING_QPOASES")
         self.declare_parameter("acados_qp_solver_iter_max", 500)
         self.declare_parameter("acados_qp_warm_start", 1)
+        # SQP_RTI 每 tick 最多迭代次数(带 success_tolerance 提前退出);速度/精度旋钮,调参器按场景给最优值。
+        self.declare_parameter("acados_rti_iterations", 3)
 
         self.path_mode = str(self.get_parameter("path_mode").value)
         self.single_target_position = np.array(
@@ -413,6 +415,7 @@ class MoveLL100LH420NmpcDemo(Node):
         self.acados_qp_solver = str(self.get_parameter("acados_qp_solver").value)
         self.acados_qp_solver_iter_max = int(self.get_parameter("acados_qp_solver_iter_max").value)
         self.acados_qp_warm_start = int(self.get_parameter("acados_qp_warm_start").value)
+        self.acados_rti_iterations = int(self.get_parameter("acados_rti_iterations").value)
 
         if self.solver_backend not in ("acados", "grampc"):
             raise ValueError("solver_backend 只支持 'acados' 或 'grampc'")
@@ -426,6 +429,8 @@ class MoveLL100LH420NmpcDemo(Node):
             raise ValueError("acados_qp_solver_iter_max 必须 >= 1")
         if self.acados_qp_warm_start not in (0, 1, 2):
             raise ValueError("acados_qp_warm_start 只支持 0/1/2")
+        if self.acados_rti_iterations < 1:
+            raise ValueError("acados_rti_iterations 必须 >= 1")
         if self.period_sec <= 0.0:
             raise ValueError("period_sec 必须 > 0")
         if self.horizon_steps < 1:
@@ -457,6 +462,7 @@ class MoveLL100LH420NmpcDemo(Node):
             acados_qp_solver=self.acados_qp_solver,
             acados_qp_solver_iter_max=self.acados_qp_solver_iter_max,
             acados_qp_warm_start=self.acados_qp_warm_start,
+            acados_rti_iterations=self.acados_rti_iterations,
             position_weight=self.position_weight,
             terminal_position_weight=self.terminal_position_weight,
             orientation_weight=self.orientation_weight if self.lock_orientation else 0.0,

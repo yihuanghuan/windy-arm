@@ -49,6 +49,11 @@ class MpcIkConfig:
     acados_qp_solver: str = "FULL_CONDENSING_QPOASES"  # 允许:PARTIAL_CONDENSING_HPIPM/FULL_CONDENSING_QPOASES。
     acados_qp_solver_iter_max: int = 500  # QP 内层最大迭代数;qpOASES 需要较高上限。
     acados_qp_warm_start: int = 1  # QP 热启动:0 冷启动 / 1 primal / 2 primal+dual。
+    acados_ext_fun_expand: bool = True  # 默认展开 MX 外部函数为 SX,降低生成函数运行开销。
+    # 工作站默认保持可移植;Jetson 部署可按目标单独设 "-O3 -mcpu=cortex-a78ae"。
+    acados_ext_fun_compile_flags: str = "-O3"
+    constrain_dq_state: bool = True  # False 时只对 q 设状态界,dq_prev 仍由 u 界约束(实验开关)。
+    acados_stage0_control_only_cost: bool = False  # True 时 stage-0 代价只保留 u0 相关项(实验开关)。
     obstacle_avoidance_enabled: bool = False
     obstacle_safety_margin: float = 0.04
     obstacle_soft_eps: float = 1e-6  # 硬约束 SDF(smooth_max/圆盘距离)的平滑常量,避免不可导拐点。
@@ -1251,6 +1256,8 @@ class _AcadosMpcBackend:
         y_e = ca.vertcat(pos_error, rot_error, q - q_ref, q - q_center, repulsion_residuals)
         model.cost_y_expr = y
         model.cost_y_expr_e = y_e
+        if cfg.acados_stage0_control_only_cost:
+            model.cost_y_expr_0 = ca.vertcat(u, u - dq_prev)
         hard_constraints = ca.vertcat(front_hard_constraints, body_hard_constraints)
         n_hard_constraints = int(hard_constraints.shape[0])
         if n_hard_constraints > 0:
@@ -1284,6 +1291,10 @@ class _AcadosMpcBackend:
             np.full(nq, cfg.center_posture_weight),
             np.full(n_repulsion, cfg.obstacle_repulsion_weight),
         ]))
+        W_0 = np.diag(np.concatenate([
+            np.full(nq, cfg.joint_delta_weight),
+            np.full(nq, cfg.joint_delta_change_weight),
+        ]))
         # 编译期用与权重无关的固定占位 W(单位阵):acados 会把 ocp.cost.W 烘进生成代码并与
         # 缓存 json 比对,若这里放真实权重,改任一权重都会被判"结构变了"而强制重编。放占位后
         # acados 判定结构不变 → 复用已编译 .so;真实权重在 _apply_cost_weights 运行时 cost_set。
@@ -1291,18 +1302,31 @@ class _AcadosMpcBackend:
         ocp.cost.W_e = np.eye(W_e.shape[0])
         self._cost_W = W
         self._cost_W_e = W_e
+        self._cost_W_0 = W_0 if cfg.acados_stage0_control_only_cost else W
         self._weights_applied = False
         ocp.cost.yref = np.zeros(6 + 4 * nq + n_repulsion)
         ocp.cost.yref_e = np.zeros(6 + 2 * nq + n_repulsion)
+        if cfg.acados_stage0_control_only_cost:
+            ocp.cost.cost_type_0 = "NONLINEAR_LS"
+            ocp.cost.W_0 = np.eye(W_0.shape[0])
+            ocp.cost.yref_0 = np.zeros(2 * nq)
 
-        x_min = np.concatenate([owner.q_lower, np.full(nq, -cfg.max_joint_step)])
-        x_max = np.concatenate([owner.q_upper, np.full(nq, cfg.max_joint_step)])
-        ocp.constraints.idxbx = np.arange(nx)
-        ocp.constraints.lbx = x_min
-        ocp.constraints.ubx = x_max
-        ocp.constraints.idxbx_e = np.arange(nx)
-        ocp.constraints.lbx_e = x_min
-        ocp.constraints.ubx_e = x_max
+        if cfg.constrain_dq_state:
+            x_min = np.concatenate([owner.q_lower, np.full(nq, -cfg.max_joint_step)])
+            x_max = np.concatenate([owner.q_upper, np.full(nq, cfg.max_joint_step)])
+            ocp.constraints.idxbx = np.arange(nx)
+            ocp.constraints.lbx = x_min
+            ocp.constraints.ubx = x_max
+            ocp.constraints.idxbx_e = np.arange(nx)
+            ocp.constraints.lbx_e = x_min
+            ocp.constraints.ubx_e = x_max
+        else:
+            ocp.constraints.idxbx = np.arange(nq)
+            ocp.constraints.lbx = owner.q_lower
+            ocp.constraints.ubx = owner.q_upper
+            ocp.constraints.idxbx_e = np.arange(nq)
+            ocp.constraints.lbx_e = owner.q_lower
+            ocp.constraints.ubx_e = owner.q_upper
         ocp.constraints.idxbu = np.arange(nu)
         ocp.constraints.lbu = np.full(nu, -cfg.max_joint_step)
         ocp.constraints.ubu = np.full(nu, cfg.max_joint_step)
@@ -1319,6 +1343,11 @@ class _AcadosMpcBackend:
         ocp.solver_options.qp_solver = cfg.acados_qp_solver
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.print_level = 0
+        for option_name in ("ext_fun_expand_constr", "ext_fun_expand_cost", "ext_fun_expand_dyn"):
+            if hasattr(ocp.solver_options, option_name):
+                setattr(ocp.solver_options, option_name, bool(cfg.acados_ext_fun_expand))
+        if hasattr(ocp.solver_options, "ext_fun_compile_flags"):
+            ocp.solver_options.ext_fun_compile_flags = str(cfg.acados_ext_fun_compile_flags)
         # QP 内层迭代上限 / 热启动:qpOASES 会用到更高迭代上限和 primal 热启动。
         ocp.solver_options.qp_solver_iter_max = max(1, int(cfg.acados_qp_solver_iter_max))
         ocp.solver_options.qp_solver_warm_start = int(cfg.acados_qp_warm_start)
@@ -1373,7 +1402,8 @@ class _AcadosMpcBackend:
 
     def _apply_cost_weights(self, horizon_steps: int) -> None:
         """建好 solver 后按当前 cfg 权重运行时写入 W/W_e。所有 stage 都要设,漏设=静默用占位权重。"""
-        for stage in range(int(horizon_steps)):
+        self.solver.cost_set(0, "W", self._cost_W_0)
+        for stage in range(1, int(horizon_steps)):
             self.solver.cost_set(stage, "W", self._cost_W)
         self.solver.cost_set(int(horizon_steps), "W", self._cost_W_e)
         self._weights_applied = True
@@ -1490,7 +1520,7 @@ def _acados_solver_signature(
 ) -> Dict[str, object]:
     cfg = owner.config
     return {
-        "signature_version": 9,
+        "signature_version": 10,
         "model_name": model_name,
         "urdf_path": str(Path(owner.urdf_path).expanduser().resolve()),
         "urdf_file": _file_signature(owner.urdf_path),
@@ -1513,6 +1543,14 @@ def _acados_solver_signature(
             "qp_solver_iter_max": int(cfg.acados_qp_solver_iter_max),
             "qp_solver_warm_start": int(cfg.acados_qp_warm_start),
             "hessian_approx": "GAUSS_NEWTON",
+            "ext_fun_expand": bool(cfg.acados_ext_fun_expand),
+            "ext_fun_compile_flags": str(cfg.acados_ext_fun_compile_flags),
+        },
+        "state_bounds": {
+            "constrain_dq_state": bool(cfg.constrain_dq_state),
+        },
+        "cost_structure": {
+            "stage0_control_only_cost": bool(cfg.acados_stage0_control_only_cost),
         },
         "obstacle": {
             "enabled": bool(cfg.obstacle_avoidance_enabled),

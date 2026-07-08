@@ -15,6 +15,51 @@
 
 ---
 
+## 2026-07-07 求解器加速(A组)+ 实机自动调参 + ROS 闭环终验
+
+本轮全程从工作站免密 SSH 远程执行;**GUI 已关**(`systemctl isolate multi-user.target`,恢复:`sudo systemctl isolate graphical.target`)。
+
+### A组求解器优化(已并入默认,数值等价)
+
+多 agent 审计(38 条候选)→ 代码核实 → 工作站 benchmark A/B 实测筛选:
+- **已采纳**:`ext_fun_expand_constr/cost/dyn=True`(CasADi 外部函数 MX→SX 展开)+ 生成代码编译标志可配置
+  (`acados_ext_fun_compile_flags`,默认 `-O3`;Jetson 可再设 `-O3 -mcpu=cortex-a78ae`)。签名 v9→v10。
+- 工作站实测(periods=1.0 稳态口径):solve P95 三场景 **−27~34%**,RMS 逐位不变、viol=0——纯加速零精度代价。
+- **实测否决**(留作 config 开关,默认关):`rti_iterations=1`(front RMS 2.37→10.24mm,3 次 RTI 迭代在重场景是承重的)、
+  去 dq 冗余状态界(提速不稳定)、stage-0 只留 u 代价(circle/front 反变慢)。
+- demo 节点新增 ROS 参数 `acados_rti_iterations`(默认 3)。
+
+### 实机自动调参(tune_ll100_nmpc.py,Jetson 上跑)
+
+- tuner 扩展:score 速度项 mean→**P95**;搜索网格加 `rti_iterations∈{1,2,3}`(不进签名不重编);增量落盘+DONE/FAILED sentinel。
+- 三场景 52min/228 组合,全 safe、viol 全 0。数据:`data/jetson_autotune_20260707/`。
+- 坑:runner 脚本里 `set -u` 会被 ROS setup.bash 的 unbound 变量打死;pgrep 查 tuner 用 `[t]une...` 防自匹配假阳性。
+
+### ROS 闭环终验(用户定的最终验收口径,测试台三件套新建)
+
+- `ll100_lh420_plant_node.py`(真实 plant:订阅 /student/joint_command→限速积分动力学(复刻 SmoothPositionController 语义)→回发 /joint_states)
+- `run_ros_closed_loop_bench.py`(编排:NMPC 节点 chrt -f 80 绑 4-7 核、plant 绑 2-3 核、独立 DOMAIN_ID、以首条命令为计时零点排除重编)
+- `eval_ros_closed_loop.py`(评估:延迟+精度+抖动+安全;精度必须用**相位无关口径** `path rms`/`aligned rms`——
+  按时间重建参考会被限速追赶暂态的相位差污染成 ~100mm 常数假偏置,已踩坑修正)
+- 6 配置(3 场景 × 默认/调参后)× 120s,数据:`data/ros_closed_loop_jetson_20260707/`。
+
+**判决:离线 tuner 最优没有迁移到 ROS 闭环,保持现役默认权重。**
+lower: default 更准(path_rms 2.55 vs 2.99mm);circle: tuned 准 34% 但 cmd_acc 抖动 0.16→1.76(**11 倍恶化**,踩"不许抖动"红线);
+front: 等价(tuned rti=1 仅 P95 −5%)。A组优化保留。真闭环 compute P95:lower 8.1 / circle 5.6 / front 12.2ms,全真 50Hz,viol 全 0。
+**教训:以后调参用这个 ROS 测试台做验证环,离线 replay 的节奏与真实节点不同。**
+
+### 风扇发现
+
+`jetson-clocks.service` 只执行 `jetson_clocks` **没带 `--fan`**,重启后风扇回自动温控(60°C 时仅 ~40% PWM)。
+本轮已手动 `sudo jetson_clocks --fan` 拉满(255)——**重启会失效**;要持久化把 service 的 ExecStart 改成
+`/usr/bin/jetson_clocks --fan`。注:MAXN_SUPER 只管功耗/频率,不管风扇。
+
+### Jetson 工作区脏文件(scp 直推,git pull 前处理)
+
+`mpc_pinocchio_ik.py`、`benchmark_nmpc_solvers.py`、`tune_ll100_nmpc.py`、`move_ll100_lh420_nmpc_demo.py`、
+`eval_ros_closed_loop.py` + 新增 `ll100_lh420_plant_node.py`、`run_ros_closed_loop_bench.py`。
+工作站提交推送后,Jetson 上 `git checkout -- <上述文件> && git pull` 即可对齐(新文件 pull 会直接带来)。
+
 ## 2026-07-06 系统调优 + MAXN_SUPER 复测
 
 ### 做了什么（均已生效并验证）
@@ -219,4 +264,7 @@ front_wing_arc 优化前 tick 超 20ms、节点一直欠频饱和运行,此前�
       工作站可直接 `ssh nvidia@172.16.20.135` 免密操作。
 - [x] 求解器 README §4.6 已补 MAXN_SUPER 基线小节（2026-07-06）。
 - [x] RT 节流已关闭并持久化（2026-07-06，复位方法见上文）。
-- [ ] 真机接入后复测端到端延迟（当前均为零反馈源回环，不含真实传感器/总线延迟）。
+- [x] ROS 闭环测试台（NMPC 节点 + 真实 plant 节点）已建成并完成 6 配置终验（2026-07-07，见上文）。
+- [ ] 真机接入后复测端到端延迟（当前 plant 为仿真动力学，不含真实传感器/总线延迟）。
+- [ ] 风扇全速持久化（jetson-clocks.service 加 `--fan`，见 07-07 风扇发现）。
+- [ ] Jetson 恢复图形界面（测试期间已关：`sudo systemctl isolate graphical.target`）。

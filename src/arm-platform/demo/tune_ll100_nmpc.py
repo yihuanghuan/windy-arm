@@ -5,8 +5,8 @@
 的路径模式,离线 roll 出**闭环**轨迹:被控对象复刻 LL100 底层 student_arm_node 的
 SmoothPositionController(固定开启速度前馈),MPC 每拍从被控对象真实状态反馈重解。
 
-**只调 NMPC 参数**(时域 + 代价权重),硬件/避障参数一律固定、不进搜索:
-  被调(9 维):horizon_steps、position_weight、terminal_position_weight、
+**只调 NMPC 参数**(时域 + 代价权重 + RTI 次数),硬件/避障参数一律固定、不进搜索:
+  被调(10 维):horizon_steps、acados_rti_iterations、position_weight、terminal_position_weight、
               orientation_weight、terminal_orientation_weight、
               joint_delta_weight、joint_delta_change_weight、
               current_posture_weight、center_posture_weight
@@ -14,13 +14,13 @@ SmoothPositionController(固定开启速度前馈),MPC 每拍从被控对象真�
               避障 obstacle_safety_margin / body_obstacle_margin / capsule_radius /
               capsule_samples_per_segment(安全,固定);path_preview_stride(追踪层)。
 
-9 维全网格积(3^9≈2万)不可行,且改权重会触发 acados 重新编译,故采用**坐标下降式
+10 维全网格积(3^10≈6万)不可行,且权重/RTI 次数不触发 acados 重新编译,故采用**坐标下降式
 coarse→fine**:从基线出发,逐维扫描候选、采纳更优值(coarse),再在最优附近逐维局部细化(fine)。
 
 调参目标(综合打分,优先级 安全 > 求解时间 > 精度 > 完成时间):
   1. 安全无碰撞   —— violation 在实际经过的状态上量,作硬门(<=0.1mm 且无 fallback)
   2. 无奇异姿态   —— 末端位置 Jacobian 可操作度 manipulability,软惩罚(越大越好)
-  3. 求解速度快   —— mean_solve_time_ms,轻惩罚
+  3. 求解速度快   —— p95_solve_time_ms,轻惩罚(mean_solve_time_ms 仅记录)
   4. 末端误差小   —— rms / max position error
   5. 启动直达首点 —— 先 hold 到第一个期望点(到达容差内)再开始计时跟踪
   6. 跟踪快       —— EVAL_PERIOD_SEC/圈,被控对象按底层限速跟,误差反映能否跟上
@@ -38,6 +38,7 @@ import contextlib
 import csv
 import os
 import time
+import traceback
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -87,10 +88,11 @@ FIXED_FRONT_OBSTACLE_CAPSULE = True    # 前桨按 capsule 建模(含连杆粗�
 FIXED_REPULSION_MARGIN = 0.03          # 斥力场阈值 m(默认打开:NMPC 主动留净空)
 FIXED_REPULSION_WEIGHT = 1.0e4         # 斥力强度(peer 甜点;运行时 cost_set 可扫)
 
-# ---- 被调(9 维 NMPC 参数)coarse 候选 + 基线 ----
+# ---- 被调(10 维 NMPC 参数)coarse 候选 + 基线 ----
 # 坐标下降从基线出发,逐维在候选里找更优;基线 = 当前 demo 定稿默认。
 BASELINE = None  # 见下方(ParamSet 定义后赋值)
 COARSE: Dict[str, List[float]] = {
+    "acados_rti_iterations": [1, 2, 3],
     "horizon_steps": [6, 8, 12],
     "position_weight": [80.0, 120.0, 180.0],
     "terminal_position_weight": [800.0, 1200.0, 2000.0],
@@ -158,6 +160,7 @@ class ParamSet:
     joint_delta_change_weight: float
     current_posture_weight: float
     center_posture_weight: float
+    acados_rti_iterations: int = 3
 
 
 BASELINE = ParamSet(
@@ -170,6 +173,7 @@ BASELINE = ParamSet(
     joint_delta_change_weight=0.25,
     current_posture_weight=0.005,
     center_posture_weight=0.01,
+    acados_rti_iterations=3,
 )
 
 
@@ -191,9 +195,11 @@ class TrialResult:
     hf_err_rms: float
     cmd_acc_rms: float
     lag_mm: float
+    p95_solve_time_ms: float
     mean_solve_time_ms: float
     samples: int
     recommended_command: str
+    error_message: str = ""
 
 
 def _dir_tag(p: ParamSet, max_joint_step: float) -> str:
@@ -221,7 +227,7 @@ def build_config(
     # max_joint_step 是硬件速度约束的 OCP 镜像,派生量、不搜索:= max_velocity·control_dt。
     max_joint_step = max_velocity * CONTROL_DT
     # 求解器与路径无关(路径只是在线目标参数),故 build_dir 不含 path_mode,各模式共用。
-    # 权重进 acados 签名 → 改权重会重新编译,故 build_dir 按整组参数唯一命名。
+    # 权重和 acados_rti_iterations 均不进 acados 签名,同结构下复用已编译求解器。
     build_dir = f"/tmp/windylab_acados_tune_ll100_{_dir_tag(p, max_joint_step)}"
     cfg = MpcIkConfig(
         horizon_steps=p.horizon_steps,
@@ -230,6 +236,7 @@ def build_config(
         success_tolerance=TERMINAL_TOLERANCE,
         solver_backend=backend,
         acados_build_dir=build_dir,
+        acados_rti_iterations=p.acados_rti_iterations,
         acados_qp_solver=acados_qp_solver,
         acados_qp_solver_iter_max=acados_qp_solver_iter_max,
         acados_qp_warm_start=acados_qp_warm_start,
@@ -263,7 +270,7 @@ def build_config(
     return cfg, LL100_NMPC_URDF
 
 
-def score_of(viol_max, fallback, solver_fail, rms_pos, max_pos, mean_ms,
+def score_of(viol_max, fallback, solver_fail, rms_pos, max_pos, p95_ms,
              min_manip, reached_first, hf_err_rms, cmd_acc_rms, lag_mm) -> Tuple[float, bool]:
     # 硬门:安全无碰撞 + 无 fallback。不满足直接拉到很后面。
     safe = (viol_max <= VIOLATION_TOL) and (fallback == 0)  # 仅碰撞+可行性;reached_first 作质量项
@@ -272,7 +279,7 @@ def score_of(viol_max, fallback, solver_fail, rms_pos, max_pos, mean_ms,
         + 1.0e6 * viol_max                                   # 1 安全(最高优先级)
         + 500.0 * fallback
         + 500.0 * solver_fail
-        + 0.05 * mean_ms                                     # 3 求解速度(优先于精度/完成时间)
+        + 0.05 * p95_ms                                      # 3 求解速度(优先于精度/完成时间)
         + 1000.0 * rms_pos + 1000.0 * max_pos               # 4/6 末端误差(含跟踪滞后)
         + 2.0e4 * hf_err_rms                                 # 高频震荡(0.5mm → +10 分)
         + 10.0 * cmd_acc_rms                                 # 命令二阶抖动
@@ -474,9 +481,10 @@ def evaluate(p: ParamSet, path_mode: str, backend: str, acados_qp_solver: str,
     cmd_acc_rms = _command_acceleration_rms(steady_cmd_qs)
     lag_mm = max(0.0, float(np.mean(steady_lag))) if steady_lag.size else 0.0
     mean_ms = float(np.mean(solve_ms)) if solve_ms else 0.0
+    p95_ms = float(np.percentile(np.asarray(solve_ms, dtype=float), 95)) if solve_ms else 0.0
     min_manip = float(min(manips)) if manips else 0.0
     score, safe = score_of(viol_max, fallback, solver_fail, rms_pos, max_pos,
-                            mean_ms, min_manip, reached_first,
+                            p95_ms, min_manip, reached_first,
                             hf_err_rms, cmd_acc_rms, lag_mm)
     return TrialResult(
         params=p, path_mode=path_mode, safe=safe, score=score,
@@ -486,7 +494,7 @@ def evaluate(p: ParamSet, path_mode: str, backend: str, acados_qp_solver: str,
         fallback_count=fallback, solver_failure_count=solver_fail,
         rms_position_error=rms_pos, max_position_error=max_pos,
         hf_err_rms=hf_err_rms, cmd_acc_rms=cmd_acc_rms, lag_mm=lag_mm,
-        mean_solve_time_ms=mean_ms, samples=len(pos_errs),
+        p95_solve_time_ms=p95_ms, mean_solve_time_ms=mean_ms, samples=len(pos_errs),
         recommended_command=recommended_command(
             p,
             path_mode,
@@ -503,164 +511,237 @@ def _fine_values(name: str, base_val) -> List:
     """在 coarse 最优附近的局部细化候选。"""
     if name == "horizon_steps":
         return sorted({max(1, int(base_val) + d) for d in FINE_HORIZON_DELTA})
+    if name == "acados_rti_iterations":
+        return [1, 2, 3]
     return sorted({round(float(base_val) * s, 6) for s in FINE_SCALE})
+
+
+def _csv_header() -> List[str]:
+    return [
+        "rank", "safe", "score", "path_mode", "backend", "acados_qp_solver",
+        "acados_qp_solver_iter_max", "acados_qp_warm_start",
+        "horizon_steps", "rti_iterations", "position_weight", "terminal_position_weight",
+        "orientation_weight", "terminal_orientation_weight",
+        "joint_delta_weight", "joint_delta_change_weight",
+        "current_posture_weight", "center_posture_weight",
+        "violation_max", "min_margin", "min_manipulability", "reached_first",
+        "reach_time_sec", "fallback_count", "solver_failure_count",
+        "rms_position_error", "max_position_error", "hf_err_rms", "cmd_acc_rms", "lag_mm",
+        "p95_solve_time_ms", "mean_solve_time_ms", "samples",
+        "error_message", "recommended_command",
+    ]
+
+
+def _csv_row(rank: int, r: TrialResult, args: argparse.Namespace) -> List:
+    q = r.params
+    return [
+        rank, r.safe, f"{r.score:.4f}", r.path_mode, args.backend,
+        args.acados_qp_solver, args.acados_qp_solver_iter_max, args.acados_qp_warm_start,
+        q.horizon_steps, q.acados_rti_iterations, f"{q.position_weight:.3f}",
+        f"{q.terminal_position_weight:.3f}", f"{q.orientation_weight:.4f}",
+        f"{q.terminal_orientation_weight:.4f}", f"{q.joint_delta_weight:.4f}",
+        f"{q.joint_delta_change_weight:.4f}", f"{q.current_posture_weight:.4f}",
+        f"{q.center_posture_weight:.4f}", f"{r.violation_max:.8f}",
+        f"{r.min_margin:.6f}", f"{r.min_manipulability:.6f}",
+        r.reached_first, f"{r.reach_time_sec:.3f}", r.fallback_count,
+        r.solver_failure_count, f"{r.rms_position_error:.6f}",
+        f"{r.max_position_error:.6f}", f"{r.hf_err_rms:.6f}",
+        f"{r.cmd_acc_rms:.3f}", f"{r.lag_mm:.6f}",
+        f"{r.p95_solve_time_ms:.3f}", f"{r.mean_solve_time_ms:.3f}", r.samples,
+        r.error_message,
+        r.recommended_command,
+    ]
+
+
+def _failed_result(
+    p: ParamSet,
+    path_mode: str,
+    max_velocity: float,
+    period_sec: float,
+    acados_qp_solver: str,
+    acados_qp_solver_iter_max: int,
+    acados_qp_warm_start: int,
+    exc: Exception,
+) -> TrialResult:
+    return TrialResult(
+        params=p,
+        path_mode=path_mode,
+        safe=False,
+        score=1.0e12,
+        violation_max=0.0,
+        min_margin=0.0,
+        min_manipulability=0.0,
+        reached_first=False,
+        reach_time_sec=0.0,
+        fallback_count=0,
+        solver_failure_count=1,
+        rms_position_error=0.0,
+        max_position_error=0.0,
+        hf_err_rms=0.0,
+        cmd_acc_rms=0.0,
+        lag_mm=0.0,
+        p95_solve_time_ms=0.0,
+        mean_solve_time_ms=0.0,
+        samples=0,
+        recommended_command=recommended_command(
+            p,
+            path_mode,
+            max_velocity,
+            period_sec,
+            acados_qp_solver,
+            acados_qp_solver_iter_max,
+            acados_qp_warm_start,
+        ),
+        error_message=f"{type(exc).__name__}: {exc}",
+    )
 
 
 def run(args: argparse.Namespace) -> int:
     cache: Dict[ParamSet, TrialResult] = {}
     order = list(COARSE.keys())
     budget = args.max_combinations
-
-    def budget_left() -> bool:
-        return budget is None or budget <= 0 or len(cache) < budget
-
-    def evaluate_cached(p: ParamSet) -> TrialResult:
-        if p not in cache:
-            r = evaluate(
-                p,
-                args.path_mode,
-                args.backend,
-                args.acados_qp_solver,
-                args.acados_qp_solver_iter_max,
-                args.acados_qp_warm_start,
-                args.periods,
-                args.quiet_build,
-                args.max_velocity,
-                args.period,
-            )
-            cache[p] = r
-            print(
-                f"    [{len(cache)}] safe={r.safe} score={r.score:.2f} viol={r.violation_max:.6f} "
-                f"manip={r.min_manipulability:.4f} reached={r.reached_first} fb={r.fallback_count} "
-                f"rms={r.rms_position_error:.4f} max={r.max_position_error:.4f} "
-                f"hf={1000.0 * r.hf_err_rms:.2f}mm acc={r.cmd_acc_rms:.1f} "
-                f"lag={1000.0 * r.lag_mm:.1f}mm ms={r.mean_solve_time_ms:.2f} | {p}",
-                flush=True,
-            )
-        return cache[p]
-
-    print(f"[ll100 避障 NMPC 调参] path_mode={args.path_mode} 周期={args.period}s "
-          f"backend={args.backend}/{args.acados_qp_solver} "
-          f"max_velocity={args.max_velocity} (max_joint_step 派生={args.max_velocity * CONTROL_DT:.4f}) "
-          f"坐标下降 coarse{'' if args.skip_fine else '→fine'} 预算={budget}", flush=True)
-
-    best = BASELINE
-    try:
-        evaluate_cached(best)
-    except Exception as exc:  # noqa: BLE001
-        print(f"基线评估失败: {exc}")
-        return 1
-
-    # --- coarse:坐标下降,逐维扫描 ---
-    for pass_idx in range(args.coarse_passes):
-        improved = False
-        print(f"  -- coarse pass {pass_idx + 1}/{args.coarse_passes} --", flush=True)
-        for name in order:
-            base_val = getattr(best, name)
-            for val in COARSE[name]:
-                if not budget_left():
-                    break
-                if val == base_val:
-                    continue
-                try:
-                    r = evaluate_cached(replace(best, **{name: val}))
-                except Exception as exc:  # noqa: BLE001
-                    print(f"    跳过(异常): {exc}", flush=True)
-                    continue
-                if r.score < cache[best].score:
-                    best = r.params
-                    improved = True
-            if not budget_left():
-                break
-        if not improved or not budget_left():
-            break
-
-    # --- fine:在最优附近逐维局部细化 ---
-    if not args.skip_fine:
-        print("  -- fine 细化 --", flush=True)
-        for name in order:
-            base_val = getattr(best, name)
-            for val in _fine_values(name, base_val):
-                if not budget_left():
-                    break
-                if val == base_val:
-                    continue
-                try:
-                    r = evaluate_cached(replace(best, **{name: val}))
-                except Exception as exc:  # noqa: BLE001
-                    print(f"    跳过(异常): {exc}", flush=True)
-                    continue
-                if r.score < cache[best].score:
-                    best = r.params
-            if not budget_left():
-                break
-
-    results = sorted(cache.values(), key=lambda r: r.score)
-    if not results:
-        print("没有可用结果(检查 path_mode 是否为 ll100_traj_pub 支持的模式)")
-        return 1
-
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     qp_tag = args.acados_qp_solver.lower().replace("full_condensing_", "").replace("partial_condensing_", "")
     csv_path = args.output_dir / f"tune_ll100_{args.path_mode}_{qp_tag}_{stamp}.csv"
     csv_path.parent.mkdir(parents=True, exist_ok=True)
-    with csv_path.open("w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            "rank", "safe", "score", "path_mode", "backend", "acados_qp_solver",
-            "acados_qp_solver_iter_max", "acados_qp_warm_start",
-            "horizon_steps", "position_weight", "terminal_position_weight",
-            "orientation_weight", "terminal_orientation_weight",
-            "joint_delta_weight", "joint_delta_change_weight",
-            "current_posture_weight", "center_posture_weight",
-            "violation_max", "min_margin", "min_manipulability", "reached_first",
-            "reach_time_sec", "fallback_count", "solver_failure_count",
-            "rms_position_error", "max_position_error", "hf_err_rms", "cmd_acc_rms", "lag_mm",
-            "mean_solve_time_ms", "samples",
-            "recommended_command",
-        ])
-        for rank, r in enumerate(results, 1):
+    csv_file = csv_path.open("w", newline="")
+    writer = csv.writer(csv_file)
+    writer.writerow(_csv_header())
+    csv_file.flush()
+
+    def budget_left() -> bool:
+        return budget is None or budget <= 0 or len(cache) < budget
+
+    def record_result(r: TrialResult) -> None:
+        writer.writerow(_csv_row(len(cache), r, args))
+        csv_file.flush()
+
+    def evaluate_cached(p: ParamSet) -> TrialResult:
+        if p not in cache:
+            try:
+                r = evaluate(
+                    p,
+                    args.path_mode,
+                    args.backend,
+                    args.acados_qp_solver,
+                    args.acados_qp_solver_iter_max,
+                    args.acados_qp_warm_start,
+                    args.periods,
+                    args.quiet_build,
+                    args.max_velocity,
+                    args.period,
+                )
+            except Exception as exc:  # noqa: BLE001
+                r = _failed_result(
+                    p,
+                    args.path_mode,
+                    args.max_velocity,
+                    args.period,
+                    args.acados_qp_solver,
+                    args.acados_qp_solver_iter_max,
+                    args.acados_qp_warm_start,
+                    exc,
+                )
+            cache[p] = r
+            record_result(r)
+            if r.error_message:
+                print(f"    [{len(cache)}] failed={r.error_message} | {p}", flush=True)
+            else:
+                print(
+                    f"    [{len(cache)}] safe={r.safe} score={r.score:.2f} viol={r.violation_max:.6f} "
+                    f"manip={r.min_manipulability:.4f} reached={r.reached_first} fb={r.fallback_count} "
+                    f"rms={r.rms_position_error:.4f} max={r.max_position_error:.4f} "
+                    f"hf={1000.0 * r.hf_err_rms:.2f}mm acc={r.cmd_acc_rms:.1f} "
+                    f"lag={1000.0 * r.lag_mm:.1f}mm p95={r.p95_solve_time_ms:.2f} "
+                    f"mean={r.mean_solve_time_ms:.2f} | {p}",
+                    flush=True,
+                )
+        return cache[p]
+
+    try:
+        print(f"[ll100 避障 NMPC 调参] path_mode={args.path_mode} 周期={args.period}s "
+              f"backend={args.backend}/{args.acados_qp_solver} "
+              f"max_velocity={args.max_velocity} (max_joint_step 派生={args.max_velocity * CONTROL_DT:.4f}) "
+              f"坐标下降 coarse{'' if args.skip_fine else '→fine'} 预算={budget}", flush=True)
+        print(f"CSV(增量写入/每组 flush): {csv_path}", flush=True)
+
+        best = BASELINE
+        evaluate_cached(best)
+
+        # --- coarse:坐标下降,逐维扫描 ---
+        for pass_idx in range(args.coarse_passes):
+            improved = False
+            print(f"  -- coarse pass {pass_idx + 1}/{args.coarse_passes} --", flush=True)
+            for name in order:
+                base_val = getattr(best, name)
+                for val in COARSE[name]:
+                    if not budget_left():
+                        break
+                    if val == base_val:
+                        continue
+                    r = evaluate_cached(replace(best, **{name: val}))
+                    if r.score < cache[best].score:
+                        best = r.params
+                        improved = True
+                if not budget_left():
+                    break
+            if not improved or not budget_left():
+                break
+
+        # --- fine:在最优附近逐维局部细化 ---
+        if not args.skip_fine:
+            print("  -- fine 细化 --", flush=True)
+            for name in order:
+                base_val = getattr(best, name)
+                for val in _fine_values(name, base_val):
+                    if not budget_left():
+                        break
+                    if val == base_val:
+                        continue
+                    r = evaluate_cached(replace(best, **{name: val}))
+                    if r.score < cache[best].score:
+                        best = r.params
+                if not budget_left():
+                    break
+
+        results = sorted(cache.values(), key=lambda r: r.score)
+        if not results or all(r.error_message for r in results):
+            print("没有可用结果(检查环境或 path_mode 是否为 ll100_traj_pub 支持的模式)", flush=True)
+            return 1
+
+        print(f"\nCSV: {csv_path}  (共评估 {len(results)} 组,按评估顺序增量写入)", flush=True)
+        print(f"\nTop {min(args.top_k, len(results))}(先看 safe,再看 rms/max/hf/lag / manip):", flush=True)
+        for rank, r in enumerate(results[: args.top_k], 1):
             q = r.params
-            writer.writerow([
-                rank, r.safe, f"{r.score:.4f}", r.path_mode, args.backend,
-                args.acados_qp_solver, args.acados_qp_solver_iter_max, args.acados_qp_warm_start,
-                q.horizon_steps, f"{q.position_weight:.3f}", f"{q.terminal_position_weight:.3f}",
-                f"{q.orientation_weight:.4f}", f"{q.terminal_orientation_weight:.4f}",
-                f"{q.joint_delta_weight:.4f}", f"{q.joint_delta_change_weight:.4f}",
-                f"{q.current_posture_weight:.4f}", f"{q.center_posture_weight:.4f}",
-                f"{r.violation_max:.8f}", f"{r.min_margin:.6f}", f"{r.min_manipulability:.6f}",
-                r.reached_first, f"{r.reach_time_sec:.3f}", r.fallback_count,
-                r.solver_failure_count, f"{r.rms_position_error:.6f}",
-                f"{r.max_position_error:.6f}", f"{r.hf_err_rms:.6f}",
-                f"{r.cmd_acc_rms:.3f}", f"{r.lag_mm:.6f}",
-                f"{r.mean_solve_time_ms:.3f}", r.samples,
-                r.recommended_command,
-            ])
-    print(f"\nCSV: {csv_path}  (共评估 {len(results)} 组)", flush=True)
-    print(f"\nTop {min(args.top_k, len(results))}(先看 safe,再看 rms/max/hf/lag / manip):")
-    for rank, r in enumerate(results[: args.top_k], 1):
-        q = r.params
+            print(
+                f"  #{rank} safe={r.safe} viol={r.violation_max:.6f} manip={r.min_manipulability:.4f} "
+                f"reached={r.reached_first} rms={r.rms_position_error:.4f} "
+                f"max={r.max_position_error:.4f} hf={1000.0 * r.hf_err_rms:.2f}mm "
+                f"acc={r.cmd_acc_rms:.1f} lag={1000.0 * r.lag_mm:.1f}mm "
+                f"p95={r.p95_solve_time_ms:.2f} mean={r.mean_solve_time_ms:.2f} | "
+                f"h={q.horizon_steps} rti={q.acados_rti_iterations} "
+                f"pw={q.position_weight:.0f} tpw={q.terminal_position_weight:.0f} "
+                f"ow={q.orientation_weight:.2f} tow={q.terminal_orientation_weight:.2f} "
+                f"jd={q.joint_delta_weight:.3f} jdc={q.joint_delta_change_weight:.3f} "
+                f"cur={q.current_posture_weight:.3f} cen={q.center_posture_weight:.3f}",
+                flush=True,
+            )
+        best_result = results[0]
         print(
-            f"  #{rank} safe={r.safe} viol={r.violation_max:.6f} manip={r.min_manipulability:.4f} "
-            f"reached={r.reached_first} rms={r.rms_position_error:.4f} "
-            f"max={r.max_position_error:.4f} hf={1000.0 * r.hf_err_rms:.2f}mm "
-            f"acc={r.cmd_acc_rms:.1f} lag={1000.0 * r.lag_mm:.1f}mm "
-            f"ms={r.mean_solve_time_ms:.2f} | "
-            f"h={q.horizon_steps} pw={q.position_weight:.0f} tpw={q.terminal_position_weight:.0f} "
-            f"ow={q.orientation_weight:.2f} tow={q.terminal_orientation_weight:.2f} "
-            f"jd={q.joint_delta_weight:.3f} jdc={q.joint_delta_change_weight:.3f} "
-            f"cur={q.current_posture_weight:.3f} cen={q.center_posture_weight:.3f}"
+            f"\n推荐(score 最低): p95={best_result.p95_solve_time_ms:.2f}ms "
+            f"mean={best_result.mean_solve_time_ms:.2f}ms "
+            f"hf={1000.0 * best_result.hf_err_rms:.2f}mm "
+            f"acc={best_result.cmd_acc_rms:.1f} lag={1000.0 * best_result.lag_mm:.1f}mm "
+            f"rti={best_result.params.acados_rti_iterations}\n"
+            f"{best_result.recommended_command}",
+            flush=True,
         )
-    best_result = results[0]
-    print(
-        f"\n推荐(score 最低): hf={1000.0 * best_result.hf_err_rms:.2f}mm "
-        f"acc={best_result.cmd_acc_rms:.1f} lag={1000.0 * best_result.lag_mm:.1f}mm\n"
-        f"{best_result.recommended_command}"
-    )
-    if not best_result.safe:
-        print("⚠️ 最优候选未过安全门(碰撞 / fallback);可能需要提高 "
-              "--max-velocity(周期内底层跟不上)或改路径几何。")
-    return 0
+        if not best_result.safe:
+            print("⚠️ 最优候选未过安全门(碰撞 / fallback);可能需要提高 "
+                  "--max-velocity(周期内底层跟不上)或改路径几何。", flush=True)
+        return 0
+    finally:
+        csv_file.close()
 
 
 def parse_args() -> argparse.Namespace:
@@ -696,13 +777,36 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if args.periods <= 0.0:
-        raise ValueError("--periods 必须大于 0")
-    if args.top_k < 1:
-        raise ValueError("--top-k 必须大于等于 1")
-    if args.coarse_passes < 1:
-        raise ValueError("--coarse-passes 必须大于等于 1")
-    return run(args)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    done_path = args.output_dir / "autotune.DONE"
+    failed_path = args.output_dir / "autotune.FAILED"
+    traceback_path = args.output_dir / "autotune.traceback.txt"
+    for sentinel in (done_path, failed_path):
+        with contextlib.suppress(FileNotFoundError):
+            sentinel.unlink()
+    with contextlib.suppress(FileNotFoundError):
+        traceback_path.unlink()
+
+    try:
+        if args.periods <= 0.0:
+            raise ValueError("--periods 必须大于 0")
+        if args.top_k < 1:
+            raise ValueError("--top-k 必须大于等于 1")
+        if args.coarse_passes < 1:
+            raise ValueError("--coarse-passes 必须大于等于 1")
+        rc = run(args)
+    except Exception:  # noqa: BLE001
+        tb = traceback.format_exc()
+        traceback_path.write_text(tb, encoding="utf-8")
+        failed_path.write_text("", encoding="utf-8")
+        print(tb, flush=True)
+        return 1
+
+    if rc == 0:
+        done_path.write_text("", encoding="utf-8")
+    else:
+        failed_path.write_text("", encoding="utf-8")
+    return rc
 
 
 if __name__ == "__main__":

@@ -200,21 +200,21 @@ chrt -f 80 taskset -c 4-7 python3 move_ll100_lh420_nmpc_demo.py --ros-args \
 原始数据与汇总:`src/arm-platform/demo/data/jetson_maxn_super_opt_20260706/`(`latency_summary_opt.csv`)。
 
 **lower_obstacle_circle**
-| 求解器配置 | compute 均值 | compute P95 | e2e 均值 | e2e P95 | 有效频率 |
+| 求解器配置 | 求解耗时均值 (ms) | 求解耗时 P95 (ms)  | 端到端时延均值 (ms) | 端到端时延 P95 (ms) | 有效频率 |
 |---|---:|---:|---:|---:|---:|
 | acados SQP_RTI + qpOASES | 8.22 | **8.69** | 21.92 | 44.05 | **49.7Hz** |
 | acados SQP_RTI + HPIPM | 13.03 | 13.67 | 23.25 | 42.84 | 50.0Hz |
 | GRAMPC | 18.12 | 18.80 | 19.57 | 19.43 | 43.9Hz |
 
 **circle**
-| 求解器配置 | compute 均值 | compute P95 | e2e 均值 | e2e P95 | 有效频率 |
+| 求解器配置 | 求解耗时均值 (ms) | 求解耗时 P95 (ms)  | 端到端时延均值 (ms) | 端到端时延 P95 (ms) | 有效频率 |
 |---|---:|---:|---:|---:|---:|
 | acados SQP_RTI + qpOASES | 8.60 | **9.33** | 22.18 | 44.88 | **49.7Hz** |
 | acados SQP_RTI + HPIPM | 18.28 | 18.97 | 19.92 | 20.24 | 47.2Hz† |
 | GRAMPC | 18.11 | 18.75 | 19.73 | 19.54 | 43.9Hz |
 
 **front_wing_arc**
-| 求解器配置 | compute 均值 | compute P95 | e2e 均值 | e2e P95 | 有效频率 |
+| 求解器配置 | 求解耗时均值 (ms) | 求解耗时 P95 (ms)  | 端到端时延均值 (ms) | 端到端时延 P95 (ms) | 有效频率 |
 |---|---:|---:|---:|---:|---:|
 | acados SQP_RTI + qpOASES | 11.67 | **12.34** | 23.47 | 47.94 | **49.7Hz** |
 | acados SQP_RTI + HPIPM | 30.69 | 31.64 | 31.07 | 32.05 | 20.9Hz |
@@ -224,12 +224,38 @@ chrt -f 80 taskset -c 4-7 python3 move_ll100_lh420_nmpc_demo.py --ros-args \
 
 **怎么读这张表(重要,别被 e2e 误导)**:
 - **选型只看 `compute` 和有效频率**。`compute`=回调内真实计算耗时(FK+雅可比+求解+诊断),越小越好;
-  有效频率越接近 50Hz 说明实时裕度越足。结论一目了然:**qpOASES compute 全场景 <13ms、稳稳真 50Hz,
+  有效频率越接近 50Hz 说明实时裕度越足。结论一目了然:**qpOASES 求解耗时全场景 <13ms、稳稳真 50Hz,
   裕度最好**;GRAMPC 恒定 ~18ms、只能跑到 ~44Hz;HPIPM 随场景波动,front_wing_arc 达 31ms、掉到 20.9Hz。
 - **`e2e` 两列反直觉、不能横向比谁快**。e2e = feedback_age + compute,而 feedback_age 取决于"节点是否
   真跑满 50Hz":qpOASES 算得快、轻松跑满,每个 tick 要等下一帧反馈,feedback_age 出现 0~20ms 锯齿,
-  于是 e2e P95 反而"最高"(~44ms);GRAMPC/HPIPM 算得慢、tick 紧贴反馈饱和执行,feedback_age≈0,e2e 看着"最低"。
-  **务必以 compute 为准。**
+  于是 端到端时延 P95 (ms) 反而"最高"(~44ms);GRAMPC/HPIPM 算得慢、tick 紧贴反馈饱和执行,feedback_age≈0,e2e 看着"最低"。
+  **务必以 求解耗时为准。**
+
+### 4.6 ROS 闭环测试台(最终验收口径)
+
+零反馈延迟测试(§4.5)只测延迟不测精度;**最终验收用 ROS 闭环测试台**:NMPC 节点 + 真实 plant 节点
+(订阅 `/student/joint_command` → 限速积分动力学 → 回发 `/joint_states`),一次同时拿延迟+精度+抖动+安全。
+三件套(均在 `src/arm-platform/demo/`):
+
+| 文件 | 作用 |
+|---|---|
+| [ll100_lh420_plant_node.py](src/arm-platform/demo/ll100_lh420_plant_node.py) | 真实 plant 节点(动力学与 benchmark/SmoothPositionController 一致),`record_path` 逐 tick 记录 |
+| [run_ros_closed_loop_bench.py](src/arm-platform/demo/run_ros_closed_loop_bench.py) | 编排器:多配置顺序跑(NMPC `chrt -f 80` 绑 4-7 核 / plant 绑 2-3 核 / 独立 DOMAIN_ID),以首条命令为计时零点(排除 acados 重编) |
+| [eval_ros_closed_loop.py](src/arm-platform/demo/eval_ros_closed_loop.py) | 离线评估:compute/e2e/有效频率 + 精度 + 抖动(hf/cmd_acc,tuner 同口径)+ 安全(对实际轨迹逐点算 violation/margin) |
+
+```bash
+# 跑(Jetson,输出根目录自动带时间戳;--configs 可选子集)
+python3 run_ros_closed_loop_bench.py --duration 120 --output-root data/ros_closed_loop_<日期>
+python3 eval_ros_closed_loop.py --root data/ros_closed_loop_<日期>   # 出 summary.md/.csv
+```
+
+**精度读法**:看 `path rms`(到路径折线最近距离,相位无关)与 `aligned rms`(最优相位对齐后跟踪误差);
+**不要**看按时间重建参考的原始 `rms`——启动段限速追赶造成的常数相位差会把它污染成 ~100mm 假偏置。
+front_wing_arc 是驻留-转移轨迹,path/aligned 口径结构性偏大,只用于同场景内横比。
+
+2026-07-07 终验结论(6 配置,数据 `data/ros_closed_loop_jetson_20260707/`):离线自动调参(tune_ll100_nmpc.py)
+的最优参数**未迁移**到 ROS 闭环(lower 反而更差;circle 精度+34% 但命令抖动 11 倍恶化)→ **现役默认权重保留**;
+求解器层 A 组优化(`ext_fun_expand_*` + `-O3`,数值等价)已并入默认。过程细节见 [JETSON_DEPLOY_LOG.md](JETSON_DEPLOY_LOG.md)。
 
 ## 5. 教程:如何自己增 / 减求解器
 
@@ -317,6 +343,7 @@ python3 move_ll100_lh420_nmpc_demo.py --ros-args -p solver_backend:=grampc
 | `acados_qp_solver` | `FULL_CONDENSING_QPOASES` | `FULL_CONDENSING_QPOASES` / `PARTIAL_CONDENSING_HPIPM` |
 | `acados_qp_solver_iter_max` | `500` | 正整数 |
 | `acados_qp_warm_start` | `1` | `0` / `1` / `2` |
+| `acados_rti_iterations` | `3` | ≥1;SQP_RTI 每 tick 最多迭代次数(带提前退出)。默认 3 经 ROS 闭环终验保留;1 会在重场景(front_wing_arc 默认权重)显著损精度 |
 
 > - GRAMPC 需先按 1.2 装好 pygrampc 且设 `PYGRAMPC_ROOT`。
 > - 组合示例:同时改 backend 和 qp,多个 `-p` 并列即可。

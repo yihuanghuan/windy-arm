@@ -86,6 +86,8 @@ class SolverConfig:
 
 # ===== 目标求解器配置 =====
 def solver_matrix() -> List[SolverConfig]:
+    qpoases_overrides = (("acados_qp_solver_iter_max", 500),
+                         ("acados_qp_warm_start", 1))
     return [
         SolverConfig("acados_sqp_rti_hpipm", "acados", "SQP_RTI",
                      "PARTIAL_CONDENSING_HPIPM", ("acados",), "acados SQP_RTI + HPIPM",
@@ -94,8 +96,22 @@ def solver_matrix() -> List[SolverConfig]:
                      "FULL_CONDENSING_QPOASES", ("acados",), "acados SQP_RTI + qpOASES",
                      status="active",
                      note="active-set,放开迭代上限 + primal 热启动",
-                     extra_overrides=(("acados_qp_solver_iter_max", 500),
-                                      ("acados_qp_warm_start", 1))),
+                     extra_overrides=qpoases_overrides),
+        SolverConfig("acados_sqp_rti_qpoases_rti1", "acados", "SQP_RTI",
+                     "FULL_CONDENSING_QPOASES", ("acados",), "acados SQP_RTI + qpOASES + RTI=1",
+                     status="active",
+                     note="实验B1:每 tick 只做 1 次 SQP_RTI",
+                     extra_overrides=qpoases_overrides + (("acados_rti_iterations", 1),)),
+        SolverConfig("acados_sqp_rti_qpoases_no_dq_state_bounds", "acados", "SQP_RTI",
+                     "FULL_CONDENSING_QPOASES", ("acados",), "acados SQP_RTI + qpOASES + no dq state bounds",
+                     status="active",
+                     note="实验B2:去掉 dq_prev path/terminal 冗余状态界,u 界保持",
+                     extra_overrides=qpoases_overrides + (("constrain_dq_state", False),)),
+        SolverConfig("acados_sqp_rti_qpoases_stage0_control_cost", "acados", "SQP_RTI",
+                     "FULL_CONDENSING_QPOASES", ("acados",), "acados SQP_RTI + qpOASES + stage0 u-only cost",
+                     status="active",
+                     note="实验B3:stage-0 代价只保留 u0 与 u0-dq_prev",
+                     extra_overrides=qpoases_overrides + (("acados_stage0_control_only_cost", True),)),
         SolverConfig("grampc", "grampc", None, None, ("grampc",), "GRAMPC (增广拉格朗日+梯度法)",
                      status="active",
                      note="pygrampc + CasADi codegen 的 C++ 问题描述(grampc_ll100.py)"),
@@ -132,6 +148,18 @@ class BenchResult:
     # 多次重复运行的聚合(--repeats>1 时填充;确定性字段跨次相同,只有耗时波动)。
     runs: int = 1
     mean_ms_std: float = 0.0  # 跨次 mean_solve_ms 的标准差(时间稳定性)
+
+
+@dataclass
+class ReplayTrace:
+    """evaluate_mpc_replay 的可选调试轨迹,供外部调参器计算额外质量指标。"""
+    q_commands: np.ndarray
+    q_actual: np.ndarray
+    solve_ms: np.ndarray
+    rti_iterations: np.ndarray
+    safety_warmup: int
+    accuracy_warmup: int
+    steps: int
 
 
 @contextlib.contextmanager
@@ -214,6 +242,8 @@ def build_config(sc: SolverConfig, path_mode: str) -> Tuple[MpcIkConfig, str]:
     # 每个求解器的个性化参数覆盖(让它跑到自己最优),在构造 MpcPinocchioIK 前生效。
     for field_name, value in sc.extra_overrides:
         setattr(cfg, field_name, value)
+    if sc.extra_overrides:
+        cfg.acados_build_dir = f"{cfg.acados_build_dir}_{sc.key}"
     return cfg, LL100_NMPC_URDF
 
 
@@ -231,24 +261,20 @@ def _singularity_metrics(mpc: MpcPinocchioIK, q: np.ndarray) -> Tuple[float, flo
     return sigma_min, cond
 
 
-def evaluate(sc: SolverConfig, path_mode: str, periods: float,
-             quiet_build: bool, max_velocity: float, warmup_frac: float = 0.5) -> BenchResult:
+def evaluate_mpc_replay(sc: SolverConfig, mpc: MpcPinocchioIK, cfg: MpcIkConfig,
+                        path_mode: str, periods: float, max_velocity: float,
+                        warmup_frac: float = 0.5, collect_trace: bool = False,
+                        reset_solver_memory: bool = True) -> Tuple[BenchResult, Optional[ReplayTrace]]:
+    """在给定真实 solver 对象上跑 benchmark 同口径闭环 replay 并计算指标。
+
+    该入口供调参脚本复用,避免复制 plant / 安全 / 稳态 RMS / 奇异性判定逻辑。
+    传入的 mpc 可以是已编译好的 acados solver;函数本身不构造、不重编求解器。
+    """
     import pinocchio as pin
     from ll100_traj_pub import _build_path as build_ll100_path
 
-    cfg, urdf = build_config(sc, path_mode)
-    with suppress_native_output(quiet_build):
-        if sc.backend == "grampc":
-            # GRAMPC 走独立运行器(pygrampc + CasADi codegen 的 C++ 问题描述)。
-            # 它内部持有一个 MpcPinocchioIK(用于 FK / 避障诊断 / 奇异),并暴露
-            # 与 MpcPinocchioIK 同口径的 step / forward / model / _obstacle_diagnostics。
-            from grampc_ll100 import GrampcRunner
-
-            mpc = GrampcRunner(urdf_path=urdf, ee_frame=EE_FRAME, config=cfg)
-        elif sc.backend == "acados":
-            mpc = MpcPinocchioIK(urdf_path=urdf, ee_frame=EE_FRAME, config=cfg)
-        else:
-            raise ValueError(f"未部署的求解器后端: {sc.backend}")
+    if reset_solver_memory and hasattr(mpc, "_last_plan"):
+        mpc._last_plan = None
 
     count = max(20, int(round(EVAL_PERIOD_SEC / CONTROL_DT)))
     path = build_ll100_path(path_mode, count)
@@ -282,6 +308,8 @@ def evaluate(sc: SolverConfig, path_mode: str, periods: float,
     solve_ms: List[float] = []
     iters: List[int] = []
     realized: List[np.ndarray] = []
+    q_commands: List[np.ndarray] = []
+    q_actual: List[np.ndarray] = []
     min_sigma_min = float("inf")
     max_condition = 0.0
 
@@ -304,6 +332,7 @@ def evaluate(sc: SolverConfig, path_mode: str, periods: float,
         else:
             fallback += 1
             qdot_ref = np.zeros_like(q_plant)
+        q_commands.append(q_cmd.copy())
         v_ff = np.clip(qdot_ref, -max_velocity, max_velocity)
         v_fb = np.clip((q_cmd - q_plant) / VFF_TAU, -VFF_FB_VLIM, VFF_FB_VLIM)
         v_raw = np.clip(VFF_GAIN * v_ff + v_fb, -max_velocity, max_velocity)
@@ -312,6 +341,7 @@ def evaluate(sc: SolverConfig, path_mode: str, periods: float,
         q_new = np.clip(q_plant + v_cmd * CONTROL_DT, mpc.q_lower, mpc.q_upper)
         last_v = (q_new - q_plant) / CONTROL_DT
         q_plant = q_new
+        q_actual.append(q_plant.copy())
         # 避障(碰撞):覆盖全程(含从 neutral 追轨迹的接近段)——任何时刻都不能撞障碍。
         if step >= safety_warmup:
             realized.append(q_plant.copy())
@@ -358,7 +388,7 @@ def evaluate(sc: SolverConfig, path_mode: str, periods: float,
 
     realtime_rate = float(np.mean(sms < (CONTROL_DT * 1000.0)))
 
-    return BenchResult(
+    result = BenchResult(
         config=sc, path_mode=path_mode, safe=safe,
         mean_solve_ms=float(np.mean(sms)),
         p95_solve_ms=float(np.percentile(sms, 95)),
@@ -378,6 +408,47 @@ def evaluate(sc: SolverConfig, path_mode: str, periods: float,
         samples=len(pos_errs),
         fail_reason="; ".join(fail_reasons),
     )
+    trace = None
+    if collect_trace:
+        trace = ReplayTrace(
+            q_commands=np.asarray(q_commands, dtype=float),
+            q_actual=np.asarray(q_actual, dtype=float),
+            solve_ms=np.asarray(solve_ms, dtype=float),
+            rti_iterations=np.asarray(iters, dtype=float),
+            safety_warmup=safety_warmup,
+            accuracy_warmup=accuracy_warmup,
+            steps=steps,
+        )
+    return result, trace
+
+
+def evaluate(sc: SolverConfig, path_mode: str, periods: float,
+             quiet_build: bool, max_velocity: float, warmup_frac: float = 0.5) -> BenchResult:
+    cfg, urdf = build_config(sc, path_mode)
+    with suppress_native_output(quiet_build):
+        if sc.backend == "grampc":
+            # GRAMPC 走独立运行器(pygrampc + CasADi codegen 的 C++ 问题描述)。
+            # 它内部持有一个 MpcPinocchioIK(用于 FK / 避障诊断 / 奇异),并暴露
+            # 与 MpcPinocchioIK 同口径的 step / forward / model / _obstacle_diagnostics。
+            from grampc_ll100 import GrampcRunner
+
+            mpc = GrampcRunner(urdf_path=urdf, ee_frame=EE_FRAME, config=cfg)
+        elif sc.backend == "acados":
+            mpc = MpcPinocchioIK(urdf_path=urdf, ee_frame=EE_FRAME, config=cfg)
+        else:
+            raise ValueError(f"未部署的求解器后端: {sc.backend}")
+    result, _ = evaluate_mpc_replay(
+        sc,
+        mpc,
+        cfg,
+        path_mode,
+        periods,
+        max_velocity,
+        warmup_frac,
+        collect_trace=False,
+        reset_solver_memory=False,
+    )
+    return result
 
 
 def rank_key(r: BenchResult) -> Tuple:
