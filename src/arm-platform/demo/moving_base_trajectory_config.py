@@ -17,9 +17,9 @@ BASE_FRAME = 'base_link'
 
 # Moving-base experiment: small base motion around the world-frame origin.
 BASE_CIRCLE_CENTER = np.array([0.0, 0.0, 0.0])
-BASE_CIRCLE_RADIUS = 0.02
-BASE_PERIOD_SEC = 8.0
-BASE_HEIGHT = 0.01
+BASE_CIRCLE_RADIUS = 0.02 #水平运动半径
+BASE_PERIOD_SEC = 1.0  # 基座平移和姿态周期，改小频率增大
+BASE_HEIGHT = 0.01 # 固定高度（不运动）
 BASE_ATTITUDE_AMPLITUDE_DEG = 0.1  # deg
 
 BASE_ROLL_AMPLITUDE = math.radians(BASE_ATTITUDE_AMPLITUDE_DEG)
@@ -36,6 +36,7 @@ TARGET_ROLL = 0.0
 TARGET_ROTATION = pin.rpy.rpyToMatrix(TARGET_ROLL, TARGET_PITCH, TARGET_YAW)
 
 
+# 基座运动形状
 def base_pose(t: float) -> np.ndarray:
     """Return base_link origin position in world frame."""
     w = 2.0 * math.pi / BASE_PERIOD_SEC

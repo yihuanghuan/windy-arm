@@ -187,11 +187,7 @@ python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/code/windylab_ws/install/setup.bash
-ros2 launch manipulator student_arm.launch.py \
-  max_velocity:=1.0 \
-  velocity_feedforward_gain:=0.7 \
-  position_feedback_tau:=0.15 \
-  feedback_velocity_limit:=0.4
+ros2 launch manipulator student_arm.launch.py
 ```
 
 > 角速度控制(关节速度前馈)已默认开启,`enable_velocity_feedforward` 开关已移除,无需也不能再传。

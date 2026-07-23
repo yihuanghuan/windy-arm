@@ -37,7 +37,7 @@ def generate_launch_description():
 
     max_velocity_arg = DeclareLaunchArgument(
         'max_velocity',
-        default_value='0.5',
+        default_value='1.0',
         description='Max joint velocity (rad/s) safety limit for students'
     )
 
