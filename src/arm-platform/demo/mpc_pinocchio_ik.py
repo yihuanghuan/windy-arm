@@ -45,6 +45,10 @@ class MpcIkConfig:
     solver_backend: str = "acados"
     acados_build_dir: str = "/tmp/windylab_acados_mpc_ik"
     acados_rti_iterations: int = 3  # SQP_RTI 每次 solve 只做一次线性化;这里允许重复几次提高终端精度。
+    # 阶段1C:RTI 早退判据与 success_tolerance 解耦(纯运行时 solve 循环行为,不进签名/不 codegen)。
+    #   legacy_early_exit: 旧行为——status!=0 或 terminal_error<=success_tolerance 时退出;
+    #   fixed_iterations : status==0 时跑满 acados_rti_iterations,status!=0 立即停止。
+    rti_iteration_mode: str = "legacy_early_exit"
     acados_nlp_solver_type: str = "SQP_RTI"  # 只部署实时迭代 SQP_RTI。
     acados_qp_solver: str = "FULL_CONDENSING_QPOASES"  # 允许:PARTIAL_CONDENSING_HPIPM/FULL_CONDENSING_QPOASES。
     acados_qp_solver_iter_max: int = 500  # QP 内层最大迭代数;qpOASES 需要较高上限。
@@ -98,6 +102,15 @@ class MpcPinocchioIK:
         config: Optional[MpcIkConfig] = None,
     ):
         self.config = config if config is not None else MpcIkConfig()
+        # 阶段1C:求解器层校验(不只依赖 ROS demo),非法配置直接抛错,不静默修正/回退。
+        if self.config.rti_iteration_mode not in ("legacy_early_exit", "fixed_iterations"):
+            raise ValueError(
+                "rti_iteration_mode 必须是 'legacy_early_exit' 或 'fixed_iterations',"
+                f"当前 {self.config.rti_iteration_mode!r}(拼写错误不会被当作 fixed_iterations)")
+        if self.config.acados_rti_iterations < 1:
+            raise ValueError(
+                f"acados_rti_iterations 必须 >= 1,当前 {self.config.acados_rti_iterations}"
+                "(不再用 max(1, value) 静默修正非法配置)")
         self.urdf_path = urdf_path
         self.ee_frame = ee_frame
         # Pinocchio 直接从 URDF 建模,不手写 DH 参数,避免模型和 URDF 不一致。
@@ -161,7 +174,8 @@ class MpcPinocchioIK:
         initial_plan = self._initial_plan(q0, warm_start)
 
         # 求解器返回的是整段 q_1 ... q_N,solve() 对外暴露最后一步 q_N。
-        result = self._optimize(q0, targets, rotations, initial_plan)
+        # solve() 用于静态/起始位姿求解,起点视为静止,dq_prev=0(previous_joint_delta=None)。
+        result = self._optimize(q0, targets, rotations, initial_plan, previous_joint_delta=None)
         plan = result.x.reshape(self.config.horizon_steps, self.nq)
         terminal_q = np.clip(plan[-1], self.q_lower, self.q_upper)
         terminal_error = self._position_error(terminal_q, targets[-1])
@@ -185,15 +199,26 @@ class MpcPinocchioIK:
         q_current: np.ndarray,
         warm_start: Optional[np.ndarray] = None,
         target_rotation: Optional[np.ndarray] = None,
+        previous_joint_delta: Optional[np.ndarray] = None,
+        posture_reference: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, bool, Dict[str, object]]:
-        """滚动 MPC 用法:优化未来 N 步,但只返回第一步 q_1。"""
+        """滚动 MPC 用法:优化未来 N 步,但只返回第一步 q_1。
+
+        previous_joint_delta: 上一控制周期实际执行的关节增量,用作 ACADOS 初始状态
+        x0=[q0, dq_prev] 的 dq_prev。None 时严格保持旧行为 dq_prev=0。由调用者显式传入
+        (不把 demo 状态藏进求解器),便于测试/复用。
+        """
         q0 = self._initial_q(q_current)
         targets = self._target_sequence(target_position)
         rotations, orientation_active = self._rotation_sequence(target_rotation, q0)
         initial_plan = self._initial_plan(q0, warm_start)
 
         # Receding horizon:每个控制周期重新优化,只执行第一步,下一周期再滚动。
-        result = self._optimize(q0, targets, rotations, initial_plan)
+        result = self._optimize(
+            q0, targets, rotations, initial_plan,
+            previous_joint_delta=previous_joint_delta,
+            posture_reference=posture_reference,
+        )
         plan = result.x.reshape(self.config.horizon_steps, self.nq)
         q_next = np.clip(plan[0], self.q_lower, self.q_upper)
         terminal_error = self._position_error(plan[-1], targets[-1])
@@ -518,16 +543,36 @@ class MpcPinocchioIK:
             previous = projected[i]
         return projected
 
+    def _sanitize_previous_joint_delta(self, previous_joint_delta):
+        """把外部传入的 previous_joint_delta 整理成合法的 dq_prev(用于 x0 后半段)。
+
+        None -> 全零(严格保持旧行为)。非 None -> 校验 shape/finite,并 clip 到
+        [-max_joint_step, +max_joint_step](与 u 界一致)。**只做 x0 初值,不改任何模型/代价/约束。**
+        """
+        if previous_joint_delta is None:
+            return np.zeros(self.nq)
+        dq = np.asarray(previous_joint_delta, dtype=float).reshape(-1)
+        if dq.shape != (self.nq,):
+            raise ValueError(
+                f"previous_joint_delta 形状必须是 ({self.nq},),当前 {dq.shape}")
+        if not np.all(np.isfinite(dq)):
+            raise ValueError("previous_joint_delta 含 NaN/Inf")
+        return np.clip(dq, -self.config.max_joint_step, self.config.max_joint_step)
+
     def _optimize(
         self,
         q0: np.ndarray,
         targets: np.ndarray,
         rotations: np.ndarray,
         initial_plan: np.ndarray,
+        previous_joint_delta: Optional[np.ndarray] = None,
+        posture_reference: Optional[np.ndarray] = None,
     ):
         """根据配置选择求解器后端。"""
         if self.config.solver_backend == "acados":
-            return self._optimize_acados(q0, targets, rotations, initial_plan)
+            return self._optimize_acados(q0, targets, rotations, initial_plan,
+                                         previous_joint_delta=previous_joint_delta,
+                                         posture_reference=posture_reference)
         raise ValueError("solver_backend 只支持 'acados';LL100 的 GRAMPC 走 grampc_ll100.GrampcRunner")
 
     def _optimize_acados(
@@ -536,25 +581,53 @@ class MpcPinocchioIK:
         targets: np.ndarray,
         rotations: np.ndarray,
         initial_plan: np.ndarray,
+        previous_joint_delta: Optional[np.ndarray] = None,
+        posture_reference: Optional[np.ndarray] = None,
     ):
         solver = self._get_acados_solver()
         cfg = self.config
         start_time = time.perf_counter()
-        x0 = np.concatenate([q0, np.zeros(self.nq)])
+        # 阶段1B:x0 的 dq_prev 由 previous_joint_delta 决定(None=旧行为全零)。
+        prev_delta = self._sanitize_previous_joint_delta(previous_joint_delta)
+        q_reference = q0 if posture_reference is None else np.asarray(
+            posture_reference, dtype=float).reshape(-1)
+        if q_reference.shape != (self.nq,) or not np.all(np.isfinite(q_reference)):
+            raise ValueError(
+                f"posture_reference 必须是有限 ({self.nq},) 向量")
+        q_reference = np.clip(q_reference, self.q_lower, self.q_upper)
+        x0 = np.concatenate([q0, prev_delta])
+
+        # 求解初值一致性修正(zero/measured 两模式共用同一修正):
+        # 先按动力学 q_{k+1}=q_k+u_k、dq_prev_{k+1}=u_k 构造一致的 u/x guess。
+        # u_guess[k] = 进入 stage k+1 的控制增量(stage0: initial_plan[0]-q0;k>=1: Δinitial_plan)。
+        u_guess = np.empty((cfg.horizon_steps, self.nq))
+        for stage in range(cfg.horizon_steps):
+            if stage == 0:
+                dq_guess = initial_plan[0] - q0
+            else:
+                dq_guess = initial_plan[stage] - initial_plan[stage - 1]
+            u_guess[stage] = np.clip(dq_guess, -cfg.max_joint_step, cfg.max_joint_step)
 
         for stage in range(cfg.horizon_steps + 1):
             target_index = min(max(stage - 1, 0), cfg.horizon_steps - 1)
             target = targets[target_index]
             rotation = rotations[target_index]
-            p = np.concatenate([target, rotation.reshape(-1), q0, self.q_center])
+            p = np.concatenate([
+                target, rotation.reshape(-1), q_reference, self.q_center])
             solver.set(stage, "p", p)
-            solver.set(stage, "x", np.concatenate([initial_plan[min(stage, cfg.horizon_steps - 1)], np.zeros(self.nq)]))
+            # 状态 guess:x_k=[q_k, dq_prev_k]。
+            #   q 部分修正 stage 索引:stage0=q0(=x_0);stage k>=1 = initial_plan[k-1](=x_k)。
+            #     旧代码用 initial_plan[min(stage,N-1)] 对 1..N-1 存在一拍错位,这里修正。
+            #   dq_prev 部分:stage0=prev_delta;stage k>=1 = u_guess[k-1](= dq_prev_k=u_{k-1})。
+            if stage == 0:
+                q_guess = q0
+                dq_prev_guess = prev_delta
+            else:
+                q_guess = initial_plan[stage - 1]
+                dq_prev_guess = u_guess[stage - 1]
+            solver.set(stage, "x", np.concatenate([q_guess, dq_prev_guess]))
             if stage < cfg.horizon_steps:
-                if stage == 0:
-                    dq_guess = initial_plan[0] - q0
-                else:
-                    dq_guess = initial_plan[stage] - initial_plan[stage - 1]
-                solver.set(stage, "u", np.clip(dq_guess, -cfg.max_joint_step, cfg.max_joint_step))
+                solver.set(stage, "u", u_guess[stage])
 
         solver.set(0, "lbx", x0)
         solver.set(0, "ubx", x0)
@@ -563,20 +636,36 @@ class MpcPinocchioIK:
         plan = initial_plan.copy()
         terminal_error = float("inf")
         us = np.zeros((cfg.horizon_steps, self.nq))
-        # SQP_RTI 一次 solve 是一次实时迭代。多调用几次可以在静态 IK 自测中
-        # 继续围绕上一轮结果线性化,通常 2-3 次就能把毫米级误差压到几十微米。
-        for nit in range(1, max(1, cfg.acados_rti_iterations) + 1):
+        # acados_rti_iterations 已在 __init__ 校验 >=1,这里不再 max(1,...) 静默修正。
+        configured_iters = cfg.acados_rti_iterations
+        mode = cfg.rti_iteration_mode
+        status_per_iter = []
+        terminal_error_per_iter = []
+        early_exit = False
+        # SQP_RTI 一次 solve 是一次实时迭代。多调用几次可以继续围绕上一轮结果线性化。
+        # 阶段1C:早退判据按 rti_iteration_mode 区分——
+        #   legacy_early_exit: status!=0 或 terminal_error<=success_tolerance 退出(旧行为);
+        #   fixed_iterations : status==0 跑满 configured_iters,status!=0 立即停止。
+        #   success_tolerance 只是"输出可接受"跟踪门槛,不作 fixed 模式的收敛判据。
+        for nit in range(1, configured_iters + 1):
             status = int(solver.solve())
             xs = np.array([solver.get(i, "x") for i in range(cfg.horizon_steps + 1)], dtype=float)
             us = np.array([solver.get(i, "u") for i in range(cfg.horizon_steps)], dtype=float)
             plan = xs[1:, :self.nq]
             terminal_error = self._position_error(plan[-1], targets[-1])
-            if status != 0 or terminal_error <= cfg.success_tolerance:
+            status_per_iter.append(status)
+            terminal_error_per_iter.append(float(terminal_error))
+            if status != 0:
+                early_exit = (nit < configured_iters)
                 break
+            if mode == "legacy_early_exit" and terminal_error <= cfg.success_tolerance:
+                early_exit = (nit < configured_iters)
+                break
+            # fixed_iterations: status==0 时不因 terminal_error 早退,继续跑满。
         solve_time = time.perf_counter() - start_time
 
         cost = float(np.sum(us * us))
-        return _AcadosResult(
+        result = _AcadosResult(
             x=plan.reshape(-1),
             success=(status == 0),
             status=status,
@@ -585,6 +674,12 @@ class MpcPinocchioIK:
             fun=cost,
             solve_time=solve_time,
         )
+        result.rti_iteration_mode = mode
+        result.rti_configured_iters = configured_iters
+        result.rti_status_per_iter = status_per_iter
+        result.rti_terminal_error_per_iter = terminal_error_per_iter
+        result.rti_early_exit = bool(early_exit)
+        return result
 
     def _get_acados_solver(self):
         if self._acados_solver is None:
@@ -962,6 +1057,11 @@ class MpcPinocchioIK:
         }
         if hasattr(result, "solve_time"):
             info["solve_time"] = float(result.solve_time)
+        # 阶段1C:RTI 迭代诊断透出(供 demo 记录/分析)。
+        for key in ("rti_iteration_mode", "rti_configured_iters", "rti_status_per_iter",
+                    "rti_terminal_error_per_iter", "rti_early_exit"):
+            if hasattr(result, key):
+                info[key] = getattr(result, key)
         info.update(obstacle_diag if obstacle_diag is not None else self._obstacle_diagnostics(plan))
         return info
 

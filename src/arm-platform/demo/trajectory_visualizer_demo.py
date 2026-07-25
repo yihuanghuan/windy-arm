@@ -50,9 +50,13 @@ def to_point(p: np.ndarray) -> Point:
 
 
 class MatplotlibPlotter:
-    def __init__(self, logger, expected_path: np.ndarray):
+    def __init__(self, logger, expected_path_segments):
         self._logger = logger
-        self._expected_path = expected_path
+        self._expected_path_segments = [
+            np.asarray(segment, dtype=float)
+            for segment in expected_path_segments
+        ]
+        self._expected_path = np.vstack(self._expected_path_segments)
         self._times = deque(maxlen=2000)
         self._expected = deque(maxlen=2000)
         self._actual = deque(maxlen=2000)
@@ -61,6 +65,11 @@ class MatplotlibPlotter:
         self._command_expected = deque(maxlen=2000)
         self._command_fk = deque(maxlen=2000)
         self._command_errors = deque(maxlen=2000)
+        self._expected_draw = deque(maxlen=2200)
+        self._actual_draw = deque(maxlen=2200)
+        self._command_draw = deque(maxlen=2200)
+        self._draw_stroke = None
+        self._command_draw_stroke = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -73,19 +82,48 @@ class MatplotlibPlotter:
         if self._thread.is_alive():
             self._thread.join(timeout=1.0)
 
-    def add_sample(self, t: float, expected: np.ndarray, actual: np.ndarray):
+    @staticmethod
+    def _append_draw_point(
+            draw_points, point: np.ndarray,
+            pen_down: bool, stroke_id: int, previous_stroke):
+        if not pen_down:
+            if draw_points and np.all(np.isfinite(draw_points[-1])):
+                draw_points.append(np.full(3, np.nan))
+            return None
+        if previous_stroke is not None and previous_stroke != int(stroke_id):
+            draw_points.append(np.full(3, np.nan))
+        draw_points.append(np.asarray(point, dtype=float).copy())
+        return int(stroke_id)
+
+    def add_sample(
+            self, t: float, expected: np.ndarray, actual: np.ndarray,
+            pen_down: bool, stroke_id: int):
         with self._lock:
             self._times.append(float(t))
             self._expected.append(expected.copy())
             self._actual.append(actual.copy())
             self._errors.append(actual - expected)
+            previous = self._draw_stroke
+            self._draw_stroke = self._append_draw_point(
+                self._expected_draw, expected, pen_down, stroke_id, previous)
+            self._append_draw_point(
+                self._actual_draw, actual, pen_down, stroke_id, previous)
 
-    def add_command_fk_sample(self, t: float, expected: np.ndarray, command_fk: np.ndarray):
+    def add_command_fk_sample(
+            self, t: float, expected: np.ndarray, command_fk: np.ndarray,
+            pen_down: bool, stroke_id: int):
         with self._lock:
             self._command_times.append(float(t))
             self._command_expected.append(expected.copy())
             self._command_fk.append(command_fk.copy())
             self._command_errors.append(command_fk - expected)
+            self._command_draw_stroke = self._append_draw_point(
+                self._command_draw,
+                command_fk,
+                pen_down,
+                stroke_id,
+                self._command_draw_stroke,
+            )
 
     def reset(self):
         with self._lock:
@@ -97,6 +135,11 @@ class MatplotlibPlotter:
             self._command_expected.clear()
             self._command_fk.clear()
             self._command_errors.clear()
+            self._expected_draw.clear()
+            self._actual_draw.clear()
+            self._command_draw.clear()
+            self._draw_stroke = None
+            self._command_draw_stroke = None
 
     def _snapshot(self):
         with self._lock:
@@ -108,7 +151,14 @@ class MatplotlibPlotter:
             command_expected = np.array(self._command_expected, dtype=float)
             command_fk = np.array(self._command_fk, dtype=float)
             command_errors = np.array(self._command_errors, dtype=float)
-        return times, expected, actual, errors, command_times, command_expected, command_fk, command_errors
+            expected_draw = np.array(self._expected_draw, dtype=float)
+            actual_draw = np.array(self._actual_draw, dtype=float)
+            command_draw = np.array(self._command_draw, dtype=float)
+        return (
+            times, expected, actual, errors,
+            command_times, command_expected, command_fk, command_errors,
+            expected_draw, actual_draw, command_draw,
+        )
 
     def _run(self):
         try:
@@ -126,13 +176,14 @@ class MatplotlibPlotter:
             ax_err = [fig.add_subplot(grid[2, i]) for i in range(3)]
             fig.suptitle('End-effector trajectory tracking')
 
-            expected_full, = ax_3d.plot(
-                self._expected_path[:, 0],
-                self._expected_path[:, 1],
-                self._expected_path[:, 2],
-                color='tab:green',
-                linestyle='--',
-                label='expected path')
+            for index, segment in enumerate(self._expected_path_segments):
+                ax_3d.plot(
+                    segment[:, 0],
+                    segment[:, 1],
+                    segment[:, 2],
+                    color='tab:green',
+                    linestyle='--',
+                    label='expected path' if index == 0 else None)
             expected_line, = ax_3d.plot([], [], [], color='limegreen', label='expected')
             command_line, = ax_3d.plot([], [], [], color='tab:orange', label='command FK')
             actual_line, = ax_3d.plot([], [], [], color='tab:red', label='actual')
@@ -167,17 +218,29 @@ class MatplotlibPlotter:
                 (
                     times, expected, actual, errors,
                     command_times, command_expected, command_fk, command_errors,
+                    expected_draw, actual_draw, command_draw,
                 ) = self._snapshot()
                 if actual.size:
-                    expected_line.set_data(expected[:, 0], expected[:, 1])
-                    expected_line.set_3d_properties(expected[:, 2])
-                    actual_line.set_data(actual[:, 0], actual[:, 1])
-                    actual_line.set_3d_properties(actual[:, 2])
+                    if expected_draw.size:
+                        expected_line.set_data(
+                            expected_draw[:, 0], expected_draw[:, 1])
+                        expected_line.set_3d_properties(expected_draw[:, 2])
+                    else:
+                        expected_line.set_data([], [])
+                        expected_line.set_3d_properties([])
+                    if actual_draw.size:
+                        actual_line.set_data(
+                            actual_draw[:, 0], actual_draw[:, 1])
+                        actual_line.set_3d_properties(actual_draw[:, 2])
+                    else:
+                        actual_line.set_data([], [])
+                        actual_line.set_3d_properties([])
 
                     all_points = np.vstack([self._expected_path, actual])
-                    if command_fk.size:
-                        command_line.set_data(command_fk[:, 0], command_fk[:, 1])
-                        command_line.set_3d_properties(command_fk[:, 2])
+                    if command_draw.size:
+                        command_line.set_data(
+                            command_draw[:, 0], command_draw[:, 1])
+                        command_line.set_3d_properties(command_draw[:, 2])
                         all_points = np.vstack([all_points, command_fk])
                     self._set_equal_ish_3d(ax_3d, all_points)
 
@@ -205,6 +268,10 @@ class MatplotlibPlotter:
 
     @staticmethod
     def _set_equal_ish_3d(axis, points: np.ndarray):
+        points = np.asarray(points, dtype=float)
+        points = points[np.all(np.isfinite(points), axis=1)]
+        if not len(points):
+            return
         center = points.mean(axis=0)
         span = np.ptp(points, axis=0)
         radius = max(float(span.max()) * 0.6, 0.05)
@@ -218,6 +285,9 @@ class TrajectoryVisualizerDemo(Node):
         super().__init__('trajectory_visualizer_demo')
 
         self.trajectory_mode = self.declare_parameter('trajectory_mode', 'circle').value
+        self.trajectory_shape = str(self.declare_parameter(
+            'trajectory_shape', moving_traj.EE_TRAJECTORY_SHAPE).value
+        ).strip().lower()
         self.frame_id = self.declare_parameter('frame_id', 'base_link').value
         self.actual_topic = self.declare_parameter('actual_topic', '/joint_states').value
         self.command_topic = self.declare_parameter(
@@ -229,7 +299,10 @@ class TrajectoryVisualizerDemo(Node):
         self.record_command_fk = bool(
             self.declare_parameter('record_command_fk', True).value)
         self.publish_rate_hz = float(self.declare_parameter('publish_rate_hz', 10.0).value)
-        self.max_actual_points = int(self.declare_parameter('max_actual_points', 2000).value)
+        # Keep at least one complete high-rate ``whole`` cycle visible in RViz.
+        # The previous 2000-point deque discarded early red strokes mid-cycle.
+        self.max_actual_points = int(
+            self.declare_parameter('max_actual_points', 12000).value)
         self.expected_path_points = int(
             self.declare_parameter('expected_path_points', 240).value)
         self.show_matplotlib = bool(self.declare_parameter('show_matplotlib', True).value)
@@ -246,25 +319,39 @@ class TrajectoryVisualizerDemo(Node):
             self.declare_parameter('control_signal_change_epsilon', 1e-12).value)
         self.ignore_initial_sec = float(
             self.declare_parameter('ignore_initial_sec', 1.0).value)
+        self.trajectory_time_scale = float(
+            self.declare_parameter('trajectory_time_scale', 1.0).value)
+        self.base_motion_time_scale = float(
+            self.declare_parameter('base_motion_time_scale', 1.0).value)
         self.data_dir = Path(str(self.declare_parameter(
             'data_dir',
             '/home/windylab/code/windylab_ws/src/arm-platform/demo/data').value))
 
-        if self.trajectory_mode not in ('circle', 'horizontal_circle', 'line', 'moving_base_circle'):
+        if self.trajectory_mode not in (
+                'circle', 'horizontal_circle', 'line',
+                'moving_base', 'moving_base_circle'):
             raise ValueError(
                 "trajectory_mode must be 'circle', 'horizontal_circle', 'line' "
-                "or 'moving_base_circle'")
+                "'moving_base' or 'moving_base_circle'")
+        if self.trajectory_shape not in moving_traj.SUPPORTED_EE_TRAJECTORIES:
+            raise ValueError(
+                f"trajectory_shape must be one of "
+                f"{moving_traj.SUPPORTED_EE_TRAJECTORIES}")
         if self.publish_rate_hz <= 0.0:
             raise ValueError('publish_rate_hz must be positive')
         if self.ignore_initial_sec < 0.0:
             raise ValueError('ignore_initial_sec must be non-negative')
-        if self.trajectory_mode == 'moving_base_circle' and self.frame_id == 'base_link':
+        if self.trajectory_time_scale <= 0.0 or self.base_motion_time_scale <= 0.0:
+            raise ValueError('trajectory_time_scale/base_motion_time_scale must be > 0')
+        if self._is_moving_base_mode() and self.frame_id == 'base_link':
             self.frame_id = 'world'
             self.get_logger().info(
-                "moving_base_circle uses world-frame positions; marker frame_id changed to 'world'")
+                "moving-base tasks use world-frame positions; "
+                "marker frame_id changed to 'world'")
 
         self.ik = PinocchioIK()
-        self.expected_path = self._make_expected_path()
+        self.expected_path_segments = self._make_expected_path_segments()
+        self.expected_path = np.vstack(self.expected_path_segments)
         self.actual_points = deque(maxlen=self.max_actual_points)
         self.expected_points = deque(maxlen=self.max_actual_points)
         self.command_fk_points = deque(maxlen=self.max_actual_points)
@@ -303,13 +390,15 @@ class TrajectoryVisualizerDemo(Node):
 
         self.plotter = None
         if self.show_matplotlib:
-            self.plotter = MatplotlibPlotter(self.get_logger(), self.expected_path)
+            self.plotter = MatplotlibPlotter(
+                self.get_logger(), self.expected_path_segments)
             self.plotter.start()
 
         self.timer = self.create_timer(1.0 / self.publish_rate_hz, self._publish_markers)
         self.status_timer = self.create_timer(2.0, self._print_status)
         self.get_logger().info(
             f'Trajectory visualizer started: mode={self.trajectory_mode}, '
+            f'shape={self.trajectory_shape}, '
             f'actual_topic={self.actual_topic}, command_topic={self.command_topic}')
         if self.record_control_signal:
             self.get_logger().info(
@@ -349,10 +438,54 @@ class TrajectoryVisualizerDemo(Node):
 
     def _ignore_command_for_mode(self, msg: JointState) -> bool:
         return (
-            self.trajectory_mode == 'moving_base_circle'
+            self._is_moving_base_mode()
             and msg.header.frame_id
             and msg.header.frame_id != 'moving_base_track'
         )
+
+    def _is_moving_base_mode(self) -> bool:
+        return self.trajectory_mode in ('moving_base', 'moving_base_circle')
+
+    @staticmethod
+    def _append_visible_point(
+            records, point: np.ndarray, pen_down: bool, stroke_id: int):
+        if not pen_down:
+            if records and records[-1][0] is not None:
+                records.append((None, None))
+            return
+        if (
+            records
+            and records[-1][0] is not None
+            and records[-1][1] != int(stroke_id)
+        ):
+            records.append((None, None))
+        records.append((
+            np.asarray(point, dtype=float).copy(),
+            int(stroke_id),
+        ))
+
+    @staticmethod
+    def _records_to_segments(records):
+        segments = []
+        current = []
+        current_stroke = None
+        for point, stroke_id in records:
+            if point is None:
+                if len(current) >= 2:
+                    segments.append(np.asarray(current))
+                current = []
+                current_stroke = None
+                continue
+            if current_stroke is None or stroke_id == current_stroke:
+                current.append(point)
+            else:
+                if len(current) >= 2:
+                    segments.append(np.asarray(current))
+                current = [point]
+            current_stroke = stroke_id
+        if len(current) >= 2:
+            segments.append(np.asarray(current))
+        return segments
 
     def _control_signal_cb(self, msg: JointState):
         self._record_control_signal(msg)
@@ -378,6 +511,7 @@ class TrajectoryVisualizerDemo(Node):
         command_fk = self._actual_position(q, elapsed)
         expected = self._target(elapsed)
         error = command_fk - expected
+        pen_down, stroke_id = self._drawing_state(elapsed)
 
         if (
             self.last_recorded_command_fk is not None
@@ -385,11 +519,16 @@ class TrajectoryVisualizerDemo(Node):
         ):
             return
 
-        self.command_fk_samples.append((elapsed, expected.copy(), command_fk.copy(), error.copy()))
-        self.command_fk_points.append(command_fk)
+        self.command_fk_samples.append((
+            elapsed, expected.copy(), command_fk.copy(), error.copy(),
+            pen_down, stroke_id,
+        ))
+        self._append_visible_point(
+            self.command_fk_points, command_fk, pen_down, stroke_id)
         self.last_recorded_command_fk = command_fk.copy()
         if self.plotter:
-            self.plotter.add_command_fk_sample(elapsed, expected, command_fk)
+            self.plotter.add_command_fk_sample(
+                elapsed, expected, command_fk, pen_down, stroke_id)
 
     def _record_control_signal(self, msg: JointState):
         if not self.record_control_signal:
@@ -444,6 +583,7 @@ class TrajectoryVisualizerDemo(Node):
             return
         expected = self._target(elapsed)
         actual = self._actual_position(q, elapsed)
+        pen_down, stroke_id = self._drawing_state(elapsed)
         self.current_expected = expected
         self.current_actual = actual
 
@@ -475,13 +615,19 @@ class TrajectoryVisualizerDemo(Node):
         ):
             return
 
-        self.actual_points.append(actual)
-        self.expected_points.append(expected)
-        self.samples.append((recorded_t, expected.copy(), actual.copy(), actual - expected))
+        self._append_visible_point(
+            self.actual_points, actual, pen_down, stroke_id)
+        self._append_visible_point(
+            self.expected_points, expected, pen_down, stroke_id)
+        self.samples.append((
+            recorded_t, expected.copy(), actual.copy(), actual - expected,
+            pen_down, stroke_id,
+        ))
         self.last_recorded_actual = actual.copy()
 
         if self.plotter:
-            self.plotter.add_sample(recorded_t, expected, actual)
+            self.plotter.add_sample(
+                recorded_t, expected, actual, pen_down, stroke_id)
 
     def _reset_recording(self, start_time: float):
         self.start_time = start_time
@@ -526,7 +672,7 @@ class TrajectoryVisualizerDemo(Node):
             w = 2.0 * math.pi / HORIZONTAL_CIRCLE_PERIOD_SEC
             return HORIZONTAL_CIRCLE_CENTER + HORIZONTAL_CIRCLE_RADIUS * np.array(
                 [math.cos(w * t), math.sin(w * t), 0.0])
-        if self.trajectory_mode == 'moving_base_circle':
+        if self._is_moving_base_mode():
             return self._moving_ee_target_world(t)
 
         s = 0.5 * (1.0 - math.cos(2.0 * math.pi * t / LINE_PERIOD_SEC))
@@ -534,60 +680,80 @@ class TrajectoryVisualizerDemo(Node):
 
     def _actual_position(self, q: np.ndarray, t: float) -> np.ndarray:
         ee_pos_base, _ = self.ik.forward(q)
-        if self.trajectory_mode != 'moving_base_circle':
+        if not self._is_moving_base_mode():
             return ee_pos_base
 
         base_pos_world = self._moving_base_pose(t)
         base_rot_world = self._moving_base_rotation(t)
         return base_pos_world + base_rot_world @ ee_pos_base
 
-    @staticmethod
-    def _moving_base_pose(t: float) -> np.ndarray:
-        return moving_traj.base_pose(t)
+    def _moving_base_pose(self, t: float) -> np.ndarray:
+        return moving_traj.base_pose(t / self.base_motion_time_scale)
 
-    @staticmethod
-    def _moving_base_rotation(t: float) -> np.ndarray:
-        return moving_traj.base_rotation(t)
+    def _moving_base_rotation(self, t: float) -> np.ndarray:
+        return moving_traj.base_rotation(
+            t / self.base_motion_time_scale,
+            self.trajectory_shape,
+            t / self.trajectory_time_scale,
+        )
 
-    @staticmethod
-    def _moving_ee_target_world(t: float) -> np.ndarray:
-        return moving_traj.ee_target_world(t)
+    def _moving_ee_target_world(self, t: float) -> np.ndarray:
+        return moving_traj.ee_target_world(
+            t / self.trajectory_time_scale,
+            self.trajectory_shape,
+        )
 
-    def _make_expected_path(self) -> np.ndarray:
+    def _drawing_state(self, t: float):
+        if not self._is_moving_base_mode():
+            return True, 0
+        sample = moving_traj.ee_trajectory_sample(
+            t / self.trajectory_time_scale,
+            self.trajectory_shape,
+        )
+        return sample.pen_down, sample.stroke_id
+
+    def _make_expected_path_segments(self):
+        if self._is_moving_base_mode():
+            return moving_traj.sample_ee_drawing_segments(
+                self.trajectory_shape,
+                self.expected_path_points,
+            )
         periods = {
             'circle': CIRCLE_PERIOD_SEC,
             'horizontal_circle': HORIZONTAL_CIRCLE_PERIOD_SEC,
             'line': LINE_PERIOD_SEC,
-            'moving_base_circle': moving_traj.EE_PERIOD_SEC,
         }
         period = periods[self.trajectory_mode]
         ts = np.linspace(0.0, period, self.expected_path_points + 1)
-        return np.array([self._target(t) for t in ts])
+        return [np.array([self._target(t) for t in ts])]
 
     def _publish_markers(self):
         now = self.get_clock().now().to_msg()
         self.expected_pub.publish(self._line_marker(
             marker_id=1,
             ns='trajectory_expected',
-            points=self.expected_path,
+            segments=self.expected_path_segments,
             stamp=now,
             color=(0.1, 1.0, 0.1, 1.0),
             width=0.008))
 
         if self.actual_points:
+            actual_segments = self._records_to_segments(self.actual_points)
             self.actual_pub.publish(self._line_marker(
                 marker_id=2,
                 ns='trajectory_actual',
-                points=np.array(self.actual_points),
+                segments=actual_segments,
                 stamp=now,
                 color=(1.0, 0.1, 0.1, 1.0),
                 width=0.01))
 
         if self.command_fk_points:
+            command_segments = self._records_to_segments(
+                self.command_fk_points)
             self.command_fk_pub.publish(self._line_marker(
                 marker_id=5,
                 ns='trajectory_command_fk',
-                points=np.array(self.command_fk_points),
+                segments=command_segments,
                 stamp=now,
                 color=(1.0, 0.55, 0.0, 1.0),
                 width=0.009))
@@ -626,13 +792,19 @@ class TrajectoryVisualizerDemo(Node):
         marker.pose.orientation.w = 1.0
         return marker
 
-    def _line_marker(self, marker_id: int, ns: str, points: np.ndarray, stamp,
+    def _line_marker(self, marker_id: int, ns: str, segments, stamp,
                      color, width: float):
         marker = self._base_marker(marker_id, ns, stamp)
-        marker.type = Marker.LINE_STRIP
+        marker.type = Marker.LINE_LIST
         marker.scale.x = float(width)
         marker.color.r, marker.color.g, marker.color.b, marker.color.a = color
-        marker.points = [to_point(p) for p in points]
+        marker.points = []
+        for segment in segments:
+            for index in range(len(segment) - 1):
+                marker.points.extend([
+                    to_point(segment[index]),
+                    to_point(segment[index + 1]),
+                ])
         return marker
 
     def _sphere_marker(self, marker_id: int, ns: str, point: np.ndarray, stamp,
@@ -649,14 +821,23 @@ class TrajectoryVisualizerDemo(Node):
     def _save_results(self):
         self.data_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        prefix = self.data_dir / f'{self.trajectory_mode}_trajectory_{stamp}'
+        mode_name = (
+            f'{self.trajectory_mode}_{self.trajectory_shape}'
+            if self._is_moving_base_mode() else self.trajectory_mode
+        )
+        prefix = self.data_dir / f'{mode_name}_trajectory_{stamp}'
 
         expected_path_csv = prefix.with_name(prefix.name + '_expected_path.csv')
         with expected_path_csv.open('w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['index', 'expected_x', 'expected_y', 'expected_z'])
-            for i, p in enumerate(self.expected_path):
-                writer.writerow([i, float(p[0]), float(p[1]), float(p[2])])
+            writer.writerow([
+                'stroke_id', 'index',
+                'expected_x', 'expected_y', 'expected_z'])
+            for stroke_id, segment in enumerate(self.expected_path_segments):
+                for index, point in enumerate(segment):
+                    writer.writerow([
+                        stroke_id, index,
+                        float(point[0]), float(point[1]), float(point[2])])
 
         if not self.samples and not self.control_samples and not self.command_fk_samples:
             self.get_logger().info(
@@ -677,13 +858,15 @@ class TrajectoryVisualizerDemo(Node):
                 'time_sec',
                 'expected_x', 'expected_y', 'expected_z',
                 'actual_x', 'actual_y', 'actual_z',
-                'error_x', 'error_y', 'error_z'])
-            for t, expected, actual, error in self.samples:
+                'error_x', 'error_y', 'error_z',
+                'pen_down', 'stroke_id'])
+            for t, expected, actual, error, pen_down, stroke_id in self.samples:
                 writer.writerow([
                     float(t),
                     float(expected[0]), float(expected[1]), float(expected[2]),
                     float(actual[0]), float(actual[1]), float(actual[2]),
-                    float(error[0]), float(error[1]), float(error[2])])
+                    float(error[0]), float(error[1]), float(error[2]),
+                    int(pen_down), int(stroke_id)])
 
         plot_png = prefix.with_suffix('.png')
         try:
@@ -708,13 +891,17 @@ class TrajectoryVisualizerDemo(Node):
                 'time_sec',
                 'expected_x', 'expected_y', 'expected_z',
                 'command_fk_x', 'command_fk_y', 'command_fk_z',
-                'command_error_x', 'command_error_y', 'command_error_z'])
-            for t, expected, command_fk, error in self.command_fk_samples:
+                'command_error_x', 'command_error_y', 'command_error_z',
+                'pen_down', 'stroke_id'])
+            for (
+                    t, expected, command_fk, error,
+                    pen_down, stroke_id) in self.command_fk_samples:
                 writer.writerow([
                     float(t),
                     float(expected[0]), float(expected[1]), float(expected[2]),
                     float(command_fk[0]), float(command_fk[1]), float(command_fk[2]),
-                    float(error[0]), float(error[1]), float(error[2])])
+                    float(error[0]), float(error[1]), float(error[2]),
+                    int(pen_down), int(stroke_id)])
 
         command_fk_png = prefix.with_name(prefix.name + '_command_fk.png')
         try:
@@ -756,6 +943,9 @@ class TrajectoryVisualizerDemo(Node):
         command_times = np.array([s[0] for s in self.command_fk_samples], dtype=float)
         command_fk = np.array([s[2] for s in self.command_fk_samples], dtype=float)
         command_error = np.array([s[3] for s in self.command_fk_samples], dtype=float)
+        expected_draw = self._sample_segments(self.samples, 1)
+        actual_draw = self._sample_segments(self.samples, 2)
+        command_draw = self._sample_segments(self.command_fk_samples, 2)
 
         fig = Figure(figsize=(12, 10), constrained_layout=True)
         FigureCanvasAgg(fig)
@@ -764,26 +954,19 @@ class TrajectoryVisualizerDemo(Node):
         ax_track = [fig.add_subplot(grid[1, i]) for i in range(3)]
         ax_err = [fig.add_subplot(grid[2, i]) for i in range(3)]
 
-        ax_3d.plot(
-            self.expected_path[:, 0],
-            self.expected_path[:, 1],
-            self.expected_path[:, 2],
-            color='tab:green',
-            linestyle='--',
-            label='expected full path')
-        ax_3d.plot(
-            expected[:, 0], expected[:, 1], expected[:, 2],
-            color='limegreen',
-            label='expected samples')
-        ax_3d.plot(
-            actual[:, 0], actual[:, 1], actual[:, 2],
-            color='tab:red',
-            label='actual')
-        if command_fk.size:
-            ax_3d.plot(
-                command_fk[:, 0], command_fk[:, 1], command_fk[:, 2],
-                color='tab:orange',
-                label='command FK')
+        self._plot_3d_segments(
+            ax_3d, self.expected_path_segments,
+            color='tab:green', linestyle='--', label='expected full path')
+        self._plot_3d_segments(
+            ax_3d, expected_draw,
+            color='limegreen', label='expected samples')
+        self._plot_3d_segments(
+            ax_3d, actual_draw,
+            color='tab:red', label='actual')
+        if command_draw:
+            self._plot_3d_segments(
+                ax_3d, command_draw,
+                color='tab:orange', label='command FK')
         ax_3d.set_xlabel('x (m)')
         ax_3d.set_ylabel('y (m)')
         ax_3d.set_zlabel('z (m)')
@@ -821,7 +1004,11 @@ class TrajectoryVisualizerDemo(Node):
             if command_error.size:
                 axis.legend(loc='upper right')
 
-        fig.suptitle(f'{self.trajectory_mode} trajectory tracking')
+        mode_title = (
+            f'{self.trajectory_mode}/{self.trajectory_shape}'
+            if self._is_moving_base_mode() else self.trajectory_mode
+        )
+        fig.suptitle(f'{mode_title} trajectory tracking')
         fig.savefig(path, dpi=150)
 
     def _save_command_fk_plot(self, path: Path):
@@ -832,6 +1019,8 @@ class TrajectoryVisualizerDemo(Node):
         expected = np.array([s[1] for s in self.command_fk_samples], dtype=float)
         command_fk = np.array([s[2] for s in self.command_fk_samples], dtype=float)
         error = np.array([s[3] for s in self.command_fk_samples], dtype=float)
+        expected_draw = self._sample_segments(self.command_fk_samples, 1)
+        command_draw = self._sample_segments(self.command_fk_samples, 2)
 
         fig = Figure(figsize=(12, 10), constrained_layout=True)
         FigureCanvasAgg(fig)
@@ -840,21 +1029,15 @@ class TrajectoryVisualizerDemo(Node):
         ax_track = [fig.add_subplot(grid[1, i]) for i in range(3)]
         ax_err = [fig.add_subplot(grid[2, i]) for i in range(3)]
 
-        ax_3d.plot(
-            self.expected_path[:, 0],
-            self.expected_path[:, 1],
-            self.expected_path[:, 2],
-            color='tab:green',
-            linestyle='--',
-            label='expected full path')
-        ax_3d.plot(
-            expected[:, 0], expected[:, 1], expected[:, 2],
-            color='limegreen',
-            label='expected samples')
-        ax_3d.plot(
-            command_fk[:, 0], command_fk[:, 1], command_fk[:, 2],
-            color='tab:orange',
-            label='command FK')
+        self._plot_3d_segments(
+            ax_3d, self.expected_path_segments,
+            color='tab:green', linestyle='--', label='expected full path')
+        self._plot_3d_segments(
+            ax_3d, expected_draw,
+            color='limegreen', label='expected samples')
+        self._plot_3d_segments(
+            ax_3d, command_draw,
+            color='tab:orange', label='command FK')
         ax_3d.set_xlabel('x (m)')
         ax_3d.set_ylabel('y (m)')
         ax_3d.set_zlabel('z (m)')
@@ -878,8 +1061,35 @@ class TrajectoryVisualizerDemo(Node):
             axis.set_ylabel(f'{axis_names[i]} command error (m)')
             axis.grid(True)
 
-        fig.suptitle(f'{self.trajectory_mode} command FK')
+        mode_title = (
+            f'{self.trajectory_mode}/{self.trajectory_shape}'
+            if self._is_moving_base_mode() else self.trajectory_mode
+        )
+        fig.suptitle(f'{mode_title} command FK')
         fig.savefig(path, dpi=150)
+
+    @staticmethod
+    def _sample_segments(samples, point_index: int):
+        records = deque()
+        for sample in samples:
+            TrajectoryVisualizerDemo._append_visible_point(
+                records,
+                sample[point_index],
+                bool(sample[4]),
+                int(sample[5]),
+            )
+        return TrajectoryVisualizerDemo._records_to_segments(records)
+
+    @staticmethod
+    def _plot_3d_segments(axis, segments, label=None, **kwargs):
+        for index, segment in enumerate(segments):
+            axis.plot(
+                segment[:, 0],
+                segment[:, 1],
+                segment[:, 2],
+                label=label if index == 0 else None,
+                **kwargs,
+            )
 
     def _save_control_plot(self, path: Path):
         from matplotlib.backends.backend_agg import FigureCanvasAgg

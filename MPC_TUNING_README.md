@@ -53,7 +53,10 @@ ACADOS 求解器只按 `{horizon_steps, max_joint_step}` 签名缓存到 `/tmp/w
 | `--mode` | `unified` / `separate` | `unified` | `unified` 搜一套参数满足所有(选中)场景；`separate` 每个场景各自单独调参 |
 | `--scenario` | 逗号分隔场景名 | 全部 | 只调指定场景，如 `--scenario circle` 或 `--scenario circle,line`。配合 `--mode separate` 即“手动单独调某个场景” |
 | `--list-scenarios` | flag | `False` | 打印所有可选场景名后退出（不调参） |
-| `--periods` | float | `1.0` | 每个场景闭环 roll-out 的周期数（时长 = `periods × 场景 period_sec`） |
+| `--warmup-periods` | float | `2.0` | 预热窗口周期数（不计入评分;周期=场景**评估周期**,见 §4） |
+| `--steady-periods` | float | `4.0` | 稳态统计窗口周期数（评分/硬门只看该窗口） |
+| `--credibility` | flag | `False` | 只跑生产参数×生产场景的最小闭环,导出逐 tick trace 与指标 JSON（配合 `check_tuner_credibility.py` 与阶段 1D 真实数据对照）,不做搜索 |
+| `--plant-gain` | float | `0.7` | 离线执行器前馈增益,仅 credibility 对照用（不改生产 launch 默认;gain≠0.7 在调参器效度之外） |
 | `--top-k` | int | `10` | 终端每个 set 打印排名前 K 的参数组 |
 | `--output-dir` | 路径 | `demo/data` | 调参 CSV 保存目录 |
 | `--skip-fine` | flag | `False` | 只跑粗搜索，不做细搜索 |
@@ -87,11 +90,39 @@ python3 tune_unified_mpc_params.py --scenario circle,line --skip-fine   # 只粗
 
 每个场景在真实 `q_actual` 上统计，按以下口径打分，并设硬约束：
 
-- **硬判废（score=inf）**：任一场景出现 `fallback>0`（命令不可用回退）、`solver_failure>0`
-  （求解状态失败）、`singular_count>0`（平移雅可比最小奇异值 < 0.05）或 `p95 求解时间 > 15ms`。
-  这保证“无奇异位姿、无失败解算、解算快”。
+- **评估周期 = 联合重复周期**：moving-base 场景取 `lcm(EE_PERIOD, BASE_PERIOD)`
+  （`TrajectoryModel.repetition_period()`）,例如 base=1s/EE=4s→4s、base=8s/EE=4s→8s、
+  base=0.75s/EE=4s→12s;预热/稳态窗口（默认 2+4 周期）按该联合周期计,保证统计覆盖
+  base×EE 的全部相对相位组合,不会退回"只看 EE 周期"。固定臂场景=自身轨迹周期。
+- **硬判废（score=inf,原因写入 `reject_reason`,逻辑集中在可单测的 `hard_gate_reasons()`）**:
+  任一场景出现以下任意一项即淘汰——
+  - `solver_failure>0` / `fallback>0`（命令不可用回退）/ `guard>0`（6mm command-FK 守卫拦截）
+    / `singular_count>0`（平移雅可比最小奇异值 < 0.05）;
+  - `joint_limit_clip_count>0`:执行器仿真中关节位置被上下限 clip（撞限不再伪装成合法轨迹;
+    近限位 margin=1e-3rad 内的 `joint_limit_active_*` 只进报告+软评分,不硬杀）;
+  - `vel_violation>0` / `accel_violation>0`（防御性保留;对齐 plant 的结构性限幅使其正常不可触发）;
+  - `dq_prev` 非结构性回退占比 > 0.1%（首帧 `(tick0, code1)`"尚无历史锚点"是唯一结构性豁免,
+    NaN/时间倒退/过旧以及任何非首帧 code1 全部计入,见 `nonstructural_fallback_count()`）;
+  - `p99 求解时间 > 20ms`(50Hz 预算);
+  - **绝对误差硬门(正式搜索必配,按场景各自门限,不串用)**:稳态 `pos_p95 / pos_max / cmd_p95 /
+    ori_max` 超过场景 `*_limit` 字段即淘汰,`reject_reason` 记录场景/指标/实测/门限。生产
+    moving-base 场景门限来自**阶段 1D 真实 D0 稳态基线 × 安全余量 1.5**
+    (P95 20.80mm→32mm、max 25.14mm→38mm、cmd P95 20.98mm→32mm;姿态无真实标定,取离线
+    T0 基线 0.20rad×2=0.40rad),出处记录在 `limit_source`。场景缺门限时正式搜索直接快速失败
+    (`SystemExit`);`--credibility` 模式只报告不设门。
+  - **速度/加速度饱和相对门(max 每关节口径)**:先用生产参数
+    `PRODUCTION_PARAMS`(h=2/step=0.02/ow=0.09375/tow=1.25)在每个场景建立参考
+    `vel_sat_max_joint_ratio / accel_sat_max_joint_ratio`(单关节饱和子步占比的最大值),
+    候选超过 `参考 + 0.05` 即淘汰。**不用总体口径**("该子步至少一关节饱和")作硬门:
+    生产工况下总体 accel≈0.99,"参考+0.05">1 会让门形同虚设;每关节口径下生产参考
+    max≈0.79(joint6),门≈0.84<1,真实可触发。总体口径与每关节明细
+    (`*_sat_per_joint`、`*_mean_joint_ratio`、`accel_sat_worst_joint`)进报告/CSV/软评分。
+    也不是 `sat==0`——阶段 1D D0 表明加速度限幅在正常工况就大量存在;参考本身无效
+    (fail/guard/fallback/clip)时该场景相对门跳过并在结果中注明 `NO_VALID_REFERENCE`,不造假门限。
 - **聚合分** = `mean(各场景分) + max(各场景分)`，强调最差场景，确保一套参数在所有场景都好。
-- 单场景分 = 位置 RMS/最大误差 + 姿态 RMS/最大误差 + 控制平滑 + 求解时间，越低越好。
+- 单场景分（**严格只用稳态窗口**）= 位置 RMS/P95/max + 命令误差 RMS/P95 + 基座主频残差 +
+  姿态 RMS/max + 执行差 + 控制平滑 + 稳态求解时间/跟踪劣化计数 + 饱和占比/近限位占比软惩罚，
+  越低越好（见 `scenario_score()`）。
 
 > 奇异性用平移雅可比 (3×N) 最小奇异值衡量末端定位能力（健康值约 0.14~0.17），不用全
 > 6×N：这些 demo 轨迹锁姿态时本就靠近腕部/姿态奇异（全 6D σ≈1e-3，理想 IK 跟随也无法避免），
@@ -137,6 +168,17 @@ terminal_orientation_weight : 当前值 × [0.75, 1.0, 1.25]
 
 ### 6. 当前已测推荐（统一参数）
 
+> **⚠️ 历史离线结果,不适用于当前生产闭环,等待新调参器重新验证。**
+> 下述 2026-06-30 的搜索结果产生于**旧调参器语义**:参考时序从 t 开始(无 lead=1 前移)、
+> 误差对 target(t) 存在一拍错位、dq_prev 每帧清零(非 measured_delta)、RTI 为 legacy
+> 早退(未跑满)、无 command-FK 守卫模型、单周期统计含启动瞬态。这些语义均与当前
+> 已验收的 moving-base 生产闭环(lead=1 / measured_delta / fixed_iterations / 6mm 守卫)
+> 不一致。调参器已于 2026-07-23 完成 T0 语义对齐(见 §6.1);**在新调参器重新搜索并经
+> 真实 A/B 验证之前,下表数值只作历史记录,不作当前推荐依据**。当前生产参数
+> (h=2/step=0.02/ow=0.09375/tow=1.25,固定 reset nominal 软锚点)由阶段 2C/3
+> 的快速基座真实实验验证,
+> 而非本节旧离线数值。
+
 2026-06-30 的一轮完整粗到细 ACADOS 闭环搜索（四场景，305/305 组均满足硬约束），冠军：
 
 ```text
@@ -156,7 +198,39 @@ line               0.9 mm   1.3 mm   -        0.169      0         0           0
 moving_base_circle 1.2 mm   3.8 mm   0.008    0.155      0         0           0.35
 ```
 
-这套参数已写入三个 demo 的参数默认值，直接运行即可：
+#### 6.1 T0 语义对齐(2026-07-23)
+
+调参器闭环评估已与 moving-base 生产 demo 逐项对齐:参考时序 `targets[j]=target(t+(1+j)dt)`、
+误差 `q_actual(t+dt)` 对 `target(t+dt)`、dq_prev=measured_delta(**复用生产函数对象**)、
+`rti_iteration_mode=fixed_iterations×3`、执行器速度前馈闭环(gain=0.7/τ=0.15/±0.4/±1.0/5 rad/s²,
+10ms 子步)、6mm command-FK 守卫(hold/freeze,guard>0 硬淘汰)、默认 2 周期预热+4 周期稳态分开统计。
+可信度验证:`python3 tune_unified_mpc_params.py --credibility`(生产参数×生产场景,导出 trace/指标),
+再用 `python3 check_tuner_credibility.py --offline <metrics.json> [--offline-gain1 <metrics.json>]`
+与阶段 1D 真实 D0 三轮基准逐项对照。基准来自**入库 fixture**
+`testdata/tuner_phase1d_d0_reference.json`(三轮关键指标 + 原始文件 SHA256 + 轨迹配置/执行器
+参数/语义快照,由 `--make-fixture` 从本机原始数据生成),干净 checkout 即可复现;本机可加
+`--manifest data/tuner_t0/phase1d_d0_manifest.json` 对 gitignored 原始文件做 SHA+数值交叉核对。
+比较器先做**元数据校验**(offline 的 plant_gain=0.7、lead/dq_prev/RTI、h/step/ow/tow、轨迹配置
+逐字段 vs fixture,不一致即 VALIDATION_FAIL——不再默认相信调用者传对了文件),再比五项量级
+(actual RMS/P95、exec_gap、1Hz 残差、vel_peak;PASS 带 0.5–1.5,出 0.2–5.0 即 FAIL)与守卫:
+**离线与真实 D0 守卫都必须为 0,任一侧非零(包括两侧同时非零)一律 FAIL**。任何 FAIL 非零退出。**效度边界:离线 plant 无
+反馈时序抖动/异步采样,不能复现执行器 gain=1.0 的真实失稳(阶段 1D 实测),因此调参器仅用于固定
+执行器参数(gain=0.7)下的 NMPC 参数候选筛选;执行器参数一律不通过离线调参器评估。**
+
+**场景矩阵与独立相位(closeout)**:`make_moving_base_scenario()` 支持
+`base_phase_offset_sec`(只平移基座 pose/rotation 与姿态目标)与 `ee_phase_offset_sec`
+(只平移末端 world 圆),base 系目标 = `R_b(t+bo)^T (p_ee_w(t+eo) − p_b(t+bo))`;两者**同时等量**
+设置才等价于旧的联合时间平移,旧 `phase_offset_sec` 只作弃用别名(与新参数并用即报错)。
+`build_moving_base_matrix()` 可按 base 周期/幅值 × base/EE 相位 × 姿态模式生成场景矩阵,
+用不同**相对相位**覆盖"基座晃动 vs 末端画图"的对齐关系。
+
+> **离线可行候选 ≠ 生产推荐参数。**调参器输出只是"通过全部硬门 + 软评分靠前"的候选集;
+> 任何候选在写入生产默认前,必须按阶段 1A–1D 的方法学跑**真实 ROS A/B**(单发布者预检、
+> 来源快照、健康门、配对轮次)并通过验收门。离线评分不能替代真实验证。
+
+moving-base 当前生产默认
+(`h=2/step=0.02/ow=0.09375/tow=1.25`并使用固定 reset nominal 软锚点)
+由阶段 2C/3 的真实实验支持,**不是**上面的旧离线搜索；固定臂 demo 仍保留各自默认值：
 
 ```bash
 # 固定臂竖直圆 / 直线
@@ -169,8 +243,8 @@ python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args -p lock_orientation
 python3 move_base_circle_mpc_ik_demo.py
 ```
 
-> 注：搜索最优是短时域 `horizon_steps=2`。若真机上希望更强的预测平滑裕度，`horizon_steps=4`
-> 在本搜索中同样可行（聚合分略高，各项指标仍达标），可作为更保守的备选。
+> 注（历史,同受本节开头警告约束）：旧搜索最优是短时域 `horizon_steps=2`;`horizon_steps=4`
+> 在**旧**搜索中同样满足硬约束。是否作为备选须经新调参器筛选 + 真实 A/B 验证,此处不构成推荐。
 
 ### 7. 调参经验
 
@@ -452,3 +526,23 @@ python3 tune_ll100_nmpc.py --path-mode avoidance_sweep --backend acados
 *效果:* 搜索维度变少,整轮更快。
 
 > **为什么增减参数会影响速度:** 坐标下降的评估次数 ≈ `遍数 × Σ(每维候选数)`,加维/加候选 = 更多次评估。但**这 9 维里 8 个是代价权重,已运行时 `cost_set`、扫它们只复用不重编**,所以加/减权重维影响的是**评估次数**(每次评估的 rollout 时间),不是编译时间。真正贵的是**结构量** `horizon_steps` —— 每多一个取值就多一次 ~15s 首编。
+## Moving-base 二阶权重筛选
+
+二阶模型的六项权重已接入现有闭环调参框架：位置、终端位置、关节速度、
+关节加速度、当前姿态锚和中心姿态锚。筛选保持执行器模型、守卫、关节限位、
+速度/加速度硬约束和稳态评分不变；纯权重通过 ACADOS `cost_set` 运行时更新，
+共用生成代码。
+
+与低速 A/B（基座周期 4 s、末端周期 8 s）对齐的命令：
+
+```bash
+cd ~/code/windylab_ws/src/arm-platform/demo
+source ../scripts/setup_acados_env.sh
+python3 tune_unified_mpc_params.py --second-order-tune \
+  --second-order-base-period 4.0 --second-order-ee-period 8.0
+```
+
+候选采用局部单变量扫描，并补充宽位置权重、零加速度软惩罚及少量诊断组合。
+`joint_acceleration_weight=0` 只关闭软惩罚；`|ddq|<=5 rad/s²` 硬约束仍然存在。
+离线排名只用于选择 shadow 候选，必须再经过 shadow 和真实低速 A/B，不能直接
+提升生产默认。

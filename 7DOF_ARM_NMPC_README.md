@@ -178,66 +178,207 @@ python3 move_arm_horizontal_circle_mpc_ik_demo.py --ros-args \
 
 ### 3.5 基座运动下的 world 系末端跟踪
 
-`move_base_circle_visual_demo.py` 和 `move_base_circle_mpc_ik_demo.py` 都使用 `demo/moving_base_trajectory_config.py` 里的同一套轨迹参数。如果要修改轨迹,只改这个共享配置文件里的 `BASE_CIRCLE_RADIUS`、`BASE_HEIGHT`、`BASE_ATTITUDE_AMPLITUDE_DEG`,然后重新 build。
+`move_base_circle_mpc_ik_demo.py` 和 `trajectory_visualizer_demo.py` 都使用
+`demo/moving_base_trajectory_config.py` 中的同一套基座运动、末端轨迹和抬笔参数。
+控制节点和可视化节点的 `trajectory_shape` 必须完全相同,否则机械臂跟踪的目标与
+RViz/Matplotlib 中显示的期望轨迹会不一致。
 
 末端目标定义在 `world` 坐标系下。控制脚本会把 world 系末端目标变换到当前 `base_link` 系,再用普通 IK 或 MPC 求关节角。作图程序也从同一个共享配置读取 `p_wb(t)` / `R_wb(t)` / `p_ref_world(t)`,避免控制和作图参数不一致。
 
-启动机械臂和 RViz:
+#### 3.5.1 可选择的绘图任务
+
+启动 `move_base_circle_mpc_ik_demo.py` 时通过 ROS 参数
+`trajectory_shape` 选择任务。允许值为
+`circle`、`triangle`、`square`、`sine`、`windylab` 和 `whole`;
+默认值是 `circle`。下表中的周期均为 `trajectory_time_scale:=1.0`
+时的默认值,所有任务都会循环执行。
+
+| `trajectory_shape` | 默认周期 | world 系轨迹和抬笔行为 |
+|---|---:|---|
+| `circle` | 4.0 s | 兼容原有任务:中心 `[0.30, 0.01, 0.10]` m、半径 0.08 m,在水平 XY 平面连续画圆 |
+| `triangle` | 6.0 s | 在同一水平平面连续画三角形,宽 0.14 m、高 0.12 m;每条边使用平滑起停 |
+| `square` | 8.0 s | 在同一水平平面连续画边长 0.12 m 的正方形;每条边使用平滑起停 |
+| `sine` | 8.0 s | 5.0 s 画一周期正弦,宽 0.16 m、振幅 0.05 m;随后抬笔 0.5 s、悬空返回 2.0 s、落笔 0.5 s |
+| `windylab` | 约 32.590 s | 绘制水平镜像的小写 `windylab`:字宽 0.016 m、字间距 0.016 m(原 0.006 m 上增加 0.010 m)、字高 0.050 m,总宽约 0.24 m。共有 10 个独立笔画(`i` 的点和 `y` 的下行笔画独立),每次换笔和换字都真实抬起末端 |
+| `whole` | 约 76.590 s | 完整五面任务:正面圆 → 左面三角形 → 后面镜像 `windylab` → 右面正弦 → 上面正方形;任务之间抬笔、移动并改变基座朝向 |
+
+`whole` 的五个绘图面和顺序如下:
+
+| 顺序 | 方位/绘图面 | 图形 | 默认绘图面中心 |
+|---:|---|---|---|
+| 1 | 正面,竖直面 `x=+0.30` m | 圆 | `[+0.30, 0.00, 0.12]` m |
+| 2 | 左面,竖直面 `y=+0.30` m | 三角形 | `[0.00, +0.30, 0.12]` m |
+| 3 | 后面,竖直面 `x=-0.30` m | `windylab` | `[-0.30, 0.00, 0.12]` m |
+| 4 | 右面,竖直面 `y=-0.30` m | 正弦 | `[0.00, -0.30, 0.12]` m |
+| 5 | 上面,水平面 `z=+0.30` m | 正方形 | `[+0.22, 0.00, 0.30]` m |
+
+每两个面之间默认执行 0.6 s 抬笔、2.4 s 悬空转场、0.6 s 落笔。
+基座在这些转场期间依次转向 0°、90°、180°、270° 和 360°,
+同时仍叠加共享配置中的小幅浮动扰动。第五个任务结束后也会抬笔并返回第一个任务,
+因此循环边界不会连笔。
+
+`windylab`、`sine` 的返回段以及 `whole` 的转场段都会生成真实的悬空末端目标,
+不是只在图上隐藏连线。轨迹样本使用 `pen_down` 和 `stroke_id` 标记笔画;
+RViz Marker、实时/离线 Matplotlib 曲线仅连接同一 `stroke_id` 的落笔点。
+保存的轨迹 CSV 也包含 `pen_down` 和 `stroke_id`,所以字母间和各绘图面之间不会出现
+可视化连笔。
+
+#### 3.5.2 三个终端的启动方式
+
+首次修改过 `moving_base_trajectory_config.py` 或可视化脚本后,先重新安装 ROS 包:
+
+```bash
+cd ~/code/windylab_ws
+source /opt/ros/humble/setup.bash
+PATH=/usr/bin:$PATH colcon build \
+  --packages-select manipulator \
+  --symlink-install
+source ~/code/windylab_ws/install/setup.bash
+```
+
+启动机械臂和 RViz(浮动基座任务使用速度前馈增益 1.0;launch 默认 0.7 面向其他任务,故此处显式传参):
 
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/code/windylab_ws/install/setup.bash
-ros2 launch manipulator student_arm.launch.py
+ros2 launch manipulator student_arm.launch.py velocity_feedforward_gain:=1.0
 ```
 
 > 角速度控制(关节速度前馈)已默认开启,`enable_velocity_feedforward` 开关已移除,无需也不能再传。
+> `velocity_feedforward_gain:=1.0` 与本 demo 的二阶求解器配套(demo 默认
+> `second_order_dq_ff_compensation=1.0` 假定执行器增益为 1.0);若用 launch 默认 0.7 启动,
+> 需给 demo 传 `-p second_order_dq_ff_compensation:=0.7`,否则跟踪精度明显下降。
 
 RViz 左侧 `Global Options -> Fixed Frame` 建议切成 `world`。如果 Fixed Frame 仍是 `base_link`,视觉上会像是 `world`/网格在动,其实是观察坐标系固定在晃动基座上造成的相对运动效果。
 
-另开终端启动控制 demo:
+另开终端启动控制 demo。只需修改第一行的 `TASK`;可选值见上表:
 
 ```bash
 cd ~/code/windylab_ws/src/arm-platform/demo
 source /opt/ros/humble/setup.bash
 source ~/code/windylab_ws/install/setup.bash
 source ~/code/windylab_ws/src/arm-platform/scripts/setup_acados_env.sh
-python3 move_base_circle_mpc_ik_demo.py
+python3 move_base_circle_mpc_ik_demo.py --ros-args \
+  -p trajectory_shape:=whole
 ```
 
-再开一个终端用现有作图程序记录 world 系末端误差和控制信号:
+再开一个终端启动可视化和数据记录。
 
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/code/windylab_ws/install/setup.bash
 ros2 run manipulator trajectory_visualizer_demo.py --ros-args \
   -p trajectory_mode:=moving_base_circle \
+  -p trajectory_shape:=whole \
   -p frame_id:=world \
-  -p actual_topic:=/joint_states \
-  -p command_topic:=/student/joint_command \
-  -p record_command_fk:=true \
   -p record_control_signal:=true \
   -p ignore_initial_sec:=3.0
 ```
 
-MPC 版本可调参数:
+#### 3.5.3 与任务有关的运行时参数
+
+以下 ROS 参数必须在控制节点与可视化节点中使用相同的值:
+
+| 参数 | 默认值 | 说明 |
+|---|---:|---|
+| `trajectory_shape` | `circle` | 绘图任务:`circle` / `triangle` / `square` / `sine` / `windylab` / `whole` |
+| `trajectory_time_scale` | `1.0` | 末端绘图时间倍率。实际任务周期 = 表中周期 × 此值;大于 1 更慢,小于 1 更快,必须大于 0 |
+| `base_motion_time_scale` | `1.0` | 小幅基座浮动的时间倍率。实际浮动周期 = `BASE_PERIOD_SEC` × 此值;大于 1 更慢,必须大于 0 |
+
+控制内部使用:
+
+```text
+t_path = elapsed_time / trajectory_time_scale
+t_base = elapsed_time / base_motion_time_scale
+```
+
+例如把完整任务放慢到两倍时间:
+
+```bash
+# 控制节点和可视化节点均追加:
+-p trajectory_shape:=whole -p trajectory_time_scale:=2.0
+```
+
+`online_time_scaling_enabled` 默认是 `false`。如果打开,控制节点会根据跟踪状态动态推进
+内部路径时间,而独立可视化节点当前无法获知这个动态路径时间;需要做严格的期望误差对比时
+应保持默认关闭。
+
+#### 3.5.4 共享配置与环境变量
+
+轨迹几何、速度和基座浮动定义在
+`src/arm-platform/demo/moving_base_trajectory_config.py`。可在启动进程前使用以下环境变量
+覆盖常用值;控制节点和可视化节点必须设置成相同值。环境变量在 Python 导入配置文件时读取,
+因此修改后需要重启两个节点。
+
+| 环境变量 | 默认值 | 作用 |
+|---|---:|---|
+| `MB_EE_SHAPE` | `circle` | `trajectory_shape` 的进程默认值;显式 ROS 参数优先 |
+| `MB_EE_PEN_LIFT` | `0.03` | 换笔/换面时末端离开绘图面的高度或距离(m) |
+| `MB_EE_DRAW_SPEED` | `0.04` | `windylab` 的落笔绘制速度(m/s) |
+| `MB_EE_TRAVEL_SPEED` | `0.08` | `windylab` 的抬笔移动速度(m/s) |
+| `MB_EE_DRAW_Z` | `0.10` | 本地水平绘图坐标中 `sine`/`windylab` 的绘图高度(m) |
+| `MB_BASE_RADIUS` | `0.01` | `circle_z` 基座水平浮动半径(m) |
+| `MB_BASE_PERIOD` | `0.5` | 基座浮动周期(s) |
+| `MB_BASE_Z_AMP` | `0.01` | `circle_z` 基座 z 方向浮动幅值(m);设为 0 可关闭 |
+| `MB_BASE_SHAPE` | `circle_z` | 基座浮动形状:`circle_z` 或 `sphere` |
+| `MB_BASE_SPHERE_R` | `0.02` | `sphere` 模式的倾斜大圆半径(m) |
+
+例如把抬笔距离改成 4 cm、写字速度放慢到 3 cm/s:
+
+```bash
+export MB_EE_PEN_LIFT=0.04
+export MB_EE_DRAW_SPEED=0.03
+```
+
+固定常量 `BASE_HEIGHT=0.01` m、`BASE_ATTITUDE_AMPLITUDE_DEG=0.1`°、
+`EE_WINDYLAB_LETTER_GAP=0.016` m、`EE_WINDYLAB_MIRROR_X=True`,
+以及其他图形尺寸、`whole` 的五个绘图面位置和 0.6/2.4/0.6 s 转场时间,
+目前没有对应的 ROS 参数或环境变量;需要时统一修改共享配置文件并重新
+`colcon build --packages-select manipulator`。
+
+#### 3.5.5 MPC 求解与记录参数
+
+本 demo 有两套求解器,由 `solver_model` 选择,默认 `second_order`:
+
+- `second_order`(默认):状态为 `[q, dq]`、控制量为关节加速度的二阶运动学 NMPC
+  (`second_order_mpc_ik.py`)。求解器同时输出下一拍位置与速度,速度直接作为前馈发布,
+  含关节位置/速度/加速度硬约束和平移雅可比最小奇异值约束。全速工况
+  (基座 1s 周期 + 末端 4s 圆)稳态误差 P95 约 2mm。
+- `first_order`:只规划关节位置的一阶 NMPC(`mpc_pinocchio_ik.py`),速度用位置差分
+  `dq_cmd = (q_next - q_current)/control_dt` 发布。同工况稳态误差 P95 约 10mm,
+  配套执行器增益 0.7。
+- `shadow`:一阶控制,二阶只计算并记录诊断,不发布二阶命令(对照实验用)。
+
+主要可调参数(浮动基座任务默认值):
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `solver_backend` | `acados` | 求解后端:`acados` |
-| `horizon_steps` | `2` | MPC 预测步数 |
-| `max_joint_step` | `0.02` | 单步最大关节变化量(rad) |
+| `solver_model` | `second_order` | `second_order` / `first_order` / `shadow` |
+| `guard_mode` | `expected_residual` | 命令守卫:`expected_residual`=按"命令位移相对期望位移的残差"拦截,兼容快速运动;`legacy_fixed_step`=固定 6mm 步长阈值(全速工况下可能连锁拦截,不建议);`expected_shadow`=用旧规则拦截、只记录新守卫诊断 |
+| `second_order_horizon_steps` | `10` | 二阶预测步数 |
+| `second_order_position_weight` | `5000.0` | 二阶位置权重 |
+| `second_order_terminal_position_weight` | `500.0` | 二阶终端位置权重 |
+| `second_order_velocity_weight` | `0.02` | 二阶关节速度软惩罚 |
+| `second_order_acceleration_weight` | `0.0` | 二阶关节加速度软惩罚(硬约束 ±5 rad/s² 始终生效) |
+| `second_order_dq_ff_compensation` | `1.0` | 发布速度 = `dq_next / 该值`;需等于执行器 `velocity_feedforward_gain` |
+| `second_order_velocity_source` | `commanded` | 二阶 x0 速度来源:`commanded`=上一拍已发布的模型速度;`measured`=实测速度 |
+| `solver_backend` | `acados` | 求解后端 |
+| `horizon_steps` | `2` | 一阶预测步数 |
+| `max_joint_step` | `0.02` | 单步最大关节变化量(rad),应等于 `max_velocity * control_dt` |
+| `control_rate_hz` | `50.0` | 控制频率 |
 | `terminal_tolerance` | `0.01` | 终端位置误差 warning 阈值(m) |
-| `orientation_weight` | `0.375` | 时域内姿态软约束权重 |
-| `terminal_orientation_weight` | `5.0` | 终端姿态软约束权重 |
-| `acados_rti_iterations` | `3` | 每帧 SQP_RTI 重复次数 |
+| `orientation_weight` | `0.09375` | 一阶时域内姿态软约束权重 |
+| `terminal_orientation_weight` | `1.25` | 一阶终端姿态软约束权重 |
+| `posture_reference_mode` | `reset_nominal` | `reset_nominal`=固定复位姿态软锚点;`current`=逐帧当前姿态参考 |
+| `acados_rti_iterations` | `3` | 每帧 SQP_RTI 重复次数(须 >=1,非法值抛错) |
+| `reference_lead_steps` | `1` | 参考前移拍数(命令瞄准 t+dt) |
+| `dq_prev_mode` | `measured_delta` | 一阶 x0 的 dq_prev 来源:`measured_delta`=上一控制周期实测执行增量;`zero`=清零 |
+| `rti_iteration_mode` | `fixed_iterations` | `fixed_iterations`=成功时跑满迭代数;`legacy_early_exit`=按误差阈值提前退出 |
 
-MPC 版本会向 `/student/joint_command` 同时发布 `position` 和 `velocity`。速度由本帧 MPC 结果计算:
-
-```text
-dq_cmd = (q_next - q_current) / control_dt
-```
-
-`student_arm_node` 里的 `SmoothPositionController` 会继续对位置做平滑限速,并把 velocity 作为速度前馈传到底层,但速度会按 launch 参数 `max_velocity` 限幅。因此比较 IK/MPC 时,要让 `max_joint_step` 与底层 `max_velocity * control_dt` 大致匹配。
+MPC 版本会向 `/student/joint_command` 同时发布 `position` 和 `velocity`。
+`student_arm_node` 里的 `SmoothPositionController` 会对位置做平滑限速,并把 velocity 作为
+速度前馈传到底层(按 launch 参数 `max_velocity` 限幅、`max_acceleration` 限加速度)。
+`max_joint_step` 应与底层 `max_velocity * control_dt` 匹配。
 
 `moving_base_circle` 模式下作图程序使用:
 
@@ -262,7 +403,7 @@ expected_world(t) = p_ref_world(t)
 | `record_control_signal` | `False` | 是否记录控制信号 CSV/图 |
 | `record_command_fk` | `True` | 是否把 `/student/joint_command` 的关节角做 FK,记录命令末端轨迹 CSV/图 |
 | `publish_rate_hz` | `10.0` | RViz Marker 发布频率 |
-| `max_actual_points` | `2000` | 最多保留的实际轨迹点数 |
+| `max_actual_points` | `12000` | RViz 最多保留的实际轨迹采样点数;默认可完整保留至少一轮 `whole`,避免早期红色笔画在任务结束前被滚动删除 |
 | `expected_path_points` | `240` | 期望轨迹离散点数 |
 | `show_matplotlib` | `True` | 是否打开 Matplotlib 实时曲线窗口 |
 | `start_on_command` | `True` | 是否等收到命令后再开始记录 |
