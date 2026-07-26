@@ -200,7 +200,7 @@ RViz/Matplotlib 中显示的期望轨迹会不一致。
 | `square` | 8.0 s | 在同一水平平面连续画边长 0.12 m 的正方形;每条边使用平滑起停 |
 | `sine` | 8.0 s | 5.0 s 画一周期正弦,宽 0.16 m、振幅 0.05 m;随后抬笔 0.5 s、悬空返回 2.0 s、落笔 0.5 s |
 | `windylab` | 约 32.590 s | 绘制水平镜像的小写 `windylab`:字宽 0.016 m、字间距 0.016 m(原 0.006 m 上增加 0.010 m)、字高 0.050 m,总宽约 0.24 m。共有 10 个独立笔画(`i` 的点和 `y` 的下行笔画独立),每次换笔和换字都真实抬起末端 |
-| `whole` | 约 76.590 s | 完整五面任务:正面圆 → 左面三角形 → 后面镜像 `windylab` → 右面正弦 → 上面正方形;任务之间抬笔、移动并改变基座朝向 |
+| `whole` | 约 73.039 s | 完整五面任务:正面圆 → 左面三角形 → 后面镜像 `windylab` → 右面正弦 → 上面正方形;任务之间抬笔、移动并改变基座朝向 |
 
 `whole` 的五个绘图面和顺序如下:
 
@@ -216,6 +216,10 @@ RViz/Matplotlib 中显示的期望轨迹会不一致。
 基座在这些转场期间依次转向 0°、90°、180°、270° 和 360°,
 同时仍叠加共享配置中的小幅浮动扰动。第五个任务结束后也会抬笔并返回第一个任务,
 因此循环边界不会连笔。
+
+独立 `windylab` 是周期任务,写完最后一个 `b` 后会抬笔返回下一轮 `w` 的起点;
+这个返回全程 `pen_down=false`,不会点到绘图面。`whole` 中的 `windylab` 是一次性子任务,
+最后一个 `b` 结束后直接由五面任务执行抬笔转场,不会先返回或触碰 `w` 起点。
 
 `windylab`、`sine` 的返回段以及 `whole` 的转场段都会生成真实的悬空末端目标,
 不是只在图上隐藏连线。轨迹样本使用 `pen_down` 和 `stroke_id` 标记笔画;
@@ -251,8 +255,6 @@ ros2 launch manipulator student_arm.launch.py velocity_feedforward_gain:=1.0
 
 RViz 左侧 `Global Options -> Fixed Frame` 建议切成 `world`。如果 Fixed Frame 仍是 `base_link`,视觉上会像是 `world`/网格在动,其实是观察坐标系固定在晃动基座上造成的相对运动效果。
 
-另开终端启动控制 demo。只需修改第一行的 `TASK`;可选值见上表:
-
 ```bash
 cd ~/code/windylab_ws/src/arm-platform/demo
 source /opt/ros/humble/setup.bash
@@ -275,6 +277,54 @@ ros2 run manipulator trajectory_visualizer_demo.py --ros-args \
   -p ignore_initial_sec:=3.0
 ```
 
+#### 3.5.2 不确定性实验
+
+终端 1 同上不变。终端 3 加两个参数（真值端，负责按"名义+扰动"评估）：
+```bash
+ros2 run manipulator trajectory_visualizer_demo.py --ros-args \
+  -p trajectory_mode:=moving_base_circle \
+  -p trajectory_shape:=whole \
+  -p frame_id:=world \
+  -p record_control_signal:=true \
+  -p ignore_initial_sec:=3.0 \
+  -p show_matplotlib:=false \
+  -p base_disturbance_amplitude_m:=0.01 \
+  -p base_disturbance_seed:=0
+```
+终端 2 按实验档位三选一（amplitude/seed 必须与终端 3 一致）：
+
+B1 第 1 级·无知下界（MPC 只知名义轨迹，预期误差 ≈ 扰动本身 ~5mm）：
+```bash
+python3 move_base_circle_mpc_ik_demo.py --ros-args \
+  -p trajectory_shape:=whole \
+  -p record_loop_csv:=true \
+  -p base_disturbance_amplitude_m:=0.01 \
+  -p base_disturbance_seed:=0 \
+  -p base_belief_mode:=nominal
+```
+
+B2 全知对照上界（MPC 精确知道扰动，预期 ~0.5-0.8mm）：
+```bash
+python3 move_base_circle_mpc_ik_demo.py --ros-args \
+  -p trajectory_shape:=whole \
+  -p record_loop_csv:=true \
+  -p base_disturbance_amplitude_m:=0.01 \
+  -p base_disturbance_seed:=0 \
+  -p base_belief_mode:=truth
+```
+
+B3 第 2 级·模拟状态估计（噪声 σ=2mm、延迟 40ms，预期 ~4.3mm；σ/延迟可改做退化曲线）：
+```bash
+python3 move_base_circle_mpc_ik_demo.py --ros-args \
+  -p trajectory_shape:=whole \
+  -p record_loop_csv:=true \
+  -p base_disturbance_amplitude_m:=0.01 \
+  -p base_disturbance_seed:=0 \
+  -p base_belief_mode:=estimated \
+  -p base_estimator_noise_std_m:=0.002 \
+  -p base_estimator_delay_ms:=40.0 \
+  -p base_estimator_lpf_hz:=10.0
+```
 #### 3.5.3 与任务有关的运行时参数
 
 以下 ROS 参数必须在控制节点与可视化节点中使用相同的值:
@@ -354,16 +404,48 @@ export MB_EE_DRAW_SPEED=0.03
 | 参数 | 默认值 | 说明 |
 |---|---|---|
 | `solver_model` | `second_order` | `second_order` / `first_order` / `shadow` |
-| `guard_mode` | `expected_residual` | 命令守卫:`expected_residual`=按"命令位移相对期望位移的残差"拦截,兼容快速运动;`legacy_fixed_step`=固定 6mm 步长阈值(全速工况下可能连锁拦截,不建议);`expected_shadow`=用旧规则拦截、只记录新守卫诊断 |
-| `second_order_horizon_steps` | `10` | 二阶预测步数 |
+| `guard_mode` | `state_safe_filter` | `state_safe_filter`=以预计命令生效时的当前状态为锚点,依次尝试原命令、最大安全投影和主动 DLS 纠偏,不使用可能过期的“上一接受命令”作为可行域原点;`expected_residual`=旧的接受命令锚点残差守卫;`legacy_fixed_step`=固定 6mm 阈值;`expected_shadow`=旧规则控制、只记录残差诊断 |
+| `second_order_horizon_steps` | `10` | 二阶预测步数;50Hz 下覆盖 0.2s。真机 whole-task 中 N=20 的完整周期 P95/P99 达 26.7/32.9ms,超过 20ms 截止期并造成反馈积压,故生产值回退到实时 N=10 |
 | `second_order_position_weight` | `5000.0` | 二阶位置权重 |
-| `second_order_terminal_position_weight` | `500.0` | 二阶终端位置权重 |
-| `second_order_velocity_weight` | `0.02` | 二阶关节速度软惩罚 |
-| `second_order_acceleration_weight` | `0.0` | 二阶关节加速度软惩罚(硬约束 ±5 rad/s² 始终生效) |
+| `second_order_terminal_position_weight` | `500.0` | 二阶终端位置权重；`1000.0` 虽改善重复圆，但完整 whole-task 在线 A/B 变差，故未纳入默认 |
+| `second_order_cartesian_residual_mode` | `external_affine` | 复用 `5e740ca` 的 Pinocchio 逐 stage 外部仿射化;每次 RTI 后按新名义轨迹重算 |
+| `second_order_cartesian_velocity_weight` | `0.0` | 外部仿射速度残差实验开关;生产默认关闭,避免与未投影位置参考冲突 |
+| `second_order_cartesian_acceleration_weight` | `0.0` | 加速度残差结构已接入;当前 2Hz 固定约束 A/B 中非零值增加横向误差,故默认关闭 |
+| `second_order_terminal_cartesian_velocity_weight` | `0.0` | 终端笛卡尔速度实验权重;生产默认关闭 |
+| `second_order_feasible_reference_projection` | `false` | 导数参考投影实验开关;生产默认关闭,结构与诊断仍保留 |
+| `second_order_feasible_reference_damping` | `1e-4` | 7-DOF 冗余参考投影阻尼 |
+| `second_order_contour_tracking_enabled` | `false` | 轮廓/滞后误差实验开关;结构保留,但 N=20 轮廓候选的真机结果被控制周期超时污染,生产默认使用已验证的 position-only N=10 |
+| `second_order_contour_position_weight` | `5000.0` | 垂直于绘图切线的轮廓误差权重 |
+| `second_order_lag_position_weight` | `750.0` | 沿绘图切线的时间滞后权重;自动调参在轮廓稳定性和进度滞后之间的折中 |
+| `second_order_transition_position_weight` | `5000.0` | 抬笔/换面期间的普通三维位置权重 |
+| `reference_derivative_dt_sec` | `0.005` | 解析 world/base 参考中心差分半步,必须不超过半个控制周期 |
+| `second_order_velocity_weight` | `0.02` | 关节速度正则权重;投影关闭时参考为零 |
+| `second_order_acceleration_weight` | `0.0` | `qddot_ff` 实验权重;结构保留但生产默认关闭 |
+| `second_order_terminal_velocity_weight` | `0.0` | tracking-priority 默认不强迫 0.4 s 预测域末端降速;非零值只用于慢速/驻点实验 |
 | `second_order_dq_ff_compensation` | `1.0` | 发布速度 = `dq_next / 该值`;需等于执行器 `velocity_feedforward_gain` |
-| `second_order_velocity_source` | `commanded` | 二阶 x0 速度来源:`commanded`=上一拍已发布的模型速度;`measured`=实测速度 |
+| `second_order_velocity_source` | `commanded` | 二阶 x0 速度来源:`commanded`=上一拍已接受的模型速度,与二阶预测状态一致;`measured` 仅用于完成速度观测器辨识后的实验 |
+| `second_order_state_prediction` | `false` | 实验开关:把带时间戳的实测 `[q,dq]` 用上一拍加速度前推;未完成执行器/反馈延迟联合辨识前默认关闭 |
+| `latency_compensation_enabled` | `false` | 实验开关:同时前移状态和参考时刻;资源抖动由当前状态安全过滤器处理,不再默认改变控制相位 |
+| `latency_nominal_publish_ms` | `6.0` | 第一拍使用的求解开始到发布延迟估计(ms) |
+| `latency_publish_ewma_alpha` | `0.15` | 实际求解到发布时延 EWMA 更新系数 |
+| `latency_actuator_delay_ms` | `0.0` | 已标定的发布后执行器固定延迟(ms);有实测值时填写 |
+| `latency_prediction_max_ms` | `60.0` | 反馈状态前推和应用时延补偿的安全上限(ms) |
+| `late_tick_recovery_enabled` | `true` | 控制回调迟到时丢弃过期二阶 warm start 和 commanded-velocity 状态,从该拍最新实测状态重新求解 |
+| `late_tick_recovery_factor` | `1.5` | 迟到阈值相对控制周期的倍数;50Hz 默认即 30ms |
+| `guard_backup_damping` | `0.03` | 状态安全过滤器 DLS 纠偏阻尼 |
+| `guard_backup_position_gain` | `0.8` | 状态安全过滤器单拍 world 位置误差纠偏比例 |
 | `solver_backend` | `acados` | 求解后端 |
 | `horizon_steps` | `2` | 一阶预测步数 |
+
+控制节点使用单线程确定性 executor，反馈 QoS 深度为 1：ACADOS 求解期间
+`/joint_states` 只保留最新状态，求解结束后不会逐条消费过期反馈。这里不使用
+Python 两线程 executor，因为实测 100Hz 反馈回调与 50Hz NMPC timer 会争抢
+GIL，反而引入大量 30--44ms 控制间隔。这不是放宽硬件约束。2026-07-25 的
+N=20 whole-task 失败数据里，反馈时间戳曾单拍跳过 109.9ms，同时 command-FK
+跳变 23.4mm；对应运行的实际 RMS/最大误差为 7.64/28.23mm。
+因此 N=20 已从生产默认撤回。后续候选除了 ACADOS `solve_time`，还必须满足
+“参考生成 + Python 封装 + solver”的完整计算 P99 小于 12ms，给发布、记录和
+ROS 调度保留至少 8ms 裕量。
 | `max_joint_step` | `0.02` | 单步最大关节变化量(rad),应等于 `max_velocity * control_dt` |
 | `control_rate_hz` | `50.0` | 控制频率 |
 | `terminal_tolerance` | `0.01` | 终端位置误差 warning 阈值(m) |
@@ -379,6 +461,104 @@ MPC 版本会向 `/student/joint_command` 同时发布 `position` 和 `velocity`
 `student_arm_node` 里的 `SmoothPositionController` 会对位置做平滑限速,并把 velocity 作为
 速度前馈传到底层(按 launch 参数 `max_velocity` 限幅、`max_acceleration` 限加速度)。
 `max_joint_step` 应与底层 `max_velocity * control_dt` 匹配。
+
+二阶求解器已选择性纳入提交 `5e740ca` 的 world/base 显式导数与外部仿射化。
+原始参考为:
+
+```text
+v_ref_B = R_WB.T * (v_ee_W - v_base_W) - omega_B × r_B
+
+a_ref_B = R_WB.T * (a_ee_W - a_base_W)
+          - 2 * omega_B × v_ref_B
+          - alpha_B × r_B
+          - omega_B × (omega_B × r_B)
+```
+
+这些导数及外部仿射残差保留为显式实验接口，但生产默认不把它们加入代价。
+原因是逐 stage 投影导数、同时保留未投影的定时位置会产生不一致参考，并在
+2Hz 基座工况形成周期追赶。设置
+`second_order_feasible_reference_projection:=true` 并配置非零导数权重时，
+每个预测 stage 才会执行固定盒约束阻尼最小二乘:
+
+```text
+qdot_ff  = argmin ||J qdot - v_ref_B||² + lambda ||qdot||²
+           s.t. |qdot| <= 1
+
+qddot_ff = argmin ||J qddot + Jdot qdot_ff - a_ref_B||²
+                  + lambda ||qddot||²
+           s.t. |qddot| <= 5
+                |dq_bar + dt*qddot| <= 1
+```
+
+再用 `J*qdot_ff` 和 `J*qddot_ff+Jdot*qdot_ff` 作为可行笛卡尔参考。这里的
+`1` 和 `5` 直接来自现有硬件约束,没有被放宽。三个笛卡尔导数权重均为零时，
+后端跳过 Pinocchio 外部仿射线性化，避免无效计算占用 20ms 控制预算。
+
+落笔阶段把位置误差 `e=p_ee-p_ref` 按 world 绘图切线在 base 系的表示
+`t_B` 分解为:
+
+```text
+e_contour = (I - t_B*t_B.T) * e
+e_lag     = t_B.T * e
+```
+
+轮廓权重约为沿线滞后权重的 6.67 倍。因此控制能力不足时优先保持几何线条,
+允许沿线方向稍微落后,而不是在直线两侧周期绕行。抬笔、换面和切线速度接近零
+时自动退回普通定时点跟踪。
+
+2Hz、`velocity_feedforward_gain=1.0`、硬约束保持 `±1 rad/s` 和
+`±5 rad/s²` 的自动搜索命令:
+
+```bash
+python3 tune_unified_mpc_params.py \
+  --second-order-tune --second-order-stable-contour \
+  --second-order-base-period 0.5 --second-order-ee-period 4.0 \
+  --second-order-horizons 10,15,20 \
+  --second-order-velocity-source commanded \
+  --second-order-guard-rule expected_residual \
+  --plant-gain 1.0
+```
+
+完整 `whole` 五工作面离线一周期 A/B 中，生产旧候选与新默认分别为:
+
+| 指标 | 旧候选 `N=10, cv=2, projection=true, lag=250` | 新默认 `N=20, cv=0, projection=false, lag=750` |
+|---|---:|---:|
+| 三维 RMS | 2.705 mm | 2.082 mm |
+| 三维 P95 | 5.194 mm | 4.217 mm |
+| 落笔轮廓 RMS | 1.096 mm | 0.836 mm |
+| 落笔轮廓 P95 | 2.256 mm | 1.845 mm |
+| 2Hz 残差 RMS | 1.258 mm | 1.057 mm |
+| 加速度饱和平均关节占比 | 66.7% | 51.6% |
+| 求解 P99 | 2.55 ms | 7.64 ms |
+
+两组均为 `guard=0`、`solver_failure=0`；新默认仍低于 20ms 控制周期。
+
+固定 `±1/±5` 约束、2Hz 基座的离线闭环消融中,相对于 position-only:
+
+| 配置 | 总 RMS | 横向 RMS / P95 | 总优化 P95 |
+|---|---:|---:|---:|
+| position-only | 1.66 mm | 1.15 / 2.56 mm | 4.86 ms |
+| 可行速度前馈 + contour/lag | 2.02 mm | 0.78 / 1.69 mm | 9.78 ms |
+
+总点误差因允许沿线滞后而略增,但决定“直线是否绕线”的横向 RMS 降低约 32%。
+这是离线结构 A/B,仍须以新的 `whole` 真机 CSV 验收。
+
+录屏或桌面渲染抢占 CPU/GPU 时,ROS timer、反馈和求解到发布延迟都可能超过名义 20 ms。
+当前生产默认由 `state_safe_filter` 从每拍新鲜状态重新建立安全集合,避免旧接受命令锚点造成
+连续 hold/fault。下面的状态/参考外推保留为显式实验功能,默认关闭:
+
+```text
+d_app = EWMA(solve_to_publish) + actuator_delay
+t_app = t_solve + d_app
+tau   = age(joint_state at solve start) + d_app
+q_app  = q_meas + dq_meas*tau + 0.5*ddq_prev*tau^2
+dq_app = dq_meas + ddq_prev*tau
+```
+
+启用后,它把上式作为二阶 NMPC 的初始状态,并把整个 world/base 参考预测域前移 `d_app`。安全过滤器比较
+`(q_app,t_app)` 到下一拍候选的 world 运动;若发生投影、backup、hold 或求解失败,会同时清除
+旧的 `q/dq/ddq` 热启动计划,避免下一拍重新生成同一个异常跳变。轨迹直线段、抬笔和五面转场
+使用五次 smoothstep,端点速度和加速度均为零,用来降低拐角/转场激励。
 
 `moving_base_circle` 模式下作图程序使用:
 

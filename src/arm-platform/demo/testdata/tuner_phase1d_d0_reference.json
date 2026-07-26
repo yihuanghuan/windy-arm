@@ -1,0 +1,96 @@
+{
+  "description": "阶段1D 真实 D0(gain=0.7)三轮关键指标冻结基准。入库 fixture,供 check_tuner_credibility.py 在干净 checkout 上复现自动对照;完整原始 metrics 在本机 demo/data/ab_runs_1d/(gitignored),sha256 用于本机交叉核对。",
+  "created": "2026-07-23",
+  "source": "由 check_tuner_credibility.py --make-fixture 从 data/tuner_t0/phase1d_d0_manifest.json 引用的三轮原始文件抽取",
+  "semantics": {
+    "reference_lead_steps": 1,
+    "control_dt": 0.02,
+    "dq_prev_mode": "measured_delta",
+    "rti_iteration_mode": "fixed_iterations",
+    "acados_rti_iterations": 3,
+    "velocity_feedforward_gain": 0.7
+  },
+  "production_params": {
+    "horizon_steps": 2,
+    "max_joint_step": 0.02,
+    "orientation_weight": 0.375,
+    "terminal_orientation_weight": 5.0
+  },
+  "trajectory_config": {
+    "BASE_CIRCLE_CENTER": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "BASE_CIRCLE_RADIUS": 0.02,
+    "BASE_PERIOD_SEC": 1.0,
+    "BASE_HEIGHT": 0.01,
+    "BASE_ATTITUDE_AMPLITUDE_DEG": 0.1,
+    "BASE_ROLL_AMPLITUDE": 0.0017453292519943296,
+    "BASE_PITCH_AMPLITUDE": 0.0017453292519943296,
+    "BASE_YAW_AMPLITUDE": 0.0017453292519943296,
+    "EE_WORLD_CIRCLE_CENTER": [
+      0.3,
+      0.01,
+      0.1
+    ],
+    "EE_CIRCLE_RADIUS": 0.08,
+    "EE_PERIOD_SEC": 4.0,
+    "TARGET_YAW_RAD": 1.5707963267948966,
+    "TARGET_PITCH_RAD": 1.5707963267948966,
+    "TARGET_ROLL_RAD": 0.0
+  },
+  "executor_params": {
+    "max_velocity": 1.0,
+    "enable_velocity_feedforward": true,
+    "velocity_feedforward_gain": 0.7,
+    "position_feedback_tau": 0.15,
+    "feedback_velocity_limit": 0.4,
+    "enable_acceleration_limit": true,
+    "max_acceleration": 5.0
+  },
+  "rounds": [
+    {
+      "label": "p1d_r1_d0",
+      "file": "/home/windylab/code/windylab_ws/src/arm-platform/demo/data/ab_runs_1d/metrics_p1d_r1_d0.json",
+      "velocity_feedforward_gain": 0.7,
+      "metrics": {
+        "actual_rms_mm": 9.202251461983911,
+        "actual_p95_mm": 20.07274228250891,
+        "exec_gap_cart_rms_mm": 2.1200459790779784,
+        "base_1hz_resid_rms_mm": 3.942344455862838,
+        "vel_peak_rad_s": 0.7843724117521989,
+        "guard_block_count": 0
+      },
+      "sha256": "9bacb131990fee8a48c5b0a8927a489f0d34a37f6cdf61236040058e69ec61dc"
+    },
+    {
+      "label": "p1d_r4_d0",
+      "file": "/home/windylab/code/windylab_ws/src/arm-platform/demo/data/ab_runs_1d/metrics_p1d_r4_d0.json",
+      "velocity_feedforward_gain": 0.7,
+      "metrics": {
+        "actual_rms_mm": 10.57668970951009,
+        "actual_p95_mm": 20.35377649143279,
+        "exec_gap_cart_rms_mm": 2.6156015109667186,
+        "base_1hz_resid_rms_mm": 4.869276651389621,
+        "vel_peak_rad_s": 0.7843705578169713,
+        "guard_block_count": 0
+      },
+      "sha256": "88c12d4ad3ccd78b8fd0b75c3183019c672c642a3b887a9d35ba4624d4a1fba2"
+    },
+    {
+      "label": "p1d_r5_d0",
+      "file": "/home/windylab/code/windylab_ws/src/arm-platform/demo/data/ab_runs_1d/metrics_p1d_r5_d0.json",
+      "velocity_feedforward_gain": 0.7,
+      "metrics": {
+        "actual_rms_mm": 11.993469436126771,
+        "actual_p95_mm": 20.79992997612962,
+        "exec_gap_cart_rms_mm": 2.9773746492073365,
+        "base_1hz_resid_rms_mm": 6.736538135628212,
+        "vel_peak_rad_s": 0.7111014954090056,
+        "guard_block_count": 0
+      },
+      "sha256": "8f268cc18edddf246dbd4e90b72fd5cf74bc25384cc0b06f9ad54dfa06c32559"
+    }
+  ]
+}

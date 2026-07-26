@@ -65,6 +65,11 @@ def mk_demo(mode='expected_residual', **over):
     d.guard_projection_min_lambda = 0.05
     d.guard_projection_max_iterations = 8
     d.guard_max_consecutive_blocks = 25
+    d.guard_backup_damping = 0.03
+    d.guard_backup_position_gain = 0.8
+    d.second_order_max_velocity = 1.0
+    d.second_order_max_acceleration = 5.0
+    d._so_last_cmd_dq = np.zeros(JOINT_COUNT)
     d.mpc_ik = MPC_IK
     d.last_command_fk_world = None
     d.q_last = None
@@ -381,6 +386,65 @@ def test_consecutive_fault():
     check('拦截计数=3', d.guard_block_count == 3 and d.guard_consecutive_blocks == 3)
 
 
+# ------------------------------------------------------- state-safe-filter recovery
+def test_state_safe_filter_active_recovery():
+    print('测试8B: state_safe_filter 从当前状态主动恢复，不受 stale accepted anchor 锁死')
+    d = mk_demo('state_safe_filter', guard_projection_enabled=False)
+    p0, velocity = linear_world(d, np.array([0.0, 0.10, 0.0]))
+    q0 = seed_q(d, p0)
+    # Deliberately poison the legacy accepted-command anchor. The new mode
+    # must use q_current/t_state and therefore ignore this stale geometry.
+    d._guard_q_last = q0 + 0.04
+    d._guard_t_last_reference = -1.0
+    d._guard_p_cmd_last = np.full(3, 99.0)
+    d._guard_p_ref_last = np.full(3, -99.0)
+
+    q_wrong, _ = bounded_jump(
+        q0, np.array([0.0, -0.010, 0.0]), d, 0.006)
+    g = tick(d, q_wrong, q0, 0.0)
+    hold_error = np.linalg.norm(
+        d._guard_fk_world(q0, d.dt)[0]
+        - d._ee_target_world(d.dt))
+    backup_error = np.linalg.norm(
+        d._guard_fk_world(d.q_last, d.dt)[0]
+        - d._ee_target_world(d.dt))
+    check('错误 MPC 方向触发主动 backup 而不是 block',
+          g['guard_backup'] and not g['guard_block'])
+    check('backup 命令满足当前状态步长约束',
+          np.max(np.abs(d.q_last - q0)) <= d.max_joint_step + 1e-9)
+    check('backup 不增加 world tracking error',
+          backup_error <= hold_error + 1e-9,
+          f'{hold_error*1000:.3f}->{backup_error*1000:.3f}mm')
+    check('stale accepted anchor 被安全输出替换',
+          np.max(np.abs(d._guard_q_last - (q0 + 0.04))) > 1e-3)
+
+    # A gross solver-contract violation is clipped and filtered, not converted
+    # directly into an unrecoverable hold/fault.
+    d2 = mk_demo('state_safe_filter')
+    p02 = freeze_world(d2)
+    q02 = seed_q(d2, p02)
+    d2._guard_q_last = q02.copy()
+    g2 = tick(d2, q02 + 1.0, q02, 0.0)
+    check('契约外有限命令由 state filter 裁剪/恢复',
+          g2['solver_step_violation'] and g2['command_usable']
+          and not g2['guard_block'])
+    check('裁剪/恢复结果不超过单拍关节限制',
+          np.max(np.abs(d2.q_last - q02)) <= d2.max_joint_step + 1e-9)
+
+    # A failed solver must use the active backup rather than republish a stale
+    # accepted joint command while the base/reference keeps moving.
+    d3 = mk_demo('state_safe_filter')
+    p03, _ = linear_world(d3, np.array([0.0, 0.10, 0.0]))
+    q03 = seed_q(d3, p03)
+    d3.q_last = q03 + 0.03
+    g3 = tick(d3, np.full(JOINT_COUNT, np.nan), q03, 0.0, usable=False)
+    check('求解器命令不可用时切换主动 backup',
+          g3['command_usable'] and g3['guard_backup']
+          and not g3['guard_block'])
+    check('失败降级不再发布 stale q_last',
+          np.max(np.abs(d3.q_last - (q03 + 0.03))) > 1e-3)
+
+
 # ----------------------------------------------------------------- 9 时间对应
 def test_time_correspondence():
     print('测试9: t_new=t_solve+lead*dt / 锚点用自己的 t_last / 两种残差算法逐拍相等')
@@ -503,6 +567,7 @@ def test_param_validation():
     print('测试11: 守卫参数校验(拼写/非法值 -> ValueError)')
     V = MoveBaseCircleMpcIkDemo._validate_guard_config
     V('expected_residual', 0.0068, 0.5, 1.0, 0.05, 8, 25)   # 合法不抛
+    V('state_safe_filter', 0.0068, 0.5, 1.0, 0.05, 8, 25)
     cases = [
         ('expected_residul', 0.0068, 0.5, 1.0, 0.05, 8, 25),   # 拼写错误
         ('expected_residual', float('nan'), 0.5, 1.0, 0.05, 8, 25),
@@ -534,6 +599,7 @@ def main():
     test_anchor_pollution()
     test_hold_recovery()
     test_consecutive_fault()
+    test_state_safe_filter_active_recovery()
     test_time_correspondence()
     test_mode_regression()
     test_param_validation()

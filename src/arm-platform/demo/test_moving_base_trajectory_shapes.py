@@ -69,6 +69,48 @@ class MovingBaseTrajectoryShapesTest(unittest.TestCase):
             10,
         )
 
+    def test_whole_word_exits_from_b_without_returning_to_w(self):
+        word_start = (
+            trajectory._local_trajectory_period('circle')
+            + trajectory._WHOLE_TRANSITION_SEC
+            + trajectory._local_trajectory_period('triangle')
+            + trajectory._WHOLE_TRANSITION_SEC
+        )
+        word_end = word_start + trajectory._WINDYLAB_ONCE_PERIOD_SEC
+        sample = trajectory.ee_trajectory_sample(word_end, 'whole')
+        expected_b_end = trajectory._place_local_sample(
+            trajectory.EeTrajectorySample(
+                trajectory._WINDYLAB_STROKES[-1][-1],
+                True,
+                len(trajectory._WINDYLAB_STROKES) - 1,
+            ),
+            'back',
+        ).position
+        w_start = trajectory._place_local_sample(
+            trajectory.EeTrajectorySample(
+                trajectory._WINDYLAB_STROKES[0][0], True, 0),
+            'back',
+        ).position
+
+        self.assertFalse(sample.pen_down)
+        np.testing.assert_allclose(sample.position, expected_b_end, atol=1e-8)
+        self.assertGreater(
+            np.linalg.norm(sample.position - w_start),
+            0.05,
+            'whole word must not touch the next cycle w start before transfer',
+        )
+
+    def test_quintic_smoothstep_has_zero_endpoint_velocity_and_acceleration(self):
+        h = 1e-4
+        for endpoint, direction in ((0.0, 1.0), (1.0, -1.0)):
+            f0 = trajectory._smoothstep(endpoint)
+            f1 = trajectory._smoothstep(endpoint + direction * h)
+            f2 = trajectory._smoothstep(endpoint + direction * 2.0 * h)
+            velocity = (f1 - f0) / h
+            acceleration = (f2 - 2.0 * f1 + f0) / (h * h)
+            self.assertLess(abs(velocity), 2e-6)
+            self.assertLess(abs(acceleration), 0.02)
+
     def test_whole_task_has_five_surfaces_and_no_connecting_lines(self):
         # circle + triangle + ten windylab strokes + sine + square
         segments = trajectory.sample_ee_drawing_segments('whole', 240)

@@ -79,6 +79,10 @@ DQ_PREV_MODE = "measured_delta"
 TERMINAL_TOLERANCE = 0.01
 SINGULAR_SIGMA_THRESHOLD = 0.05
 MAX_SOLVE_TIME_MS_HARD = 20.0     # 50Hz 预算 20ms, 按 p99 判定
+# 真机 20260725 A/B 表明“只看 ACADOS solve_time”会错误放行 N=20：
+# solver/optimize P99=15.3ms，但完整 timer P95/P99=26.7/32.9ms。离线评估至少
+# 要把参考生成 + Python 封装 + solver 的 wall time 纳入，并预留 ROS 发布/记录余量。
+MAX_CONTROL_COMPUTE_TIME_MS_HARD = 12.0
 SOLVE_TIME_WARMUP_STEPS = 5
 VEL_LIMIT_TOL = 1.03              # 实测速度硬门: <= 1.03 * max_velocity
 ACCEL_LIMIT_TOL = 1.10            # 实测加速度硬门: <= 1.10 * max_accel
@@ -127,6 +131,8 @@ def _traj_config_matches_phase1d(cfg: dict) -> Tuple[bool, List[str]]:
             same = (cur is not None and len(cur) == len(snap_val)
                     and all(math.isclose(a, b, rel_tol=0.0, abs_tol=1e-12)
                             for a, b in zip(cur, snap_val)))
+        elif isinstance(snap_val, str):
+            same = cur is not None and str(cur) == snap_val
         else:
             same = cur is not None and math.isclose(cur, snap_val, rel_tol=0.0, abs_tol=1e-12)
         if not same:
@@ -341,6 +347,7 @@ class Scenario:
     base_pose_fn: Optional[Callable[[float], np.ndarray]] = None      # world 系基座位置
     base_rot_fn: Optional[Callable[[float], np.ndarray]] = None       # world 系基座姿态
     base_period_sec: Optional[float] = None                            # 基座主频(残差分析)
+    contour_active_fn: Optional[Callable[[float], bool]] = None        # None=整段落笔
     # closeout: 评估周期 = 联合重复周期(moving-base=lcm(EE,BASE);固定臂=自身周期)。
     evaluation_period_sec: Optional[float] = None   # None -> period_sec
     ee_period_sec: Optional[float] = None
@@ -591,10 +598,24 @@ class SecondOrderWeightSet:
 
     def apply(self, config: SecondOrderMpcConfig) -> SecondOrderMpcConfig:
         """复制 config 并替换权重；不修改调用方持有的基线配置。"""
+        lag_ratio = (
+            config.lag_position_weight / config.contour_position_weight
+            if config.contour_position_weight > 0.0 else 0.0)
+        terminal_lag_ratio = (
+            config.terminal_lag_position_weight
+            / config.terminal_contour_position_weight
+            if config.terminal_contour_position_weight > 0.0 else 0.0)
         return replace(
             config,
             position_weight=self.position_weight,
             terminal_position_weight=self.terminal_position_weight,
+            contour_position_weight=self.position_weight,
+            transition_position_weight=self.position_weight,
+            lag_position_weight=self.position_weight * lag_ratio,
+            terminal_contour_position_weight=self.terminal_position_weight,
+            terminal_transition_position_weight=self.terminal_position_weight,
+            terminal_lag_position_weight=(
+                self.terminal_position_weight * terminal_lag_ratio),
             joint_velocity_weight=self.joint_velocity_weight,
             joint_acceleration_weight=self.joint_acceleration_weight,
             current_posture_weight=self.current_posture_weight,
@@ -615,6 +636,9 @@ class ScenarioMetrics:
     steady_ori_err_rms: float
     steady_ori_err_max: float
     steady_base_freq_resid_rms: float      # 主基座频率残差(无基座场景=0)
+    steady_contour_err_rms: float          # 落笔路径法向误差；未启用轮廓评估时为 0
+    steady_contour_err_p95: float
+    steady_lag_err_rms: float              # 落笔路径切向误差
     steady_exec_gap_joint_rms: float
     steady_exec_gap_cart_rms: float
     steady_ctrl_delta_rms: float           # ||Δq_pub|| 平滑度
@@ -664,6 +688,10 @@ class ScenarioMetrics:
     p95_solve_time_ms: float
     p99_solve_time_ms: float
     max_solve_time_ms: float
+    mean_control_compute_time_ms: float
+    p95_control_compute_time_ms: float
+    p99_control_compute_time_ms: float
+    max_control_compute_time_ms: float
     score: float
 
 
@@ -738,7 +766,8 @@ def evaluate_scenario(scenario: Scenario, solver, ctx: Context, horizon: int,
                       trace: Optional[list] = None,
                       dq_ff_compensation: float = 1.0,
                       guard_rule: str = 'legacy',
-                      so_velocity_source: str = 'measured') -> ScenarioMetrics:
+                      so_velocity_source: str = 'measured',
+                      activate_contour: bool = False) -> ScenarioMetrics:
     q_seed = scenario.q_seed.copy()
     plant = FeedforwardPlant(q_seed, ctx.q_lower, ctx.q_upper, gain=plant_gain)
     lock = scenario.lock_orientation and scenario.rotation_fn is not None
@@ -757,6 +786,26 @@ def evaluate_scenario(scenario: Scenario, solver, ctx: Context, horizon: int,
         if scenario.base_pose_fn is None:
             return pos
         return scenario.base_pose_fn(t) + scenario.base_rot_fn(t) @ pos
+
+    def target_world(t: float) -> np.ndarray:
+        target = scenario.position_fn(t)
+        if scenario.base_pose_fn is None:
+            return target
+        return scenario.base_pose_fn(t) + scenario.base_rot_fn(t) @ target
+
+    def contour_tangent_base(t: float) -> np.ndarray:
+        """Match the production contour definition: world drawing tangent in base axes."""
+        derivative_h = min(0.005, 0.5 * CONTROL_DT)
+        tangent_world = (
+            target_world(t + derivative_h) - target_world(t - derivative_h)
+        ) / (2.0 * derivative_h)
+        norm = float(np.linalg.norm(tangent_world))
+        if norm < 1e-8:
+            return np.zeros(3)
+        tangent_world /= norm
+        if scenario.base_rot_fn is None:
+            return tangent_world
+        return scenario.base_rot_fn(t).T @ tangent_world
 
     # 起始条件对齐生产 __init__: 先用 MPC solve 精化起点(同时使 solver._last_plan
     # 被本场景的起始解覆盖 —— 既复刻生产 track 首拍的内部 warm 状态,也消除跨场景污染)。
@@ -793,8 +842,10 @@ def evaluate_scenario(scenario: Scenario, solver, ctx: Context, horizon: int,
     total_steps = warmup_steps + steady_steps
 
     S = {k: [] for k in ("pos_err", "cmd_err", "ori_err", "err_vec_w",
+                         "contour_err", "lag_err", "contour_active",
                          "exec_gap_j", "exec_gap_c", "ctrl_delta", "sigma",
                          "vel_peak", "accel_peak", "solve_ms", "solve_ms_steady",
+                         "control_compute_ms",
                          "steady_flag")}
     guard_count = fallback = solver_fail = tracking_bad = singular = 0
     steady_tracking_bad = 0
@@ -809,14 +860,49 @@ def evaluate_scenario(scenario: Scenario, solver, ctx: Context, horizon: int,
         # dq_prev: 生产状态机(理想反馈时间戳 = t_solve)
         dq_prev = dq_prev_adapter.compute(q_current, t_solve)
 
+        control_compute_start = time.perf_counter()
         # 参考时序: targets[j] = target(t_solve + (1+j)*dt)
         times = target_times(t_solve, horizon)
         targets = np.array([scenario.position_fn(float(ti)) for ti in times])
         rotations = (np.array([scenario.rotation_fn(float(ti)) for ti in times])
                      if lock else None)
 
-        start = time.perf_counter()
+        solve_start = time.perf_counter()
         if second_order:
+            # 与生产的显式参考接口一致。场景 position_fn 已经是 base 系目标，
+            # 因此这里直接中心差分即可；调参器没有落笔语义，轮廓模式保持 inactive。
+            derivative_h = min(0.005, 0.5 * CONTROL_DT)
+            target_velocities = np.array([
+                (
+                    scenario.position_fn(float(ti) + derivative_h)
+                    - scenario.position_fn(float(ti) - derivative_h)
+                ) / (2.0 * derivative_h)
+                for ti in times
+            ])
+            target_accelerations = np.array([
+                (
+                    scenario.position_fn(float(ti) + derivative_h)
+                    - 2.0 * scenario.position_fn(float(ti))
+                    + scenario.position_fn(float(ti) - derivative_h)
+                ) / (derivative_h * derivative_h)
+                for ti in times
+            ])
+            contour_tangents = (
+                np.array([contour_tangent_base(float(ti)) for ti in times])
+                if activate_contour else None)
+            contour_active = (
+                np.array([
+                    float(
+                        np.linalg.norm(tangent) > 1e-8
+                        and (
+                            scenario.contour_active_fn(float(ti))
+                            if scenario.contour_active_fn is not None
+                            else True
+                        )
+                    )
+                    for tangent, ti in zip(contour_tangents, times)
+                ])
+                if activate_contour else None)
             dq0 = (so_last_cmd_dq if (so_velocity_source == 'commanded'
                                       and so_last_cmd_dq is not None)
                    else plant.v_last.copy())
@@ -824,6 +910,10 @@ def evaluate_scenario(scenario: Scenario, solver, ctx: Context, horizon: int,
                 targets, q_current, dq0,
                 warm_start=warm_start,
                 target_rotation=rotations,
+                target_velocity=target_velocities,
+                target_acceleration=target_accelerations,
+                contour_tangent=contour_tangents,
+                contour_active=contour_active,
                 posture_reference=q_nominal)
         else:
             q_next, ok, info = solver.step(
@@ -837,10 +927,12 @@ def evaluate_scenario(scenario: Scenario, solver, ctx: Context, horizon: int,
                                     -PLANT_MAX_VELOCITY, PLANT_MAX_VELOCITY)
                            if (second_order and dq_ff_compensation != 1.0)
                            else dq_next)
-        wall = time.perf_counter() - start
+        solve_wall = time.perf_counter() - solve_start
+        control_compute_wall = time.perf_counter() - control_compute_start
         if k >= SOLVE_TIME_WARMUP_STEPS:
-            ms = 1000.0 * float(info.get("solve_time", wall))
+            ms = 1000.0 * float(info.get("solve_time", solve_wall))
             S["solve_ms"].append(ms)
+            S["control_compute_ms"].append(1000.0 * control_compute_wall)
             if k >= warmup_steps:
                 S["solve_ms_steady"].append(ms)
 
@@ -932,9 +1024,30 @@ def evaluate_scenario(scenario: Scenario, solver, ctx: Context, horizon: int,
         S["pos_err"].append(float(np.linalg.norm(e_base)))
         # world 误差向量(基座残差分析): e_w = R(t_next) @ e_base(固定臂 R=I)
         if scenario.base_rot_fn is not None:
-            S["err_vec_w"].append(scenario.base_rot_fn(t_next) @ e_base)
+            e_world = scenario.base_rot_fn(t_next) @ e_base
         else:
-            S["err_vec_w"].append(e_base.copy())
+            e_world = e_base.copy()
+        S["err_vec_w"].append(e_world)
+        contour_is_active = bool(
+            activate_contour
+            and (
+                scenario.contour_active_fn(t_next)
+                if scenario.contour_active_fn is not None else True
+            )
+        )
+        S["contour_active"].append(contour_is_active)
+        if contour_is_active:
+            tangent_base = contour_tangent_base(t_next)
+            tangent_world = (
+                scenario.base_rot_fn(t_next) @ tangent_base
+                if scenario.base_rot_fn is not None else tangent_base)
+            lag_error = float(np.dot(e_world, tangent_world))
+            contour_error = e_world - lag_error * tangent_world
+            S["contour_err"].append(float(np.linalg.norm(contour_error)))
+            S["lag_err"].append(abs(lag_error))
+        else:
+            S["contour_err"].append(0.0)
+            S["lag_err"].append(0.0)
         # command-FK 误差(base 系范数 == world 系范数)
         pos_c, _ = fk(ctx, q_pub)
         S["cmd_err"].append(float(np.linalg.norm(pos_c - tgt_next)))
@@ -982,9 +1095,13 @@ def evaluate_scenario(scenario: Scenario, solver, ctx: Context, horizon: int,
     # 姿态误差 steady 掩码(lock 时逐 tick 记录,与 steady 同长)
     ori_sd = ori[steady] if ori.size == steady.size else ori
     egj = np.asarray(S["exec_gap_j"]); egc = np.asarray(S["exec_gap_c"])
+    contour = np.asarray(S["contour_err"]); lag = np.asarray(S["lag_err"])
+    contour_active_mask = np.asarray(S["contour_active"], dtype=bool)
+    contour_steady = steady & contour_active_mask
     cd = np.asarray(S["ctrl_delta"]); sg = np.asarray(S["sigma"])
     vp = np.asarray(S["vel_peak"]); ap = np.asarray(S["accel_peak"])
     st = np.asarray(S["solve_ms"]); st_sd = np.asarray(S["solve_ms_steady"])
+    ct = np.asarray(S["control_compute_ms"])
 
     # 主基座频率残差(稳态): 对 world 误差向量各轴做正交拟合
     base_resid = 0.0
@@ -1008,6 +1125,9 @@ def evaluate_scenario(scenario: Scenario, solver, ctx: Context, horizon: int,
         steady_ori_err_rms=rms(ori_sd),
         steady_ori_err_max=float(np.max(ori_sd)) if ori_sd.size else 0.0,
         steady_base_freq_resid_rms=base_resid,
+        steady_contour_err_rms=rms(contour[contour_steady]),
+        steady_contour_err_p95=_p(contour[contour_steady], 95),
+        steady_lag_err_rms=rms(lag[contour_steady]),
         steady_exec_gap_joint_rms=rms(egj[steady]),
         steady_exec_gap_cart_rms=rms(egc[steady]),
         steady_ctrl_delta_rms=rms(cd[steady]),
@@ -1063,6 +1183,10 @@ def evaluate_scenario(scenario: Scenario, solver, ctx: Context, horizon: int,
         p95_solve_time_ms=_p(st, 95),
         p99_solve_time_ms=_p(st, 99),
         max_solve_time_ms=float(np.max(st)) if st.size else 0.0,
+        mean_control_compute_time_ms=float(np.mean(ct)) if ct.size else 0.0,
+        p95_control_compute_time_ms=_p(ct, 95),
+        p99_control_compute_time_ms=_p(ct, 99),
+        max_control_compute_time_ms=float(np.max(ct)) if ct.size else 0.0,
         score=0.0,
     )
     m.score = scenario_score(m)
@@ -1078,7 +1202,11 @@ def scenario_score(m: ScenarioMetrics) -> float:
         + 500.0 * m.steady_pos_err_max          # closeout: max 进软评分(同时也有硬门)
         + 500.0 * m.steady_cmd_err_rms
         + 300.0 * m.steady_cmd_err_p95          # closeout: cmd P95 进软评分(同时也有硬门)
-        + 500.0 * m.steady_base_freq_resid_rms
+        + 1500.0 * m.steady_base_freq_resid_rms
+        # 绘图稳定性优先：法向偏离形成“绕线/螺旋”，切向误差只代表进度滞后。
+        + 2500.0 * m.steady_contour_err_rms
+        + 1500.0 * m.steady_contour_err_p95
+        + 250.0 * m.steady_lag_err_rms
         + 100.0 * m.steady_ori_err_rms
         + 100.0 * m.steady_ori_err_max
         + 300.0 * m.steady_exec_gap_cart_rms
@@ -1113,6 +1241,9 @@ def hard_gate_reasons(m: "ScenarioMetrics", sc: Scenario,
          f"dq_prev_fallback={m.dq_prev_fallback_ratio:.4f}"),
         (m.p99_solve_time_ms > MAX_SOLVE_TIME_MS_HARD,
          f"slow_p99={m.p99_solve_time_ms:.1f}ms"),
+        (m.p99_control_compute_time_ms > MAX_CONTROL_COMPUTE_TIME_MS_HARD,
+         f"slow_control_compute_p99={m.p99_control_compute_time_ms:.1f}ms"
+         f">{MAX_CONTROL_COMPUTE_TIME_MS_HARD:.1f}ms"),
     ]
     # closeout: 绝对误差硬门(场景各自的门限)。
     if sc.pos_p95_limit_m is not None and m.steady_pos_err_p95 > sc.pos_p95_limit_m:
@@ -1395,6 +1526,8 @@ METRIC_FIELDS = [
     "hold_then_jump_max",
     "mean_solve_time_ms", "steady_mean_solve_time_ms",
     "p95_solve_time_ms", "p99_solve_time_ms", "max_solve_time_ms",
+    "mean_control_compute_time_ms", "p95_control_compute_time_ms",
+    "p99_control_compute_time_ms", "max_control_compute_time_ms",
 ]
 
 
@@ -1588,14 +1721,28 @@ def production_second_order_config() -> SecondOrderMpcConfig:
     return SecondOrderMpcConfig(
         horizon_steps=10,
         control_dt=CONTROL_DT,
-        position_weight=PRODUCTION_PARAMS.position_weight,
-        terminal_position_weight=PRODUCTION_PARAMS.terminal_position_weight,
+        position_weight=5000.0,
+        terminal_position_weight=500.0,
+        cartesian_residual_mode="external_affine",
+        cartesian_velocity_weight=0.0,
+        cartesian_acceleration_weight=0.0,
+        terminal_cartesian_velocity_weight=0.0,
+        feasible_reference_projection=False,
+        feasible_reference_damping=1e-4,
+        contour_tracking_enabled=False,
+        contour_position_weight=5000.0,
+        lag_position_weight=750.0,
+        transition_position_weight=5000.0,
+        terminal_contour_position_weight=500.0,
+        terminal_lag_position_weight=75.0,
+        terminal_transition_position_weight=500.0,
         orientation_weight=PRODUCTION_PARAMS.orientation_weight,
         terminal_orientation_weight=PRODUCTION_PARAMS.terminal_orientation_weight,
         current_posture_weight=PRODUCTION_PARAMS.current_posture_weight,
         center_posture_weight=PRODUCTION_PARAMS.center_posture_weight,
         joint_velocity_weight=0.02,
-        joint_acceleration_weight=0.01,
+        joint_acceleration_weight=0.0,
+        terminal_joint_velocity_weight=0.0,
         max_joint_velocity=PLANT_MAX_VELOCITY,
         max_joint_acceleration=PLANT_MAX_ACCEL,
         singularity_constraint_enabled=True,
@@ -1607,13 +1754,98 @@ def production_second_order_config() -> SecondOrderMpcConfig:
     )
 
 
+def stable_contour_second_order_candidates(
+        base_config: Optional[SecondOrderMpcConfig] = None,
+) -> List[SecondOrderMpcConfig]:
+    """Compact coordinate search for the 2 Hz drawing-stability problem.
+
+    The search deliberately keeps the physical velocity/acceleration limits
+    fixed.  It removes the inconsistent stage-wise derivative projection,
+    restores enough lag weight to prevent the reference from running away, and
+    scans only the parameters that affect geometric contour tracking.
+    """
+    base = production_second_order_config() if base_config is None else base_config
+    common = dict(
+        feasible_reference_projection=False,
+        cartesian_acceleration_weight=0.0,
+        joint_acceleration_weight=0.0,
+    )
+    candidates = [
+        # Exact position-only baseline, retained as a hard A/B anchor.
+        replace(
+            base,
+            contour_tracking_enabled=False,
+            cartesian_velocity_weight=0.0,
+            terminal_cartesian_velocity_weight=0.0,
+            **common,
+        ),
+        # Current production candidate, so regression is visible in one report.
+        base,
+    ]
+
+    # First restore progress/lag authority while preserving contour priority.
+    for lag_ratio in (0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 1.00):
+        candidates.append(replace(
+            base,
+            contour_tracking_enabled=True,
+            contour_position_weight=5000.0,
+            lag_position_weight=5000.0 * lag_ratio,
+            terminal_contour_position_weight=500.0,
+            terminal_lag_position_weight=500.0 * lag_ratio,
+            cartesian_velocity_weight=0.0,
+            terminal_cartesian_velocity_weight=0.0,
+            **common,
+        ))
+
+    # Coordinate scans around the balanced lag candidate.  This avoids a large
+    # Cartesian product while still exposing contour authority and derivative
+    # feed-forward as independent causes.
+    for contour_weight in (2500.0, 10000.0, 20000.0):
+        candidates.append(replace(
+            base,
+            contour_tracking_enabled=True,
+            contour_position_weight=contour_weight,
+            lag_position_weight=0.5 * contour_weight,
+            terminal_contour_position_weight=0.1 * contour_weight,
+            terminal_lag_position_weight=0.05 * contour_weight,
+            cartesian_velocity_weight=0.0,
+            terminal_cartesian_velocity_weight=0.0,
+            **common,
+        ))
+    for velocity_weight in (0.25, 0.5, 1.0):
+        candidates.append(replace(
+            base,
+            contour_tracking_enabled=True,
+            contour_position_weight=5000.0,
+            lag_position_weight=2500.0,
+            terminal_contour_position_weight=500.0,
+            terminal_lag_position_weight=250.0,
+            cartesian_velocity_weight=velocity_weight,
+            terminal_cartesian_velocity_weight=velocity_weight,
+            **common,
+        ))
+    unique = {
+        json.dumps(asdict(cfg), sort_keys=True, default=str): cfg
+        for cfg in candidates
+    }
+    return sorted(unique.values(), key=lambda cfg: (
+        cfg.contour_tracking_enabled,
+        cfg.contour_position_weight,
+        cfg.lag_position_weight,
+        cfg.cartesian_velocity_weight,
+        cfg.feasible_reference_projection,
+    ))
+
+
 def second_order_tune(ctx: Context, output_dir: Path, max_combinations: Optional[int],
                       quiet_build: bool, base_period_sec: Optional[float] = None,
                       ee_period_sec: Optional[float] = None,
                       horizons: Sequence[int] = (10,),
                       dq_ff_compensation: float = 1.0,
                       guard_rule: str = 'legacy',
-                      so_velocity_source: str = 'measured') -> Path:
+                      so_velocity_source: str = 'measured',
+                      plant_gain: float = PLANT_FF_GAIN,
+                      stable_contour: bool = False) -> Path:
     """用 T0 闭环语义评估二阶候选(权重 × horizon;发布接口可带逆增益补偿)。"""
     scenario = make_moving_base_scenario(
         name="moving_base_circle_second_order_tune",
@@ -1634,22 +1866,32 @@ def second_order_tune(ctx: Context, output_dir: Path, max_combinations: Optional
     with suppress_native_output(quiet_build):
         reference = evaluate_scenario(
             scenario, SecondOrderMpcIK(config=baseline_config), ctx,
-            baseline_config.horizon_steps)
-    configs = [replace(c, horizon_steps=int(h))
-               for h in horizons
-               for c in second_order_config_candidates(baseline_config)]
+            baseline_config.horizon_steps,
+            plant_gain=plant_gain,
+            so_velocity_source=so_velocity_source,
+            activate_contour=stable_contour)
+    candidate_configs = (
+        stable_contour_second_order_candidates(baseline_config)
+        if stable_contour else second_order_config_candidates(baseline_config))
+    configs = [
+        replace(c, horizon_steps=int(h))
+        for h in horizons for c in candidate_configs
+    ]
     configs = maybe_limit(configs, max_combinations)
     records = []
     output_dir.mkdir(parents=True, exist_ok=True)
     for index, config in enumerate(configs, start=1):
         print(
             f"[second-order] {index}/{len(configs)} "
+            f"N={config.horizon_steps} contour={int(config.contour_tracking_enabled)} "
             f"pw={config.position_weight:g} tpw={config.terminal_position_weight:g} "
+            f"cw={config.contour_position_weight:g} lw={config.lag_position_weight:g} "
+            f"cv={config.cartesian_velocity_weight:g} "
             f"vw={config.joint_velocity_weight:g} aw={config.joint_acceleration_weight:g} "
             f"cpw={config.current_posture_weight:g} zpw={config.center_posture_weight:g}",
             flush=True)
         weights = SecondOrderWeightSet.from_config(config)
-        if (weights == baseline_weights and config.horizon_steps == baseline_config.horizon_steps
+        if (config == baseline_config
                 and dq_ff_compensation == 1.0 and guard_rule == 'legacy'):
             metrics = reference
         else:
@@ -1659,13 +1901,32 @@ def second_order_tune(ctx: Context, output_dir: Path, max_combinations: Optional
                     acados_build_dir=f'/tmp/windylab_acados_so_tune_h{config.horizon_steps}'))
                 metrics = evaluate_scenario(
                     scenario, solver, ctx, config.horizon_steps,
+                    plant_gain=plant_gain,
                     dq_ff_compensation=dq_ff_compensation, guard_rule=guard_rule,
-                    so_velocity_source=so_velocity_source)
+                    so_velocity_source=so_velocity_source,
+                    activate_contour=stable_contour)
         failures, notes = hard_gate_reasons(
             metrics, scenario, reference, references_enabled=True)
         records.append({
             "weights": asdict(weights),
+            "drawing_weights": {
+                "contour_tracking_enabled": config.contour_tracking_enabled,
+                "contour_position_weight": config.contour_position_weight,
+                "lag_position_weight": config.lag_position_weight,
+                "terminal_contour_position_weight":
+                    config.terminal_contour_position_weight,
+                "terminal_lag_position_weight":
+                    config.terminal_lag_position_weight,
+                "cartesian_velocity_weight":
+                    config.cartesian_velocity_weight,
+                "terminal_cartesian_velocity_weight":
+                    config.terminal_cartesian_velocity_weight,
+                "feasible_reference_projection":
+                    config.feasible_reference_projection,
+            },
             "fixed_structure": {
+                "plant_gain": plant_gain,
+                "stable_contour": stable_contour,
                 "dq_ff_compensation": dq_ff_compensation,
                 "guard_rule": guard_rule,
                 "so_velocity_source": so_velocity_source,
@@ -1689,7 +1950,10 @@ def second_order_tune(ctx: Context, output_dir: Path, max_combinations: Optional
             "ee_period_sec": scenario.ee_period_sec,
             "evaluation_period_sec": scenario.eval_period(),
         },
-        "candidate_policy": "baseline + one-weight-at-a-time x{0.5,2.0}",
+        "candidate_policy": (
+            "2Hz contour/lag/velocity coordinate search"
+            if stable_contour
+            else "baseline + one-weight-at-a-time x{0.5,2.0}"),
         "candidate_count": len(records),
         "results": records,
     }
@@ -1879,6 +2143,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--second-order-tune", action="store_true",
                         help="二阶 NMPC 权重筛选:固定时域/速度/加速度/奇异性约束，"
                              "对六项权重做基线+单变量扫描")
+    parser.add_argument(
+        "--second-order-stable-contour", action="store_true",
+        help="二阶筛选改用真实轮廓切线和法向优先评分，搜索 horizon/轮廓/"
+             "滞后/笛卡尔速度权重；硬件速度与加速度约束保持不变")
     parser.add_argument("--second-order-base-period", type=float, default=None,
                         help="二阶筛选使用的基座周期；低速 A/B 对齐可传 4.0")
     parser.add_argument("--second-order-horizons", type=str, default="10",
@@ -1912,7 +2180,9 @@ def main() -> int:
             horizons=tuple(int(x) for x in args.second_order_horizons.split(',')),
             dq_ff_compensation=args.second_order_dq_ff_compensation,
             guard_rule=args.second_order_guard_rule,
-            so_velocity_source=args.second_order_velocity_source)
+            so_velocity_source=args.second_order_velocity_source,
+            plant_gain=args.plant_gain,
+            stable_contour=args.second_order_stable_contour)
         return 0
 
     if args.rate_compare:

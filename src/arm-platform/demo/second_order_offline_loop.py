@@ -64,8 +64,25 @@ def run(cfg_name: str, warmup_periods=1.0, steady_periods=2.0, dq_mode='model',
         times = T.target_times(t, N, lead=lead)
         targets = np.array([sc.position_fn(float(ti)) for ti in times])
         rots = np.array([sc.rotation_fn(float(ti)) for ti in times])
+        h = min(0.005, 0.5 * T.CONTROL_DT)
+        target_velocities = np.array([
+            (sc.position_fn(float(ti) + h) - sc.position_fn(float(ti) - h))
+            / (2.0 * h)
+            for ti in times
+        ])
+        target_accelerations = np.array([
+            (
+                sc.position_fn(float(ti) + h)
+                - 2.0 * sc.position_fn(float(ti))
+                + sc.position_fn(float(ti) - h)
+            ) / (h * h)
+            for ti in times
+        ])
         q_next, dq_next, ok, info = solver.step(
-            targets, q_meas, dq_meas, warm_start=warm_start, target_rotation=rots)
+            targets, q_meas, dq_meas, warm_start=warm_start,
+            target_rotation=rots,
+            target_velocity=target_velocities,
+            target_acceleration=target_accelerations)
         warm_start = info.get('trajectory')
         if not info.get('command_usable', ok):
             usable_fail += 1

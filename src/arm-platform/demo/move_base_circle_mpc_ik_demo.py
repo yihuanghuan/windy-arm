@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """基座晃动场景下的 ACADOS MPC 末端轨迹跟踪 demo。"""
 
+from collections import deque
 import csv
 import dataclasses
 import gc
 import json
 import math
 import os
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -36,7 +38,8 @@ JOINT_LIMIT_WARN_MARGIN_DEG = 5.0
 MAX_MARKER_POINTS = 12000
 RESET_TOLERANCE_RAD = math.radians(2.0)
 RESET_HOLD_SEC = 1.0
-RECOMMENDED_CONTROLLER_MAX_VELOCITY_RAD_S = 1.0
+# 与 student_arm.launch.py max_velocity 默认一致(达妙 DM4340/RS05 规格下限 3.0)。
+RECOMMENDED_CONTROLLER_MAX_VELOCITY_RAD_S = 3.0
 # 阶段1C RTI per-iter 诊断在 loop CSV 里预留的迭代列数。当前 acados_rti_iterations=3,
 # 完整覆盖。**若未来把 RTI 次数提高到 >MAX_RTI_LOG,超出部分的 per-iter status/terminal_error
 # 不会进 CSV(会被截断)——届时需同步调大本常量,勿误以为 per-iter 列已记录全部迭代。**
@@ -53,7 +56,8 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.declare_parameter('solver_backend', 'acados')
         self.declare_parameter('solver_model', 'second_order')
         self.declare_parameter('horizon_steps', 2)
-        self.declare_parameter('max_joint_step', 0.02)
+        # max_joint_step = second_order_max_velocity * dt (2.0*0.02)。
+        self.declare_parameter('max_joint_step', 0.04)
         self.declare_parameter('terminal_tolerance', 0.01)
         self.declare_parameter('orientation_weight', 0.09375)
         self.declare_parameter('terminal_orientation_weight', 1.25)
@@ -64,15 +68,46 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.declare_parameter('joint_delta_change_weight', 0.25)
         self.declare_parameter('current_posture_weight', 0.01)
         self.declare_parameter('center_posture_weight', 0.002)
+        # 真实 whole-task A/B: N=20 使完整控制周期 P95=26.7ms，超过
+        # 50Hz 的 20ms 截止期并导致 /joint_states 排队；N=10 恢复实时基线。
         self.declare_parameter('second_order_horizon_steps', 10)
         self.declare_parameter('second_order_position_weight', 5000.0)
         self.declare_parameter('second_order_terminal_position_weight', 500.0)
+        # 外部仿射结构保留作显式 A/B。2 Hz whole-task 自动调参表明，把逐级
+        # 投影后的导数与原始定时位置同时作为目标会制造周期冲突，因此生产默认
+        # 只启用位置/轮廓代价；零导数权重时后端会跳过无效线性化。
+        self.declare_parameter('second_order_cartesian_residual_mode', 'external_affine')
+        self.declare_parameter('second_order_cartesian_velocity_weight', 0.0)
+        self.declare_parameter('second_order_cartesian_acceleration_weight', 0.0)
+        self.declare_parameter(
+            'second_order_terminal_cartesian_velocity_weight', 0.0)
+        self.declare_parameter('second_order_feasible_reference_projection', False)
+        self.declare_parameter('second_order_feasible_reference_damping', 1e-4)
+        # 轮廓代价保留作显式 A/B。N=20 实测被调度超时污染，生产默认先回到
+        # 已真实验证的 position-only N=10；待 N=10 轮廓候选完成真机 A/B 再启用。
+        self.declare_parameter('second_order_contour_tracking_enabled', False)
+        self.declare_parameter('second_order_contour_position_weight', 5000.0)
+        self.declare_parameter('second_order_lag_position_weight', 750.0)
+        self.declare_parameter('second_order_transition_position_weight', 5000.0)
+        self.declare_parameter(
+            'second_order_terminal_contour_position_weight', 500.0)
+        self.declare_parameter('second_order_terminal_lag_position_weight', 75.0)
+        self.declare_parameter(
+            'second_order_terminal_transition_position_weight', 500.0)
+        self.declare_parameter('reference_derivative_dt_sec', 0.005)
         self.declare_parameter('second_order_velocity_weight', 0.02)
+        # qddot_ff 与笛卡尔加速度残差均保留为显式 A/B；当前 2 Hz 固定约束
+        # 消融中非零权重会放大横向误差，因此生产默认暂为 0。
         self.declare_parameter('second_order_acceleration_weight', 0.0)
+        self.declare_parameter('second_order_terminal_velocity_weight', 0.0)
         self.declare_parameter('second_order_current_posture_weight', 0.01)
         self.declare_parameter('second_order_center_posture_weight', 0.002)
-        self.declare_parameter('second_order_max_velocity', 1.0)
-        self.declare_parameter('second_order_max_acceleration', 5.0)
+        # 20260726: 限幅按真实电机规格放开(达妙 DM4340 3rad/s / RS05 5rad/s,
+        # 峰值扭矩对本臂惯量可支撑 >>15rad/s²)。v=2.0/a=15 留出 plant 侧
+        # (launch 默认 3.0/20.0) 的执行与逆变换余量。旧 1.0/5.0 使加速度约束
+        # 在 60-73% 预测变量上活跃,是 2Hz 螺旋残差的饱和失真来源。
+        self.declare_parameter('second_order_max_velocity', 2.0)
+        self.declare_parameter('second_order_max_acceleration', 15.0)
         self.declare_parameter('second_order_min_jacobian_sigma', 0.05)
         # 二阶 dq 前馈逆增益补偿: 发布 dq_next/该值(clip 到 ±max_velocity)。
         # 1.0=关(现状);0.7=补偿执行器 velocity_feedforward_gain 衰减。
@@ -80,12 +115,72 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.declare_parameter('second_order_dq_ff_compensation', 1.0)
         # 全速时延补偿(离线/真机 h=10 时延实验归因):
         #   reference_lead: 二阶参考额外前移(默认继承 reference_lead_steps;2=多补一拍求解/发布时延)
-        #   state_prediction: 用 dq 把 x0 从反馈时刻前推到求解时刻(反馈陈旧补偿,上限 2*dt)
+        #   state_prediction: 用时间戳状态和上一拍已执行 ddq 把 x0 前推到预计命令生效时刻。
         self.declare_parameter('second_order_reference_lead_steps', -1)
         self.declare_parameter('second_order_state_prediction', False)
-        # x0 速度来源: measured=实测 dq(默认) | commanded=上一拍已发布的模型速度
-        # (位置仍实测闭环;用于高速下测速噪声/延迟污染双积分器状态的对照实验)。
+        # 已发布模型速度与二阶预测状态一致；实测速度和状态外推保留作显式实验，
+        # 不作为未完成闭环辨识前的生产默认。
         self.declare_parameter('second_order_velocity_source', 'commanded')
+        # 时间戳驱动的命令生效时刻预测。发布延迟用历史 EWMA，反馈时间用
+        # joint_states header；二者与可配置执行器延迟共同决定 x0/参考的前移量。
+        # 20260726: 默认开启。实测执行链: 发布 P50=8.75ms + plant 100Hz 采样保持
+        # 平均 5ms;参考时刻与 x0 均对齐到预计命令生效时刻,消除确定性 2Hz 相位差。
+        self.declare_parameter('latency_compensation_enabled', True)
+        self.declare_parameter('latency_nominal_publish_ms', 9.0)
+        self.declare_parameter('latency_publish_ewma_alpha', 0.15)
+        self.declare_parameter('latency_actuator_delay_ms', 5.0)
+        self.declare_parameter('latency_prediction_max_ms', 60.0)
+        # 20260726 Smith 预测器: 用已知 plant 执行律(smooth_position_controller.cc
+        # 速度前馈分支)+已发布在途命令队列,把 x0 从 joint_states 时间戳前推到
+        # 预计命令生效时刻。替代 second_order_state_prediction(后者用 ddq0 外推,
+        # 与 plant 实际执行不一致,离线闭环证实会正反馈进加速度饱和而发散)。
+        self.declare_parameter('smith_predictor_enabled', True)
+        # 命令逆变换: 已知 plant 两个 10ms 子步的线性执行律,解析求发布速度 v_c,
+        # 使 plant 在下一控制拍末恰好落在求解器计划点 q_next 上:
+        #   v1 = (q_next-q0)/(h*(2-h/tau)),  v_c = (v1-(q_next-q0)/tau)/gain
+        # 取代"直接发布区间末速度 dq_{k+1}"(后者含半拍相位超前+位置反馈项增益)。
+        self.declare_parameter('command_inversion_enabled', True)
+        # plant 执行律常量,须与 student_arm.launch.py 实际启动参数一致。
+        self.declare_parameter('plant_velocity_feedforward_gain', 1.0)
+        self.declare_parameter('plant_position_feedback_tau', 0.15)
+        self.declare_parameter('plant_feedback_velocity_limit', 0.4)
+        self.declare_parameter('plant_max_velocity', 3.0)
+        self.declare_parameter('plant_max_acceleration', 20.0)
+        self.declare_parameter('plant_control_substep_dt', 0.01)
+        # --- 基座不确定性实验(第1/2级): 真值=名义+有界扰动 ---
+        # 幅值/种子须与 trajectory_visualizer_demo(真值 KPI 端)一致。
+        # base_belief_mode 决定本控制器"知道"多少:
+        #   nominal   只知名义轨迹(第1级: 误差下界=扰动本身);
+        #   truth     精确知道扰动(上界对照, 默认——amp=0 时与现状完全一致);
+        #   estimated 逐拍模拟无人机状态估计: 真值(t-延迟)+高斯噪声经一阶低通,
+        #             预测域内保持常值(第2级)。
+        self.declare_parameter('base_disturbance_amplitude_m', 0.0)
+        self.declare_parameter('base_disturbance_seed', 0)
+        self.declare_parameter('base_belief_mode', 'truth')
+        self.declare_parameter('base_estimator_noise_std_m', 0.0)
+        self.declare_parameter('base_estimator_delay_ms', 0.0)
+        self.declare_parameter('base_estimator_lpf_hz', 10.0)
+        self.declare_parameter('base_estimator_seed', 1)
+        # Deadline miss 恢复：迟到拍不能继续复用只推进了一个 dt 的 warm start /
+        # commanded dq。阈值 1.5*dt=30ms，只影响异常拍，不改变正常控制。
+        self.declare_parameter('late_tick_recovery_enabled', True)
+        self.declare_parameter('late_tick_recovery_factor', 1.5)
+        # 周期误差学习前馈（实验开关）。基座扰动是已知相位的 2 Hz 周期运动；
+        # 用反馈 world 末端误差在线学习 sin/cos 系数，并把补偿加到 NMPC
+        # 位置参考。它不增加预测域、不改变任何关节速度/加速度硬约束。
+        self.declare_parameter('periodic_error_learning_enabled', False)
+        self.declare_parameter('periodic_error_learning_gain', 0.5)
+        self.declare_parameter(
+            'periodic_error_correction_limit_m', 0.005)
+        self.declare_parameter(
+            'periodic_error_update_limit_m', 0.015)
+        self.declare_parameter(
+            'periodic_error_min_samples_per_cycle', 8)
+        # 可加载一次独立标定得到的 3x2 world 系 [sin,cos] 系数。freeze=true
+        # 时只使用固定前馈，不在 whole 单次路径中被非周期绘图误差污染。
+        self.declare_parameter(
+            'periodic_error_initial_coefficients', [0.0] * 6)
+        self.declare_parameter('periodic_error_learning_freeze', False)
         # 控制频率(优化①): 默认 50Hz 生产;100Hz 实验须配 max_joint_step:=0.01
         # (= max_velocity * dt,越界会告警)。求解 2-6ms,10ms 周期可容纳。
         self.declare_parameter('control_rate_hz', 50.0)
@@ -102,17 +197,20 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.declare_parameter('time_scaling_stop_error_m', 0.030)
         self.declare_parameter('command_fk_step_warn_m', 0.006)
         # 阶段1E: 期望运动感知守卫。
-        #   legacy_fixed_step : 生产默认(旧 6mm 固定阈值守卫,行为与阶段1E之前逐拍一致);
+        #   legacy_fixed_step : 旧 6mm 固定阈值守卫,行为与阶段1E之前逐拍一致;
         #   expected_shadow   : 拦截仍完全用 legacy;额外只记录 expected-residual 诊断,
         #                       绝不改变 q/dq/warm_start/状态机;
-        #   expected_residual : 新守卫主动拦截/投影(真实 A/B 验收通过前不得设为生产默认)。
+        #   expected_residual : 以上一接受命令为锚点的残差拦截/投影;
+        #   state_safe_filter : 生产默认,以预计生效状态为锚点并提供主动 backup。
         # 阈值来源: analyze_phase1e_guard.py 对阶段1D 三轮真实 D0(gain=0.7)数据的推导
         # (data/ab_runs_1e/phase1e_d0_residual_analysis.json):
         #   r_abs = ceil(max(2×P99.9=6.74mm, 1.5×max=5.82mm, 0.5mm)) = 6.8mm;
         #   r_rel = 0.5(D0 单速工作点不可辨识速度比例项,建模裕量,多速度数据后重推);
         #   r_acc = 1.0(解析曲率覆盖项,D0 工况贡献≈0.08mm)。
         # D0 回放: 误拦截 0,最小裕量 4.27mm,max r_allow 8.23mm(20mm 注入跳变 2.4x 拦截余量)。
-        self.declare_parameter('guard_mode', 'expected_residual')
+        # state_safe_filter: 以预测的当前状态为锚点，超限时沿当前状态投影；
+        # 若 MPC 方向仍不可行，则用阻尼最小二乘主动维持 world 目标，避免 hold 死锁。
+        self.declare_parameter('guard_mode', 'state_safe_filter')
         self.declare_parameter('guard_residual_abs_m', 0.0068)
         self.declare_parameter('guard_residual_relative_gain', 0.5)
         self.declare_parameter('guard_residual_accel_gain', 1.0)
@@ -120,9 +218,15 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.declare_parameter('guard_projection_min_lambda', 0.05)
         self.declare_parameter('guard_projection_max_iterations', 8)
         self.declare_parameter('guard_max_consecutive_blocks', 25)
+        self.declare_parameter('guard_backup_damping', 0.03)
+        self.declare_parameter('guard_backup_position_gain', 0.8)
         # 生产默认值(阶段 1A/1B/1C 均已 Codex 正式验收):普通启动直接用已验收配置。
         # reference_lead_steps=1(阶段1A 参考前移)/=0 旧语义仅回归与 A/B 用。
         self.declare_parameter('reference_lead_steps', 1)
+        # 基座解析位姿与末端绘图路径可使用不同的预瞄。-1=继承
+        # reference_lead_steps；显式 2 可在保持末端路径 1 拍预瞄时，单独补偿
+        # 2 Hz 基座/执行链相位滞后。
+        self.declare_parameter('base_reference_lead_steps', -1)
         # dq_prev_mode=measured_delta(阶段1B,x0 用上一控制周期实测执行增量)为生产默认;
         #   zero(x0=[q,0])仅回归与 A/B baseline 用。
         self.declare_parameter('dq_prev_mode', 'measured_delta')
@@ -175,10 +279,47 @@ class MoveBaseCircleMpcIkDemo(Node):
             self.get_parameter('second_order_position_weight').value)
         self.second_order_terminal_position_weight = float(
             self.get_parameter('second_order_terminal_position_weight').value)
+        self.second_order_cartesian_residual_mode = str(
+            self.get_parameter('second_order_cartesian_residual_mode').value)
+        self.second_order_cartesian_velocity_weight = float(
+            self.get_parameter('second_order_cartesian_velocity_weight').value)
+        self.second_order_cartesian_acceleration_weight = float(
+            self.get_parameter('second_order_cartesian_acceleration_weight').value)
+        self.second_order_terminal_cartesian_velocity_weight = float(
+            self.get_parameter(
+                'second_order_terminal_cartesian_velocity_weight').value)
+        self.second_order_feasible_reference_projection = bool(
+            self.get_parameter(
+                'second_order_feasible_reference_projection').value)
+        self.second_order_feasible_reference_damping = float(
+            self.get_parameter(
+                'second_order_feasible_reference_damping').value)
+        self.second_order_contour_tracking_enabled = bool(
+            self.get_parameter(
+                'second_order_contour_tracking_enabled').value)
+        self.second_order_contour_position_weight = float(
+            self.get_parameter('second_order_contour_position_weight').value)
+        self.second_order_lag_position_weight = float(
+            self.get_parameter('second_order_lag_position_weight').value)
+        self.second_order_transition_position_weight = float(
+            self.get_parameter('second_order_transition_position_weight').value)
+        self.second_order_terminal_contour_position_weight = float(
+            self.get_parameter(
+                'second_order_terminal_contour_position_weight').value)
+        self.second_order_terminal_lag_position_weight = float(
+            self.get_parameter(
+                'second_order_terminal_lag_position_weight').value)
+        self.second_order_terminal_transition_position_weight = float(
+            self.get_parameter(
+                'second_order_terminal_transition_position_weight').value)
+        self.reference_derivative_dt_sec = float(
+            self.get_parameter('reference_derivative_dt_sec').value)
         self.second_order_velocity_weight = float(
             self.get_parameter('second_order_velocity_weight').value)
         self.second_order_acceleration_weight = float(
             self.get_parameter('second_order_acceleration_weight').value)
+        self.second_order_terminal_velocity_weight = float(
+            self.get_parameter('second_order_terminal_velocity_weight').value)
         self.second_order_current_posture_weight = float(
             self.get_parameter('second_order_current_posture_weight').value)
         self.second_order_center_posture_weight = float(
@@ -197,6 +338,84 @@ class MoveBaseCircleMpcIkDemo(Node):
             self.get_parameter('second_order_state_prediction').value)
         self.second_order_velocity_source = str(
             self.get_parameter('second_order_velocity_source').value)
+        self.latency_compensation_enabled = bool(
+            self.get_parameter('latency_compensation_enabled').value)
+        self.latency_nominal_publish_sec = 1e-3 * float(
+            self.get_parameter('latency_nominal_publish_ms').value)
+        self.latency_publish_ewma_alpha = float(
+            self.get_parameter('latency_publish_ewma_alpha').value)
+        self.latency_actuator_delay_sec = 1e-3 * float(
+            self.get_parameter('latency_actuator_delay_ms').value)
+        self.latency_prediction_max_sec = 1e-3 * float(
+            self.get_parameter('latency_prediction_max_ms').value)
+        self.smith_predictor_enabled = bool(
+            self.get_parameter('smith_predictor_enabled').value)
+        self.command_inversion_enabled = bool(
+            self.get_parameter('command_inversion_enabled').value)
+        self.plant_velocity_feedforward_gain = float(
+            self.get_parameter('plant_velocity_feedforward_gain').value)
+        self.plant_position_feedback_tau = float(
+            self.get_parameter('plant_position_feedback_tau').value)
+        self.plant_feedback_velocity_limit = float(
+            self.get_parameter('plant_feedback_velocity_limit').value)
+        self.plant_max_velocity = float(
+            self.get_parameter('plant_max_velocity').value)
+        self.plant_max_acceleration = float(
+            self.get_parameter('plant_max_acceleration').value)
+        self.plant_control_substep_dt = float(
+            self.get_parameter('plant_control_substep_dt').value)
+        if (self.plant_velocity_feedforward_gain <= 0.0
+                or self.plant_position_feedback_tau <= 0.0
+                or self.plant_feedback_velocity_limit < 0.0
+                or self.plant_max_velocity <= 0.0
+                or self.plant_max_acceleration <= 0.0
+                or self.plant_control_substep_dt <= 0.0):
+            raise ValueError('plant_* 执行律参数必须为正(见 student_arm.launch.py)')
+        self.base_disturbance_amplitude_m = float(
+            self.get_parameter('base_disturbance_amplitude_m').value)
+        self.base_disturbance_seed = int(
+            self.get_parameter('base_disturbance_seed').value)
+        self.base_belief_mode = str(
+            self.get_parameter('base_belief_mode').value).strip().lower()
+        self.base_estimator_noise_std_m = float(
+            self.get_parameter('base_estimator_noise_std_m').value)
+        self.base_estimator_delay_sec = 1e-3 * float(
+            self.get_parameter('base_estimator_delay_ms').value)
+        self.base_estimator_lpf_hz = float(
+            self.get_parameter('base_estimator_lpf_hz').value)
+        self.base_estimator_seed = int(
+            self.get_parameter('base_estimator_seed').value)
+        if self.base_belief_mode not in ('nominal', 'truth', 'estimated'):
+            raise ValueError(
+                "base_belief_mode 必须是 'nominal'/'truth'/'estimated'")
+        if (self.base_disturbance_amplitude_m < 0.0
+                or self.base_estimator_noise_std_m < 0.0
+                or self.base_estimator_delay_sec < 0.0
+                or self.base_estimator_lpf_hz < 0.0):
+            raise ValueError('base 扰动/估计器参数必须 >= 0')
+        self.late_tick_recovery_enabled = bool(
+            self.get_parameter('late_tick_recovery_enabled').value)
+        self.late_tick_recovery_factor = float(
+            self.get_parameter('late_tick_recovery_factor').value)
+        self.periodic_error_learning_enabled = bool(
+            self.get_parameter('periodic_error_learning_enabled').value)
+        self.periodic_error_learning_gain = float(
+            self.get_parameter('periodic_error_learning_gain').value)
+        self.periodic_error_correction_limit_m = float(
+            self.get_parameter(
+                'periodic_error_correction_limit_m').value)
+        self.periodic_error_update_limit_m = float(
+            self.get_parameter('periodic_error_update_limit_m').value)
+        self.periodic_error_min_samples_per_cycle = int(
+            self.get_parameter(
+                'periodic_error_min_samples_per_cycle').value)
+        self.periodic_error_initial_coefficients = np.asarray(
+            self.get_parameter(
+                'periodic_error_initial_coefficients').value,
+            dtype=float,
+        )
+        self.periodic_error_learning_freeze = bool(
+            self.get_parameter('periodic_error_learning_freeze').value)
         self.trajectory_shape = str(
             self.get_parameter('trajectory_shape').value).strip().lower()
         self.trajectory_time_scale = float(
@@ -235,7 +454,13 @@ class MoveBaseCircleMpcIkDemo(Node):
             self.get_parameter('guard_projection_max_iterations').value)
         self.guard_max_consecutive_blocks = int(
             self.get_parameter('guard_max_consecutive_blocks').value)
+        self.guard_backup_damping = float(
+            self.get_parameter('guard_backup_damping').value)
+        self.guard_backup_position_gain = float(
+            self.get_parameter('guard_backup_position_gain').value)
         self.reference_lead_steps = int(self.get_parameter('reference_lead_steps').value)
+        self.base_reference_lead_steps = int(
+            self.get_parameter('base_reference_lead_steps').value)
         self.dq_prev_mode = str(self.get_parameter('dq_prev_mode').value)
         self.rti_iteration_mode = str(self.get_parameter('rti_iteration_mode').value)
         self.record_loop_csv = bool(self.get_parameter('record_loop_csv').value)
@@ -247,6 +472,9 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.provenance_json = str(self.get_parameter('provenance_json').value)
         if self.reference_lead_steps < 0:
             raise ValueError('reference_lead_steps must be >= 0')
+        if self.base_reference_lead_steps < -1:
+            raise ValueError(
+                'base_reference_lead_steps must be >= -1 (-1=继承)')
         if self.dq_prev_mode not in ('zero', 'measured_delta'):
             raise ValueError("dq_prev_mode must be 'zero' or 'measured_delta'")
         if self.rti_iteration_mode not in ('legacy_early_exit', 'fixed_iterations'):
@@ -262,15 +490,75 @@ class MoveBaseCircleMpcIkDemo(Node):
             raise ValueError('second_order_reference_lead_steps must be >= -1 (-1=继承)')
         if self.second_order_velocity_source not in ('measured', 'commanded'):
             raise ValueError("second_order_velocity_source must be 'measured'|'commanded'")
-        if min(
+        if self.second_order_cartesian_residual_mode not in (
+                'external_affine', 'nonlinear'):
+            raise ValueError(
+                "second_order_cartesian_residual_mode must be "
+                "'external_affine'|'nonlinear'")
+        if not (
+            self.latency_nominal_publish_sec >= 0.0
+            and 0.0 < self.latency_publish_ewma_alpha <= 1.0
+            and self.latency_actuator_delay_sec >= 0.0
+            and self.latency_prediction_max_sec > 0.0
+        ):
+            raise ValueError('latency compensation parameters are invalid')
+        if (
+            not math.isfinite(self.late_tick_recovery_factor)
+            or self.late_tick_recovery_factor < 1.0
+        ):
+            raise ValueError(
+                'late_tick_recovery_factor must be finite and >= 1.0')
+        if (
+            not math.isfinite(self.periodic_error_learning_gain)
+            or not 0.0 < self.periodic_error_learning_gain <= 1.0
+            or not math.isfinite(self.periodic_error_correction_limit_m)
+            or self.periodic_error_correction_limit_m <= 0.0
+            or not math.isfinite(self.periodic_error_update_limit_m)
+            or self.periodic_error_update_limit_m <= 0.0
+            or self.periodic_error_min_samples_per_cycle < 1
+            or self.periodic_error_initial_coefficients.shape != (6,)
+            or not np.all(np.isfinite(
+                self.periodic_error_initial_coefficients))
+        ):
+            raise ValueError(
+                'periodic error learning requires gain in (0,1], positive '
+                'finite correction/update limits, and min samples >= 1')
+        if (
+            self.periodic_error_learning_enabled
+            and self.online_time_scaling_enabled
+        ):
+            raise ValueError(
+                'periodic_error_learning_enabled currently requires '
+                'online_time_scaling_enabled:=false')
+        second_order_weights = np.asarray((
             self.second_order_position_weight,
             self.second_order_terminal_position_weight,
+            self.second_order_cartesian_velocity_weight,
+            self.second_order_cartesian_acceleration_weight,
+            self.second_order_terminal_cartesian_velocity_weight,
+            self.second_order_contour_position_weight,
+            self.second_order_lag_position_weight,
+            self.second_order_transition_position_weight,
+            self.second_order_terminal_contour_position_weight,
+            self.second_order_terminal_lag_position_weight,
+            self.second_order_terminal_transition_position_weight,
             self.second_order_velocity_weight,
             self.second_order_acceleration_weight,
+            self.second_order_terminal_velocity_weight,
             self.second_order_current_posture_weight,
             self.second_order_center_posture_weight,
-        ) < 0.0:
-            raise ValueError('second-order weights must be non-negative')
+        ), dtype=float)
+        if (
+            not np.all(np.isfinite(second_order_weights))
+            or np.any(second_order_weights < 0.0)
+        ):
+            raise ValueError('second-order weights must be finite and non-negative')
+        if (
+            not math.isfinite(self.second_order_feasible_reference_damping)
+            or self.second_order_feasible_reference_damping <= 0.0
+        ):
+            raise ValueError(
+                'second_order_feasible_reference_damping must be finite and > 0')
         if self.trajectory_time_scale <= 0.0 or self.base_motion_time_scale <= 0.0:
             raise ValueError('trajectory_time_scale/base_motion_time_scale must be > 0')
         if self.trajectory_shape not in traj.SUPPORTED_EE_TRAJECTORIES:
@@ -294,6 +582,15 @@ class MoveBaseCircleMpcIkDemo(Node):
             self.guard_residual_relative_gain, self.guard_residual_accel_gain,
             self.guard_projection_min_lambda, self.guard_projection_max_iterations,
             self.guard_max_consecutive_blocks)
+        if (
+            not math.isfinite(self.guard_backup_damping)
+            or self.guard_backup_damping <= 0.0
+            or not math.isfinite(self.guard_backup_position_gain)
+            or not 0.0 < self.guard_backup_position_gain <= 1.0
+        ):
+            raise ValueError(
+                'guard_backup_damping must be >0 and '
+                'guard_backup_position_gain must be in (0,1]')
 
         # 阶段0观测状态:loop CSV 懒打开,guard 计数,当前 tick 的 targets[0] 时刻。
         # 必须先于 _write_params_snapshot 初始化。
@@ -320,6 +617,9 @@ class MoveBaseCircleMpcIkDemo(Node):
         # 最近一帧 /joint_states 的时间信息:轨迹外反馈时序诊断(不进控制)。
         self._js_header_stamp_sec = float('nan')  # 消息 header.stamp(发送端时钟)
         self._js_recv_wall_sec = float('nan')     # 本机接收 wall 时间
+        # callback 写入完整不可变样本后再原子替换引用；控制线程永远不会混用
+        # 不同 JointState 消息里的 q/dq/stamp。
+        self._latest_feedback_sample = None
         # 实时时钟驱动的轨迹时间:不再用 self.t += dt 的合成时间(会因阻塞/补偿tick永久漂移)。
         # 轨迹时间原点在首个 track tick 的求解起点建立;此后 t_solve/t_publish 全部由真实
         # clock 相对该原点得到。origin 在所有阻塞准备(快照)完成之后才建立。
@@ -335,6 +635,32 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.dart_track_ticks = 0
         self.second_order_warm_start = None
         self._so_last_cmd_dq = None      # commanded 速度源: 上一拍实际接受的模型速度
+        self._so_last_cmd_ddq = None     # 生效时刻状态预测: 上一拍实际接受的模型加速度
+        # Smith 预测器: 最近实际发布的命令 (publish_wall_sec, q_pub, dq_pub)。
+        # 只在 _publish_joint_positions 内追加,保证与 plant 收到的命令一致
+        # (含 DART/守卫 hold/reset 阶段命令)。
+        self._cmd_history = deque(maxlen=16)
+        # /joint_states 传输延迟自检: recv_wall - header.stamp 持续 >30ms 说明
+        # DDS 投递异常(典型原因: /dev/shm 残留 fastrtps 段使 SHM 传输失效,
+        # 回落 UDP 心跳修复路径, 恒定 ~100ms 延迟)。陈旧反馈会让守卫大量投影、
+        # 基座补偿失效, 实测把 whole RMS 从 0.27mm 打到 20mm——必须显式报警。
+        self._transport_gap_bad_ticks = 0
+        self._transport_gap_warned = False
+        # 基座不确定性实验: estimated 模式的信念偏移状态与噪声源。
+        self._base_belief_offset = np.zeros(3)
+        self._base_estimator_rng = np.random.default_rng(
+            self.base_estimator_seed)
+        self._last_reference_kinematics = {}
+        self._publish_latency_ewma_sec = self.latency_nominal_publish_sec
+        self._last_application_delay_sec = 0.0
+        self._last_state_prediction_age_sec = 0.0
+        self.late_tick_recovery_count = 0
+        # key -> (3 world axes, sin/cos) coefficients. whole 模式按五个
+        # 工作面分组，避免正面/侧面/顶部的补偿相互污染。
+        self._periodic_error_coefficients = {}
+        self._periodic_error_accumulators = {}
+        self._last_periodic_learning_diag = {}
+        self._reset_periodic_error_learning()
         self.dq_prev_fallback_count = 0
         self.dq_prev_total_track_ticks = 0
 
@@ -349,12 +675,22 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.pub = self.create_publisher(JointState, '/student/joint_command', 10)
         self.actual_marker_pub = self.create_publisher(Marker, '/ee_traj_marker', 10)
         self.target_marker_pub = self.create_publisher(Marker, '/ee_target_traj_marker', 10)
-        self.create_subscription(JointState, '/joint_states', self._joint_states_callback, 10)
+        # depth=1 是控制反馈的正确语义：若 CPU 短暂繁忙，丢弃旧状态而不是
+        # 排队后让 NMPC 逐条处理过期样本。
+        self.create_subscription(
+            JointState,
+            '/joint_states',
+            self._joint_states_callback,
+            1,
+        )
 
         self.control_rate_hz = float(self.get_parameter('control_rate_hz').value)
         if not (10.0 <= self.control_rate_hz <= 200.0):
             raise ValueError('control_rate_hz must be in [10, 200]')
         self.dt = 1.0 / self.control_rate_hz
+        if not (0.0 < self.reference_derivative_dt_sec <= 0.5 * self.dt):
+            raise ValueError(
+                'reference_derivative_dt_sec must be in (0, 0.5*control_dt]')
         config = MpcIkConfig(
             horizon_steps=self.horizon_steps,
             control_dt=self.dt,
@@ -385,12 +721,39 @@ class MoveBaseCircleMpcIkDemo(Node):
                 solver_backend=self.solver_backend,
                 position_weight=self.second_order_position_weight,
                 terminal_position_weight=self.second_order_terminal_position_weight,
+                cartesian_residual_mode=(
+                    self.second_order_cartesian_residual_mode),
+                cartesian_velocity_weight=(
+                    self.second_order_cartesian_velocity_weight),
+                cartesian_acceleration_weight=(
+                    self.second_order_cartesian_acceleration_weight),
+                terminal_cartesian_velocity_weight=(
+                    self.second_order_terminal_cartesian_velocity_weight),
+                feasible_reference_projection=(
+                    self.second_order_feasible_reference_projection),
+                feasible_reference_damping=(
+                    self.second_order_feasible_reference_damping),
+                contour_tracking_enabled=(
+                    self.second_order_contour_tracking_enabled),
+                contour_position_weight=(
+                    self.second_order_contour_position_weight),
+                lag_position_weight=self.second_order_lag_position_weight,
+                transition_position_weight=(
+                    self.second_order_transition_position_weight),
+                terminal_contour_position_weight=(
+                    self.second_order_terminal_contour_position_weight),
+                terminal_lag_position_weight=(
+                    self.second_order_terminal_lag_position_weight),
+                terminal_transition_position_weight=(
+                    self.second_order_terminal_transition_position_weight),
                 orientation_weight=self.orientation_weight,
                 terminal_orientation_weight=self.terminal_orientation_weight,
                 current_posture_weight=self.second_order_current_posture_weight,
                 center_posture_weight=self.second_order_center_posture_weight,
                 joint_velocity_weight=self.second_order_velocity_weight,
                 joint_acceleration_weight=self.second_order_acceleration_weight,
+                terminal_joint_velocity_weight=(
+                    self.second_order_terminal_velocity_weight),
                 max_joint_velocity=self.second_order_max_velocity,
                 max_joint_acceleration=self.second_order_max_acceleration,
                 min_translation_jacobian_sigma=self.second_order_min_jacobian_sigma,
@@ -490,17 +853,51 @@ class MoveBaseCircleMpcIkDemo(Node):
         joint_names = [f'joint{i + 1}' for i in range(JOINT_COUNT)]
         if not all(name in name_to_pos for name in joint_names):
             return
-        self.q_measured = np.array([name_to_pos[name] for name in joint_names], dtype=float)
+        q_measured = np.array(
+            [name_to_pos[name] for name in joint_names], dtype=float)
         if len(msg.velocity) == len(msg.name):
             name_to_vel = dict(zip(msg.name, msg.velocity))
-            self.dq_measured = np.array(
+            dq_measured = np.array(
                 [name_to_vel[name] for name in joint_names], dtype=float)
         else:
-            self.dq_measured = None
+            dq_measured = None
         # 观测:记录该反馈的 header 时间戳(发送端时钟)与本机接收 wall 时间。
         stamp = msg.header.stamp
-        self._js_header_stamp_sec = float(stamp.sec) + float(stamp.nanosec) * 1e-9
-        self._js_recv_wall_sec = self.get_clock().now().nanoseconds * 1e-9
+        header_stamp_sec = float(stamp.sec) + float(stamp.nanosec) * 1e-9
+        recv_wall_sec = self.get_clock().now().nanoseconds * 1e-9
+        sample = (
+            q_measured,
+            dq_measured,
+            header_stamp_sec,
+            recv_wall_sec,
+        )
+        # Python 对象引用替换在 GIL 下是原子的。先发布完整 sample，再维护旧字段
+        # 以兼容 reset/可视化和已有离线测试。
+        self._latest_feedback_sample = sample
+        self.q_measured = q_measured
+        self.dq_measured = dq_measured
+        self._js_header_stamp_sec = header_stamp_sec
+        self._js_recv_wall_sec = recv_wall_sec
+
+    def _feedback_snapshot(self):
+        """Return one internally consistent JointState sample for a control tick."""
+        sample = getattr(self, '_latest_feedback_sample', None)
+        if sample is None:
+            q = getattr(self, 'q_measured', None)
+            dq = getattr(self, 'dq_measured', None)
+            return (
+                None if q is None else np.asarray(q, dtype=float).copy(),
+                None if dq is None else np.asarray(dq, dtype=float).copy(),
+                float(getattr(self, '_js_header_stamp_sec', float('nan'))),
+                float(getattr(self, '_js_recv_wall_sec', float('nan'))),
+            )
+        q, dq, stamp, recv = sample
+        return (
+            np.asarray(q, dtype=float).copy(),
+            None if dq is None else np.asarray(dq, dtype=float).copy(),
+            float(stamp),
+            float(recv),
+        )
 
     def _create_marker(self, topic_ns: str, marker_id: int, color, scale: float) -> Marker:
         marker = Marker()
@@ -550,7 +947,44 @@ class MoveBaseCircleMpcIkDemo(Node):
         pub.publish(marker)
 
     def _base_pose(self, t: float) -> np.ndarray:
-        return traj.base_pose(t / float(getattr(self, 'base_motion_time_scale', 1.0)))
+        scaled_t = t / float(getattr(self, 'base_motion_time_scale', 1.0))
+        pose = traj.base_pose(scaled_t)
+        amplitude = float(getattr(self, 'base_disturbance_amplitude_m', 0.0))
+        if amplitude > 0.0:
+            mode = getattr(self, 'base_belief_mode', 'truth')
+            if mode == 'truth':
+                pose = pose + traj.base_disturbance_offset(
+                    scaled_t, amplitude, self.base_disturbance_seed)
+            elif mode == 'estimated':
+                pose = pose + self._base_belief_offset
+            # 'nominal': 只知名义轨迹, 不加任何补偿
+        return pose
+
+    def _update_base_belief(self, t_solve: float):
+        """estimated 模式: 每拍一次估计器更新(延迟测量+噪声+一阶低通)。
+
+        预测域内所有 _base_pose 调用共享本拍的 Δ̂(常值保持), 与离线环
+        hifi_offline_loop 的估计器模型逐式一致。
+        """
+        if (self.base_disturbance_amplitude_m <= 0.0
+                or self.base_belief_mode != 'estimated'):
+            return
+        scale = float(getattr(self, 'base_motion_time_scale', 1.0))
+        measurement_time = (t_solve - self.base_estimator_delay_sec) / scale
+        measurement = traj.base_disturbance_offset(
+            measurement_time, self.base_disturbance_amplitude_m,
+            self.base_disturbance_seed)
+        if self.base_estimator_noise_std_m > 0.0:
+            measurement = measurement + self._base_estimator_rng.normal(
+                0.0, self.base_estimator_noise_std_m, 3)
+        if self.base_estimator_lpf_hz > 0.0:
+            alpha = 1.0 - math.exp(
+                -2.0 * math.pi * self.base_estimator_lpf_hz * self.dt)
+        else:
+            alpha = 1.0
+        self._base_belief_offset = (
+            self._base_belief_offset
+            + alpha * (measurement - self._base_belief_offset))
 
     def _base_rotation(
             self, t: float, path_t: float = None) -> np.ndarray:
@@ -587,7 +1021,8 @@ class MoveBaseCircleMpcIkDemo(Node):
         target_rotation_world = self._ee_trajectory_sample(path_t).rotation
         return base_rot_world.T @ target_rotation_world
 
-    def _compute_dq_prev(self, q_now, js_stamp_now):
+    def _compute_dq_prev(
+            self, q_now, js_stamp_now, dq_measured_snapshot=None):
         """计算本 tick 传给求解器的 previous_joint_delta(上一控制周期实际执行增量)。
 
         measured_delta 模式:
@@ -611,8 +1046,12 @@ class MoveBaseCircleMpcIkDemo(Node):
         """
         nanv = np.full(JOINT_COUNT, np.nan)
         zero = np.zeros(JOINT_COUNT)
-        vel_est = (np.asarray(self.dq_measured, dtype=float) * self.dt
-                   if self.dq_measured is not None else nanv)
+        dq_for_diag = (
+            dq_measured_snapshot
+            if dq_measured_snapshot is not None
+            else getattr(self, 'dq_measured', None))
+        vel_est = (np.asarray(dq_for_diag, dtype=float) * self.dt
+                   if dq_for_diag is not None else nanv)
         cur_finite = (q_now is not None and np.all(np.isfinite(q_now))
                       and js_stamp_now is not None and np.isfinite(js_stamp_now))
 
@@ -648,28 +1087,152 @@ class MoveBaseCircleMpcIkDemo(Node):
         # measured_ok:input/raw 必有限(q_now/prev 均有限、dt_fb 有限>0),更新锚点
         return out(clipped, raw, 1, 0, dt_fb, True, q_now, float(js_stamp_now))
 
+    def _predicted_application_delay_sec(self) -> float:
+        """Expected solve-start -> actuator-application delay for this tick."""
+        if not bool(getattr(self, 'latency_compensation_enabled', False)):
+            return 0.0
+        estimate = (
+            float(getattr(self, '_publish_latency_ewma_sec', 0.0))
+            + float(getattr(self, 'latency_actuator_delay_sec', 0.0))
+        )
+        maximum = float(getattr(
+            self, 'latency_prediction_max_sec', 2.0 * self.dt))
+        return float(np.clip(estimate, 0.0, maximum))
+
+    def _feedback_age_to_solve_sec(self, solve_wall: float) -> float:
+        """Age of the state sample at solve start, preferring its source stamp."""
+        if np.isfinite(getattr(self, '_js_header_stamp_sec', float('nan'))):
+            age = float(solve_wall) - float(self._js_header_stamp_sec)
+            # Some hardware drivers publish zero or a different clock domain.
+            # In that case receive time is the only comparable local clock.
+            if age < 0.0 or age > 2.0:
+                age = float('nan')
+        else:
+            age = float('nan')
+        if not np.isfinite(age):
+            if np.isfinite(getattr(self, '_js_recv_wall_sec', float('nan'))):
+                age = float(solve_wall) - float(self._js_recv_wall_sec)
+            else:
+                age = 0.0
+        maximum = float(getattr(
+            self, 'latency_prediction_max_sec', 2.0 * self.dt))
+        return float(np.clip(age, 0.0, maximum))
+
+    def _smith_predict_state(
+            self, q_feedback: np.ndarray, dq_feedback: np.ndarray,
+            solve_wall: float, application_delay_sec: float):
+        """用已知 plant 执行律 + 在途命令队列, 把实测状态前推到命令生效时刻。
+
+        plant 律(smooth_position_controller.cc 速度前馈分支, 100Hz):
+            v_fb = clip((q_cmd-q)/tau, ±fb_lim)
+            v    = clip(clip(gain*dq_cmd + v_fb, ±vmax), v_last ± amax*h)
+            q   += v*h
+        与 second_order_state_prediction(用 ddq0 二阶外推)不同, 这里模拟的是
+        plant 真实会执行的命令序列, 不会与执行链失配形成正反馈。
+        返回 (q_pred, v_pred, prediction_age_sec)。
+        """
+        stamp = self._js_header_stamp_sec
+        if not np.isfinite(stamp):
+            stamp = self._js_recv_wall_sec
+        if not np.isfinite(stamp) or not self._cmd_history:
+            return (np.asarray(q_feedback, dtype=float).copy(),
+                    np.asarray(dq_feedback, dtype=float).copy(), 0.0)
+        t_target = float(solve_wall) + max(0.0, float(application_delay_sec))
+        h = self.plant_control_substep_dt
+        n = int(round((t_target - float(stamp)) / h))
+        n_max = int(math.ceil(self.latency_prediction_max_sec / h)) + 2
+        n = max(0, min(n, n_max))
+        q = np.asarray(q_feedback, dtype=float).copy()
+        v_last = np.asarray(dq_feedback, dtype=float).copy()
+        history = list(self._cmd_history)
+        t = float(stamp)
+        for _ in range(n):
+            q_cmd, dq_cmd = history[0][1], history[0][2]
+            for entry in history:
+                if entry[0] <= t + 1e-9:
+                    q_cmd, dq_cmd = entry[1], entry[2]
+            v_fb = np.clip(
+                (q_cmd - q) / self.plant_position_feedback_tau,
+                -self.plant_feedback_velocity_limit,
+                self.plant_feedback_velocity_limit)
+            v_raw = np.clip(
+                self.plant_velocity_feedforward_gain * dq_cmd + v_fb,
+                -self.plant_max_velocity, self.plant_max_velocity)
+            step = self.plant_max_acceleration * h
+            v = np.clip(v_raw, v_last - step, v_last + step)
+            q = np.clip(q + v * h, self.mpc_ik.q_lower, self.mpc_ik.q_upper)
+            v_last = v
+            t += h
+        return q, v_last, n * h
+
+    def _predict_second_order_state(
+            self, q_current: np.ndarray, dq_current: np.ndarray,
+            solve_wall: float, application_delay_sec: float):
+        """Propagate timestamped [q,dq] to the predicted command-application time."""
+        feedback_age = self._feedback_age_to_solve_sec(solve_wall)
+        prediction_age = feedback_age + max(0.0, float(application_delay_sec))
+        prediction_age = float(np.clip(
+            prediction_age, 0.0, self.latency_prediction_max_sec))
+        ddq = np.asarray(
+            self._so_last_cmd_ddq
+            if self._so_last_cmd_ddq is not None
+            else np.zeros(JOINT_COUNT),
+            dtype=float,
+        )
+        if ddq.shape != (JOINT_COUNT,) or not np.all(np.isfinite(ddq)):
+            ddq = np.zeros(JOINT_COUNT)
+        ddq = np.clip(
+            ddq,
+            -self.second_order_max_acceleration,
+            self.second_order_max_acceleration,
+        )
+        q_pred = (
+            np.asarray(q_current, dtype=float)
+            + prediction_age * np.asarray(dq_current, dtype=float)
+            + 0.5 * prediction_age * prediction_age * ddq
+        )
+        dq_pred = np.asarray(dq_current, dtype=float) + prediction_age * ddq
+        q_pred = np.clip(q_pred, self.mpc_ik.q_lower, self.mpc_ik.q_upper)
+        dq_pred = np.clip(
+            dq_pred,
+            -self.second_order_max_velocity,
+            self.second_order_max_velocity,
+        )
+        return q_pred, dq_pred, prediction_age
+
     def _target_horizon_schedule(
             self, t_solve: float, horizon_steps: int = None,
-            lead_override: int = None):
+            lead_override: int = None, application_delay_sec: float = 0.0):
         """Return future base/path clocks and the local path clock rate."""
         lead = (self.reference_lead_steps if lead_override is None
                 else int(lead_override))
+        configured_base_lead = int(getattr(
+            self, 'base_reference_lead_steps', -1))
+        base_lead = (
+            lead if configured_base_lead < 0
+            else configured_base_lead
+        )
         horizon = self.horizon_steps if horizon_steps is None else int(horizon_steps)
-        offsets = self.dt * (lead + np.arange(horizon))
-        base_times = t_solve + offsets
+        application_delay_sec = max(0.0, float(application_delay_sec))
+        base_offsets = application_delay_sec + self.dt * (
+            base_lead + np.arange(horizon))
+        path_offsets = application_delay_sec + self.dt * (
+            lead + np.arange(horizon))
+        base_times = t_solve + base_offsets
         scaling_enabled = bool(getattr(
             self, 'online_time_scaling_enabled', False))
         if scaling_enabled:
-            path_times = self.time_scaler.preview(offsets)
+            path_times = self.time_scaler.preview(path_offsets)
             path_rates = np.full(horizon, float(self.time_scaler.scale))
         else:
-            path_times = base_times.copy()
+            path_times = t_solve + path_offsets
             path_rates = np.ones(horizon)
         return base_times, path_times, path_rates
 
     def _target_horizon_base(self, t_solve: float, horizon_steps: int = None,
                              update_log_times: bool = True,
-                             lead_override: int = None):
+                             lead_override: int = None,
+                             application_delay_sec: float = 0.0):
         # 参考时序由 reference_lead_steps(L)控制:targets[j] = target(t_solve+(L+j)*dt)。
         #   L=0(baseline): targets 从 t_solve 开始,预测 q_k 主要对齐 target(t_solve)(一拍滞后)。
         #   L=1(阶段1A):  targets 从 t_solve+dt 开始;配合求解器 stage->target 映射
@@ -678,7 +1241,7 @@ class MoveBaseCircleMpcIkDemo(Node):
         # /student/joint_command 的 header.stamp = 真实发布时刻(见 _publish_joint_positions);
         # 参考时刻 t_reference=t_solve+L*dt 单独记录在 loop CSV,不用 stamp 制造时间平移。
         base_times, path_times, _ = self._target_horizon_schedule(
-            t_solve, horizon_steps, lead_override)
+            t_solve, horizon_steps, lead_override, application_delay_sec)
         if update_log_times:
             self._last_target_time0 = float(base_times[0])
             self._last_path_target_time0 = float(path_times[0])
@@ -691,6 +1254,322 @@ class MoveBaseCircleMpcIkDemo(Node):
             for bt, pt in zip(base_times, path_times)
         ])
         return positions, rotations
+
+    @staticmethod
+    def _vee(skew_matrix: np.ndarray) -> np.ndarray:
+        return np.array([
+            skew_matrix[2, 1],
+            skew_matrix[0, 2],
+            skew_matrix[1, 0],
+        ], dtype=float)
+
+    def _reference_kinematics_base(
+            self, base_t: float, path_t: float = None,
+            path_rate: float = 1.0) -> dict:
+        """Return ideal world/base derivatives and the drawing contour tangent."""
+        if path_t is None:
+            path_t = base_t
+        h = float(self.reference_derivative_dt_sec)
+        path_step = h * float(path_rate)
+
+        base_position = self._base_pose(base_t)
+        base_position_minus = self._base_pose(base_t - h)
+        base_position_plus = self._base_pose(base_t + h)
+        base_linear_velocity_world = (
+            base_position_plus - base_position_minus) / (2.0 * h)
+        base_linear_acceleration_world = (
+            base_position_plus - 2.0 * base_position + base_position_minus
+        ) / (h * h)
+
+        base_rotation = self._base_rotation(base_t, path_t)
+        base_rotation_minus = self._base_rotation(
+            base_t - h, path_t - path_step)
+        base_rotation_plus = self._base_rotation(
+            base_t + h, path_t + path_step)
+        rotation_dot = (
+            base_rotation_plus - base_rotation_minus) / (2.0 * h)
+        rotation_ddot = (
+            base_rotation_plus - 2.0 * base_rotation + base_rotation_minus
+        ) / (h * h)
+        omega_matrix = base_rotation.T @ rotation_dot
+        omega_matrix = 0.5 * (omega_matrix - omega_matrix.T)
+        alpha_matrix = base_rotation.T @ rotation_ddot
+        alpha_matrix = 0.5 * (alpha_matrix - alpha_matrix.T)
+        base_angular_velocity_base = self._vee(omega_matrix)
+        base_angular_acceleration_base = self._vee(alpha_matrix)
+
+        ee_sample = self._ee_trajectory_sample(path_t)
+        ee_position_world = ee_sample.position
+        ee_position_world_minus = self._ee_target_world(path_t - path_step)
+        ee_position_world_plus = self._ee_target_world(path_t + path_step)
+        ee_velocity_world = (
+            ee_position_world_plus - ee_position_world_minus) / (2.0 * h)
+        ee_acceleration_world = (
+            ee_position_world_plus
+            - 2.0 * ee_position_world
+            + ee_position_world_minus
+        ) / (h * h)
+
+        relative_position_base = (
+            base_rotation.T @ (ee_position_world - base_position))
+        relative_velocity_base = (
+            base_rotation.T @ (
+                ee_velocity_world - base_linear_velocity_world)
+            - np.cross(
+                base_angular_velocity_base, relative_position_base)
+        )
+        relative_acceleration_base = (
+            base_rotation.T @ (
+                ee_acceleration_world - base_linear_acceleration_world)
+            - 2.0 * np.cross(
+                base_angular_velocity_base, relative_velocity_base)
+            - np.cross(
+                base_angular_acceleration_base, relative_position_base)
+            - np.cross(
+                base_angular_velocity_base,
+                np.cross(
+                    base_angular_velocity_base, relative_position_base))
+        )
+
+        tangent_base = base_rotation.T @ ee_velocity_world
+        tangent_norm = float(np.linalg.norm(tangent_base))
+        contour_active = bool(ee_sample.pen_down and tangent_norm > 1e-4)
+        if contour_active:
+            tangent_base = tangent_base / tangent_norm
+        else:
+            tangent_base = np.zeros(3)
+        values = {
+            'position_base': relative_position_base,
+            'velocity_base': relative_velocity_base,
+            'acceleration_base': relative_acceleration_base,
+            'contour_tangent_base': tangent_base,
+            'contour_active': float(contour_active),
+            'ee_velocity_world': ee_velocity_world,
+            'ee_acceleration_world': ee_acceleration_world,
+            'base_linear_velocity_world': base_linear_velocity_world,
+            'base_linear_acceleration_world': base_linear_acceleration_world,
+            'base_angular_velocity_base': base_angular_velocity_base,
+            'base_angular_acceleration_base': base_angular_acceleration_base,
+        }
+        if not all(np.all(np.isfinite(value)) for value in values.values()):
+            raise RuntimeError('explicit reference kinematics contains NaN/Inf')
+        return values
+
+    def _target_horizon_base_kinematics(
+            self, t_solve: float, horizon_steps: int,
+            update_log_times: bool = True, lead_override: int = None,
+            application_delay_sec: float = 0.0):
+        base_times, path_times, path_rates = self._target_horizon_schedule(
+            t_solve, horizon_steps, lead_override, application_delay_sec)
+        references = [
+            self._reference_kinematics_base(
+                float(base_t), float(path_t), float(path_rate))
+            for base_t, path_t, path_rate in zip(
+                base_times, path_times, path_rates)
+        ]
+        if update_log_times:
+            self._last_target_time0 = float(base_times[0])
+            self._last_path_target_time0 = float(path_times[0])
+        positions = np.array([
+            reference['position_base'] for reference in references])
+        if bool(getattr(
+                self, 'periodic_error_learning_enabled', False)):
+            positions += self._periodic_target_corrections_base(
+                base_times, path_times)
+        rotations = np.array([
+            self._target_rotation_base(float(base_t), float(path_t))
+            for base_t, path_t in zip(base_times, path_times)
+        ])
+        velocities = np.array([
+            reference['velocity_base'] for reference in references])
+        accelerations = np.array([
+            reference['acceleration_base'] for reference in references])
+        tangents = np.array([
+            reference['contour_tangent_base'] for reference in references])
+        contour_active = np.array([
+            reference['contour_active'] for reference in references])
+        self._last_reference_kinematics = references[0]
+        return (
+            positions, rotations, velocities, accelerations,
+            tangents, contour_active,
+        )
+
+    def _periodic_learning_key(self, sample) -> int:
+        """Return an independent coefficient-bank key for a pen-down sample."""
+        if not bool(sample.pen_down) or int(sample.stroke_id) < 0:
+            return -1
+        if self.trajectory_shape != 'whole':
+            return 0
+        # whole stroke id:
+        # cycle*10000 + task_index*100 + local_stroke_id.
+        return (int(sample.stroke_id) % 10000) // 100
+
+    def _periodic_learning_basis(self, base_t: float) -> np.ndarray:
+        period = (
+            float(traj.BASE_PERIOD_SEC)
+            * float(self.base_motion_time_scale)
+        )
+        phase = 2.0 * math.pi * float(base_t) / period
+        return np.array([math.sin(phase), math.cos(phase)], dtype=float)
+
+    def _reset_periodic_error_learning(self):
+        initial = np.asarray(
+            self.periodic_error_initial_coefficients,
+            dtype=float,
+        ).reshape(3, 2)
+        key_count = 5 if self.trajectory_shape == 'whole' else 1
+        self._periodic_error_coefficients = {
+            key: initial.copy() for key in range(key_count)
+        }
+        self._periodic_error_accumulators = {}
+        self._last_periodic_learning_diag = {}
+
+    def _periodic_correction_world(
+            self, base_t: float, path_t: float):
+        """Return learned world correction and its coefficient-bank key."""
+        sample = self._ee_trajectory_sample(float(path_t))
+        key = self._periodic_learning_key(sample)
+        if key < 0:
+            return np.zeros(3), key
+        coefficients = self._periodic_error_coefficients.get(key)
+        if coefficients is None:
+            return np.zeros(3), key
+        correction = (
+            np.asarray(coefficients, dtype=float)
+            @ self._periodic_learning_basis(base_t)
+        )
+        return correction, key
+
+    def _periodic_target_corrections_base(
+            self, base_times: np.ndarray,
+            path_times: np.ndarray) -> np.ndarray:
+        """Rotate learned world corrections into each horizon stage's base."""
+        corrections = []
+        for base_t, path_t in zip(base_times, path_times):
+            correction_world, _ = self._periodic_correction_world(
+                float(base_t), float(path_t))
+            corrections.append(
+                self._base_rotation(float(base_t), float(path_t)).T
+                @ correction_world)
+        return np.asarray(corrections, dtype=float)
+
+    def _update_periodic_error_learning(
+            self, q_feedback: np.ndarray,
+            feedback_time: float) -> dict:
+        """LMS update for repeatable base-phase tracking error.
+
+        The measured error is always relative to the *nominal* drawing target.
+        If the plant response is ``actual = nominal + correction + disturbance``,
+        gradient descent on that error learns ``correction = -disturbance``.
+        """
+        diag = {
+            'active': False,
+            'key': -1,
+            'error_world': np.full(3, np.nan),
+            'error_norm': float('nan'),
+            'correction_world': np.zeros(3),
+            'correction_norm': 0.0,
+            'coefficient_norm': 0.0,
+        }
+        if (
+            not self.periodic_error_learning_enabled
+            or not np.isfinite(feedback_time)
+            or feedback_time < 0.0
+        ):
+            self._last_periodic_learning_diag = diag
+            return diag
+
+        path_t = float(feedback_time)
+        sample = self._ee_trajectory_sample(path_t)
+        key = self._periodic_learning_key(sample)
+        if key < 0:
+            self._last_periodic_learning_diag = diag
+            return diag
+
+        q_feedback = np.asarray(q_feedback, dtype=float)
+        ee_position_base, _ = self.mpc_ik.forward(q_feedback)
+        actual_world = (
+            self._base_pose(feedback_time)
+            + self._base_rotation(feedback_time, path_t)
+            @ ee_position_base
+        )
+        error_world = actual_world - sample.position
+        error_norm = float(np.linalg.norm(error_world))
+        diag.update({
+            'key': key,
+            'error_world': error_world.copy(),
+            'error_norm': error_norm,
+        })
+        if (
+            not np.all(np.isfinite(error_world))
+            or error_norm > self.periodic_error_update_limit_m
+        ):
+            self._last_periodic_learning_diag = diag
+            return diag
+
+        basis = self._periodic_learning_basis(feedback_time)
+        if self.periodic_error_learning_freeze:
+            coefficients = self._periodic_error_coefficients.setdefault(
+                key, np.zeros((3, 2), dtype=float))
+            correction_world = coefficients @ basis
+            diag.update({
+                'active': True,
+                'correction_world': correction_world.copy(),
+                'correction_norm': float(np.linalg.norm(correction_world)),
+                'coefficient_norm': float(np.linalg.norm(coefficients)),
+            })
+            self._last_periodic_learning_diag = diag
+            return diag
+
+        period = (
+            float(traj.BASE_PERIOD_SEC)
+            * float(self.base_motion_time_scale)
+        )
+        cycle = math.floor(float(feedback_time) / period)
+        accumulator = self._periodic_error_accumulators.get(key)
+        if accumulator is None:
+            accumulator = {
+                'cycle': cycle,
+                'sum': np.zeros((3, 2), dtype=float),
+                'count': 0,
+            }
+            self._periodic_error_accumulators[key] = accumulator
+
+        coefficients = self._periodic_error_coefficients.setdefault(
+            key, np.zeros((3, 2), dtype=float))
+        # Only publish a coefficient update at a base-period boundary. Within
+        # one 0.5 s cycle the reference is frozen, so instantaneous feedback
+        # noise cannot turn into a new 50 Hz target disturbance.
+        if int(accumulator['cycle']) != cycle:
+            count = int(accumulator['count'])
+            if count >= self.periodic_error_min_samples_per_cycle:
+                coefficients -= (
+                    2.0 * self.periodic_error_learning_gain
+                    * np.asarray(accumulator['sum'], dtype=float)
+                    / float(count)
+                )
+            accumulator['cycle'] = cycle
+            accumulator['sum'] = np.zeros((3, 2), dtype=float)
+            accumulator['count'] = 0
+        accumulator['sum'] += np.outer(error_world, basis)
+        accumulator['count'] += 1
+        # ||C phi|| <= ||C||_F because ||phi||=1. Clamping the Frobenius norm
+        # therefore guarantees the configured world correction bound at every
+        # base phase, not only at the phase of the current update.
+        coefficient_norm = float(np.linalg.norm(coefficients))
+        if coefficient_norm > self.periodic_error_correction_limit_m:
+            coefficients *= (
+                self.periodic_error_correction_limit_m / coefficient_norm)
+            coefficient_norm = self.periodic_error_correction_limit_m
+        correction_world = coefficients @ basis
+        diag.update({
+            'active': True,
+            'correction_world': correction_world.copy(),
+            'correction_norm': float(np.linalg.norm(correction_world)),
+            'coefficient_norm': coefficient_norm,
+        })
+        self._last_periodic_learning_diag = diag
+        return diag
 
     def _publish_base_tf(self, t: float):
         x, y, z = self._base_pose(t)
@@ -722,18 +1601,38 @@ class MoveBaseCircleMpcIkDemo(Node):
             'acc_active_ratio': (float(np.mean(
                 np.abs(a) >= self.second_order_max_acceleration - 1e-6)) if a.size else float('nan')),
             'min_sigma': float(info.get('min_translation_jacobian_sigma', float('nan'))),
+            'linearization_time_ms': 1000.0 * float(
+                info.get('linearization_time', float('nan'))),
+            'projection_time_ms': 1000.0 * float(
+                info.get('projection_time', float('nan'))),
+            'total_optimize_time_ms': 1000.0 * float(
+                info.get('total_optimize_time', float('nan'))),
+            'projection_velocity_residual': float(
+                info.get('projection_velocity_residual_rms', float('nan'))),
+            'projection_acceleration_residual': float(
+                info.get('projection_acceleration_residual_rms', float('nan'))),
+            'projection_velocity_active_ratio': float(
+                info.get('projection_velocity_active_ratio', float('nan'))),
+            'projection_acceleration_active_ratio': float(
+                info.get('projection_acceleration_active_ratio', float('nan'))),
         }
 
-    def _solve_second_order(self, t_solve: float, q_current: np.ndarray):
-        """以实测 q/dq 固定二阶 x0。dq 缺失/非法时不求解、不伪造。"""
+    def _solve_second_order(
+            self, t_solve: float, solve_wall: float, q_current: np.ndarray,
+            application_delay_sec: float, dq_measured_snapshot=None):
+        """Use a timestamped, application-time [q,dq] as the second-order x0."""
         if self.second_order_ik is None:
             return None
-        if self.dq_measured is None:
+        dq_feedback = (
+            dq_measured_snapshot
+            if dq_measured_snapshot is not None
+            else getattr(self, 'dq_measured', None))
+        if dq_feedback is None:
             return {
                 'available': False,
                 'reason': 'joint_states has no measured velocity',
             }
-        dq_current = np.asarray(self.dq_measured, dtype=float).reshape(-1)
+        dq_current = np.asarray(dq_feedback, dtype=float).reshape(-1)
         if (self.second_order_velocity_source == 'commanded'
                 and self._so_last_cmd_dq is not None):
             dq_current = np.asarray(self._so_last_cmd_dq, dtype=float).reshape(-1)
@@ -747,27 +1646,45 @@ class MoveBaseCircleMpcIkDemo(Node):
             }
         so_lead = (None if self.second_order_reference_lead_steps < 0
                    else self.second_order_reference_lead_steps)
-        targets, rotations = self._target_horizon_base(
+        q0_solve = np.asarray(q_current, dtype=float)
+        dq0_solve = dq_current.copy()
+        prediction_age = 0.0
+        if self.smith_predictor_enabled:
+            # q 用 plant 律前推;速度状态保持 commanded 语义(模型计划速度),
+            # 因为逆变换发布的 dq_pub 不再等于模型 dq —— plant 实测 v_last
+            # 是执行律内部量,不是双积分模型的 dq 状态。
+            dq_measured_for_pred = np.asarray(dq_feedback, dtype=float)
+            q0_solve, v_pred, prediction_age = self._smith_predict_state(
+                q_current, dq_measured_for_pred, solve_wall,
+                application_delay_sec)
+            if (self.second_order_velocity_source != 'commanded'
+                    or self._so_last_cmd_dq is None):
+                dq0_solve = np.clip(
+                    v_pred, -self.second_order_max_velocity,
+                    self.second_order_max_velocity)
+        elif self.second_order_state_prediction:
+            q0_solve, dq0_solve, prediction_age = (
+                self._predict_second_order_state(
+                    q_current, dq_current, solve_wall,
+                    application_delay_sec))
+        (
+            targets, rotations, target_velocities, target_accelerations,
+            contour_tangents, contour_active,
+        ) = self._target_horizon_base_kinematics(
             t_solve, self.second_order_horizon_steps,
             update_log_times=(self.solver_model == 'second_order'),
-            lead_override=so_lead)
-        q0_solve = q_current
-        if self.second_order_state_prediction:
-            # 反馈陈旧补偿: x0 位置用 dq 前推 age = t_solve_wall - js_stamp(钳到 [0, 2dt])。
-            age = 0.0
-            if (self.traj_origin_wall is not None
-                    and np.isfinite(self._js_header_stamp_sec)):
-                age = (self.get_clock().now().nanoseconds * 1e-9
-                       - float(self._js_header_stamp_sec))
-            age = float(np.clip(age, 0.0, 2.0 * self.dt))
-            q0_solve = np.clip(q_current + dq_current * age,
-                               self.mpc_ik.q_lower, self.mpc_ik.q_upper)
+            lead_override=so_lead,
+            application_delay_sec=application_delay_sec)
         q_next, dq_next, ok, info = self.second_order_ik.step(
             targets,
             q0_solve,
-            dq_current,
+            dq0_solve,
             warm_start=self.second_order_warm_start,
             target_rotation=rotations,
+            target_velocity=target_velocities,
+            target_acceleration=target_accelerations,
+            contour_tangent=contour_tangents,
+            contour_active=contour_active,
             posture_reference=(
                 self.posture_reference
                 if self.posture_reference_mode == 'reset_nominal' else None),
@@ -777,9 +1694,46 @@ class MoveBaseCircleMpcIkDemo(Node):
             'available': True,
             'q_next': q_next,
             'dq_next': dq_next,
+            'q_control': q0_solve,
+            'dq_control': dq0_solve,
+            'state_prediction_age_sec': prediction_age,
+            'application_delay_sec': application_delay_sec,
             'ok': ok,
             'info': info,
         }
+
+    def _reset_second_order_plan(self):
+        """Discard a solver plan after the published command diverges from it."""
+        self.second_order_warm_start = None
+        if self.second_order_ik is not None:
+            self.second_order_ik.reset_warm_start()
+
+    def _recover_from_late_tick(self, timer_interval_ms: float) -> bool:
+        """Reset one-step model history after a control deadline miss.
+
+        The second-order warm start and commanded velocity are advanced by one
+        nominal ``dt``.  Reusing them after a long callback interval creates an
+        inconsistent x0 even when the newest measured position is available.
+        """
+        threshold_ms = (
+            float(self.late_tick_recovery_factor) * self.dt * 1000.0)
+        late = bool(
+            self.late_tick_recovery_enabled
+            and np.isfinite(timer_interval_ms)
+            and timer_interval_ms > threshold_ms)
+        if not late:
+            return False
+        self._reset_second_order_plan()
+        self._so_last_cmd_dq = None
+        self._so_last_cmd_ddq = None
+        self.late_tick_recovery_count += 1
+        self.get_logger().warn(
+            '控制周期超时，丢弃过期二阶 warm start/commanded dq，'
+            f'本拍从最新实测状态重启: interval={timer_interval_ms:.2f}ms '
+            f'> threshold={threshold_ms:.2f}ms',
+            throttle_duration_sec=1.0,
+        )
+        return True
 
     def _publish_world_markers(self, t: float):
         q_for_marker = self.q_measured if self.q_measured is not None else self.q_last
@@ -840,10 +1794,13 @@ class MoveBaseCircleMpcIkDemo(Node):
     def _validate_guard_config(mode, abs_m, rel_gain, acc_gain, min_lambda,
                                max_iterations, max_consecutive):
         """守卫参数合法性(独立静态方法,便于单测)。非法 -> ValueError,不静默回退。"""
-        if mode not in ('legacy_fixed_step', 'expected_shadow', 'expected_residual'):
+        if mode not in (
+            'legacy_fixed_step', 'expected_shadow', 'expected_residual',
+            'state_safe_filter',
+        ):
             raise ValueError(
                 "guard_mode must be 'legacy_fixed_step'|'expected_shadow'|"
-                f"'expected_residual', got '{mode}'")
+                f"'expected_residual'|'state_safe_filter', got '{mode}'")
         if not (math.isfinite(abs_m) and abs_m > 0.0):
             raise ValueError('guard_residual_abs_m must be finite and > 0')
         if not (math.isfinite(rel_gain) and rel_gain >= 0.0):
@@ -872,13 +1829,65 @@ class MoveBaseCircleMpcIkDemo(Node):
         ee_pos_base, ee_rot_base = self.mpc_ik.forward(q)
         return base_pos + base_rot @ ee_pos_base, base_rot @ ee_rot_base
 
-    def _guard_expected_eval(self, q_candidate: np.ndarray, t_new: float) -> dict:
-        """expected-residual 守卫量(纯计算,不改任何状态)。
+    def _guard_eval_between(
+            self, q_anchor: np.ndarray, t_anchor: float,
+            q_candidate: np.ndarray, t_new: float) -> dict:
+        """Evaluate command/reference increments between two explicit states.
 
         r_vec = Δp_cmd - Δp_ref = e_new - e_last(两种算法代数恒等,单元测试逐拍核对);
-        r_allow = r_abs + r_rel*||Δp_ref|| + r_acc*||a_ref||*dt² + uncertainty(demo=0)。
-        锚点缺失(首帧)=> 合法初始化: r_pos=0, r_allow=inf,不拦截。
+        r_allow = r_abs + r_rel*||Δp_ref|| + r_acc*||a_ref||*Δt² + uncertainty。
         """
+        p_cmd_new, r_cmd_new = self._guard_fk_world(q_candidate, t_new)
+        p_ref_new = self._ee_target_world(t_new)
+        p_cmd_anchor, r_cmd_anchor = self._guard_fk_world(q_anchor, t_anchor)
+        p_ref_anchor = self._ee_target_world(t_anchor)
+        e_new = p_cmd_new - p_ref_new
+        R_err_new = self._ee_trajectory_sample(t_new).rotation.T @ r_cmd_new
+        e_anchor = p_cmd_anchor - p_ref_anchor
+        R_err_anchor = (
+            self._ee_trajectory_sample(t_anchor).rotation.T @ r_cmd_anchor)
+        ev = {
+            'p_cmd_new': p_cmd_new,
+            'p_ref_new': p_ref_new,
+            'e_new': e_new,
+            'R_err_new': R_err_new,
+            't_new': float(t_new),
+            'r_ori': float(np.linalg.norm(
+                pin.log3(R_err_anchor.T @ R_err_new))),
+            'first_anchor': False,
+        }
+        dp_ref = p_ref_new - p_ref_anchor
+        dp_cmd = p_cmd_new - p_cmd_anchor
+        r_vec = dp_cmd - dp_ref
+        a_ref = self._desired_world_accel(t_new)
+        elapsed = max(float(t_new) - float(t_anchor), 0.0)
+        allow_abs = self.guard_residual_abs_m
+        allow_rel = self.guard_residual_relative_gain * float(np.linalg.norm(dp_ref))
+        allow_acc = (
+            self.guard_residual_accel_gain
+            * float(np.linalg.norm(a_ref))
+            * elapsed * elapsed
+        )
+        ev.update(
+            r_vec=r_vec,
+            r_pos=float(np.linalg.norm(r_vec)),
+            r_allow=(
+                allow_abs + allow_rel + allow_acc
+                + self._guard_uncertainty_m),
+            allow_abs=allow_abs,
+            allow_rel=allow_rel,
+            allow_acc=allow_acc,
+            expected_step=float(np.linalg.norm(dp_ref)),
+            command_step=float(np.linalg.norm(dp_cmd)),
+            elapsed=elapsed,
+            e_anchor=e_anchor,
+            error_new=float(np.linalg.norm(e_new)),
+            error_anchor=float(np.linalg.norm(e_anchor)),
+        )
+        return ev
+
+    def _guard_expected_eval(self, q_candidate: np.ndarray, t_new: float) -> dict:
+        """Evaluate against the last accepted-command anchor (legacy modes)."""
         p_cmd_new, r_cmd_new = self._guard_fk_world(q_candidate, t_new)
         p_ref_new = self._ee_target_world(t_new)
         e_new = p_cmd_new - p_ref_new
@@ -892,23 +1901,12 @@ class MoveBaseCircleMpcIkDemo(Node):
                       allow_acc=float('nan'), expected_step=float('nan'),
                       command_step=float('nan'))
             return ev
-        dp_ref = p_ref_new - self._guard_p_ref_last
-        dp_cmd = p_cmd_new - self._guard_p_cmd_last
-        r_vec = dp_cmd - dp_ref
-        a_ref = self._desired_world_accel(t_new)
-        allow_abs = self.guard_residual_abs_m
-        allow_rel = self.guard_residual_relative_gain * float(np.linalg.norm(dp_ref))
-        allow_acc = (self.guard_residual_accel_gain
-                     * float(np.linalg.norm(a_ref)) * self.dt * self.dt)
-        if self._guard_R_err_last is not None:
-            ev['r_ori'] = float(np.linalg.norm(
-                pin.log3(self._guard_R_err_last.T @ R_err_new)))
-        ev.update(r_vec=r_vec, r_pos=float(np.linalg.norm(r_vec)),
-                  r_allow=allow_abs + allow_rel + allow_acc + self._guard_uncertainty_m,
-                  allow_abs=allow_abs, allow_rel=allow_rel, allow_acc=allow_acc,
-                  expected_step=float(np.linalg.norm(dp_ref)),
-                  command_step=float(np.linalg.norm(dp_cmd)))
-        return ev
+        return self._guard_eval_between(
+            self._guard_q_last,
+            self._guard_t_last_reference,
+            q_candidate,
+            t_new,
+        )
 
     def _guard_candidate_safe(self, q_candidate: np.ndarray, q_current: np.ndarray,
                               ev: dict, r_ori_baseline: float) -> bool:
@@ -958,6 +1956,96 @@ class MoveBaseCircleMpcIkDemo(Node):
             else:
                 hi = mid
         return best_lam, best[0], best[1]
+
+    def _guard_project_from_state(
+            self, q_next: np.ndarray, q_current: np.ndarray,
+            t_state: float, t_new: float, r_ori_baseline: float):
+        """Largest safe interpolation from the predicted current state."""
+        q_anchor = np.asarray(q_current, dtype=float)
+
+        def try_lambda(lam: float):
+            q_s = q_anchor + lam * (
+                np.asarray(q_next, dtype=float) - q_anchor)
+            ev = self._guard_eval_between(
+                q_anchor, t_state, q_s, t_new)
+            if (
+                ev['r_pos'] <= ev['r_allow']
+                and self._guard_candidate_safe(
+                    q_s, q_anchor, ev, r_ori_baseline)
+            ):
+                return q_s, ev
+            return None
+
+        # λ=0 is a valid bound for the soft safety filter.  Unlike the
+        # accepted-command projection, no stale command anchor can make the
+        # search geometrically infeasible before task-space constraints apply.
+        best = try_lambda(0.0)
+        if best is None:
+            return None
+        best_lam = 0.0
+        lo, hi = 0.0, 1.0
+        for _ in range(self.guard_projection_max_iterations):
+            mid = 0.5 * (lo + hi)
+            cand = try_lambda(mid)
+            if cand is not None:
+                best, best_lam, lo = cand, mid, mid
+            else:
+                hi = mid
+        return best_lam, best[0], best[1]
+
+    def _guard_backup_command(
+            self, q_current: np.ndarray, t_new: float) -> np.ndarray:
+        """Bounded damped-least-squares command that actively holds the world target."""
+        q_current = np.asarray(q_current, dtype=float)
+        p_hold, _ = self._guard_fk_world(q_current, t_new)
+        target = self._ee_target_world(t_new)
+        base_rotation = self._base_rotation(t_new)
+        jacobian_base = pin.computeFrameJacobian(
+            self.mpc_ik.model,
+            self.mpc_ik.data,
+            q_current,
+            self.mpc_ik.frame_id,
+            pin.ReferenceFrame.LOCAL_WORLD_ALIGNED,
+        )[:3, :]
+        jacobian_world = base_rotation @ jacobian_base
+        damping = max(float(self.guard_backup_damping), 1e-6)
+        desired_step = (
+            float(self.guard_backup_position_gain) * (target - p_hold))
+        joint_step = jacobian_world.T @ np.linalg.solve(
+            jacobian_world @ jacobian_world.T
+            + damping * damping * np.eye(3),
+            desired_step,
+        )
+
+        # Position, velocity and acceleration bounds are all enforced around
+        # the predicted application-time state.
+        velocity = np.clip(
+            joint_step / self.dt,
+            -self.second_order_max_velocity,
+            self.second_order_max_velocity,
+        )
+        previous_velocity = np.asarray(
+            self._so_last_cmd_dq
+            if self._so_last_cmd_dq is not None
+            else np.zeros(JOINT_COUNT),
+            dtype=float,
+        )
+        dv = self.second_order_max_acceleration * self.dt
+        velocity = np.clip(
+            velocity,
+            previous_velocity - dv,
+            previous_velocity + dv,
+        )
+        joint_step = np.clip(
+            velocity * self.dt,
+            -self.max_joint_step,
+            self.max_joint_step,
+        )
+        return np.clip(
+            q_current + joint_step,
+            self.mpc_ik.q_lower,
+            self.mpc_ik.q_upper,
+        )
 
     def _guard_accept(self, q_cmd: np.ndarray, ev: dict):
         """只有**实际接受并发布**的命令才更新守卫锚点(shadow 模式=legacy 接受的命令;
@@ -1061,13 +2149,22 @@ class MoveBaseCircleMpcIkDemo(Node):
             # action that was actually sent to the simulated plant.
             if dart_enabled:
                 dq_arr = dq_arr + dart_applied / self.dt
-            velocity_limit = self.max_joint_step / self.dt
+            # 逆变换速度可略高于模型 vmax(位置反馈项补偿),上限取 plant 实际
+            # 接受的速度而非 max_joint_step/dt,否则前馈被静默削顶。
+            velocity_limit = max(
+                self.max_joint_step / self.dt, self.plant_max_velocity)
             msg.velocity = np.clip(dq_arr, -velocity_limit, velocity_limit).tolist()
         self.pub.publish(msg)
+        publish_wall_sec = publish_time.nanoseconds * 1e-9
+        self._cmd_history.append((
+            publish_wall_sec,
+            q_executed.copy(),
+            np.asarray(msg.velocity, dtype=float).copy(),
+        ))
         return (
             q_executed.copy(),
             np.asarray(msg.velocity, dtype=float),
-            publish_time.nanoseconds * 1e-9,
+            publish_wall_sec,
             {
                 'nominal_q': nominal_q.copy(),
                 'sampled_noise': dart_sample.copy(),
@@ -1156,7 +2253,22 @@ class MoveBaseCircleMpcIkDemo(Node):
                         'second_order_horizon_steps', 'second_order_velocity_weight',
                         'second_order_position_weight',
                         'second_order_terminal_position_weight',
+                        'second_order_cartesian_residual_mode',
+                        'second_order_cartesian_velocity_weight',
+                        'second_order_cartesian_acceleration_weight',
+                        'second_order_terminal_cartesian_velocity_weight',
+                        'second_order_feasible_reference_projection',
+                        'second_order_feasible_reference_damping',
+                        'second_order_contour_tracking_enabled',
+                        'second_order_contour_position_weight',
+                        'second_order_lag_position_weight',
+                        'second_order_transition_position_weight',
+                        'second_order_terminal_contour_position_weight',
+                        'second_order_terminal_lag_position_weight',
+                        'second_order_terminal_transition_position_weight',
+                        'reference_derivative_dt_sec',
                         'second_order_acceleration_weight',
+                        'second_order_terminal_velocity_weight',
                         'second_order_current_posture_weight',
                         'second_order_center_posture_weight',
                         'second_order_max_velocity',
@@ -1166,6 +2278,35 @@ class MoveBaseCircleMpcIkDemo(Node):
                         'second_order_reference_lead_steps',
                         'second_order_state_prediction',
                         'second_order_velocity_source', 'control_rate_hz',
+                        'latency_compensation_enabled',
+                        'latency_nominal_publish_ms',
+                        'latency_publish_ewma_alpha',
+                        'latency_actuator_delay_ms',
+                        'latency_prediction_max_ms',
+                        'smith_predictor_enabled',
+                        'command_inversion_enabled',
+                        'plant_velocity_feedforward_gain',
+                        'plant_position_feedback_tau',
+                        'plant_feedback_velocity_limit',
+                        'plant_max_velocity',
+                        'plant_max_acceleration',
+                        'plant_control_substep_dt',
+                        'base_disturbance_amplitude_m',
+                        'base_disturbance_seed',
+                        'base_belief_mode',
+                        'base_estimator_noise_std_m',
+                        'base_estimator_delay_ms',
+                        'base_estimator_lpf_hz',
+                        'base_estimator_seed',
+                        'late_tick_recovery_enabled',
+                        'late_tick_recovery_factor',
+                        'periodic_error_learning_enabled',
+                        'periodic_error_learning_gain',
+                        'periodic_error_correction_limit_m',
+                        'periodic_error_update_limit_m',
+                        'periodic_error_min_samples_per_cycle',
+                        'periodic_error_initial_coefficients',
+                        'periodic_error_learning_freeze',
                         'trajectory_shape', 'trajectory_time_scale',
                         'base_motion_time_scale',
                         'posture_reference_mode',
@@ -1173,12 +2314,14 @@ class MoveBaseCircleMpcIkDemo(Node):
                         'time_scaling_velocity_reserve', 'time_scaling_slow_error_m',
                         'time_scaling_stop_error_m',
                         'command_fk_step_warn_m', 'reference_lead_steps', 'dq_prev_mode',
+                        'base_reference_lead_steps',
                         'rti_iteration_mode', 'record_loop_csv', 'loop_data_dir',
                         'dart_noise_std', 'dart_noise_clip_sigma', 'dart_noise_seed',
                         'guard_mode', 'guard_residual_abs_m',
                         'guard_residual_relative_gain', 'guard_residual_accel_gain',
                         'guard_projection_enabled', 'guard_projection_min_lambda',
                         'guard_projection_max_iterations', 'guard_max_consecutive_blocks',
+                        'guard_backup_damping', 'guard_backup_position_gain',
                     )
                 },
                 'guard_mode': self.guard_mode,
@@ -1238,11 +2381,15 @@ class MoveBaseCircleMpcIkDemo(Node):
         #   timer_interval_ms = 本 tick 求解起点 - 上一 tick 求解起点(检 catch-up:<0.5dt=补偿tick)。
         #   solve_to_publish_ms = 求解到发布耗时。
         #   feedback_age_ms = **求解开始时** wall - js_recv_wall(不等发布/写盘后再算)。
+        #   predicted_application_delay_ms = 上一拍 EWMA 发布延迟 + 配置执行器延迟。
+        #   state_prediction_age_ms = feedback source stamp 到预计命令生效时刻的总前推量。
         #   js_header_stamp_rel = 求解所用 /joint_states header 时间戳相对原点(actual 序列时间轴)。
         #   t_solve_wall/t_publish_wall = 绝对 wall(catch-up/时钟诊断用)。
         cols = ['t_solve', 't_publish', 't_reference', 't_next', 'reference_lead_steps',
                 'path_time', 'path_scale', 'path_target_time',
                 'timer_interval_ms', 'solve_to_publish_ms', 'feedback_age_ms',
+                'late_tick_recovery',
+                'predicted_application_delay_ms', 'state_prediction_age_ms',
                 'js_header_stamp_rel', 'js_header_stamp_sec', 'js_recv_wall_sec',
                 't_solve_wall', 't_publish_wall']
         # 阶段1B dq_prev 诊断:
@@ -1271,8 +2418,8 @@ class MoveBaseCircleMpcIkDemo(Node):
             'terminal_error_m', 'first_error_m',
             'command_usable', 'tracking_ok', 'plan_feasible',
             'guard_block', 'command_fk_step_m',
-            # 阶段1E 守卫诊断。guard_mode_code: 0 legacy_fixed_step / 1 expected_shadow /
-            # 2 expected_residual。legacy 模式下 expected 残差列为 nan(不计算)。
+            # 守卫诊断。guard_mode_code: 0 legacy / 1 shadow / 2 accepted-anchor
+            # residual / 3 application-time state_safe_filter。
             #   guard_t_new           = 新命令有效参考时刻 t_solve+lead*dt;
             #   guard_t_last_reference= 本 tick 决策所用锚点(上一被接受命令)的参考时刻;
             #   guard_r_pos_m/r_allow_m/allow_{abs,rel,acc}_m/r_vec_{x,y,z}/margin_m
@@ -1289,7 +2436,8 @@ class MoveBaseCircleMpcIkDemo(Node):
             'guard_allow_abs_m', 'guard_allow_rel_m', 'guard_allow_acc_m',
             'guard_r_vec_x', 'guard_r_vec_y', 'guard_r_vec_z',
             'guard_expected_step_m', 'guard_command_step_m', 'guard_margin_m',
-            'guard_lambda', 'guard_projected', 'guard_consecutive_blocks', 'guard_fault',
+            'guard_lambda', 'guard_projected', 'guard_backup',
+            'guard_consecutive_blocks', 'guard_fault',
             'guard_r_ori_rad',
             'jstep_max_next_current', 'jstep_max_next_anchor', 'jstep_max_current_anchor',
             'jstep_argmax_joint', 'jstep_limit_hit', 'solver_step_violation',
@@ -1305,13 +2453,27 @@ class MoveBaseCircleMpcIkDemo(Node):
             # (|v|>=vmax-1e-6 / |a|>=amax-1e-6 的条目占比)、平移雅可比最小奇异值。
             *[f'so_ddq0_{i + 1}' for i in range(JOINT_COUNT)],
             'so_vel_active_ratio', 'so_acc_active_ratio', 'so_min_sigma',
+            'so_linearization_time_ms', 'so_projection_time_ms',
+            'so_total_optimize_time_ms',
+            'so_projection_velocity_residual_mps',
+            'so_projection_acceleration_residual_mps2',
+            'so_projection_velocity_active_ratio',
+            'so_projection_acceleration_active_ratio',
+            # 基座周期误差学习诊断。error 是实际 world 末端相对原始目标，
+            # correction 是加到 NMPC 参考上的 world 系学习补偿。
+            'periodic_learning_active', 'periodic_learning_key',
+            'periodic_error_x', 'periodic_error_y', 'periodic_error_z',
+            'periodic_error_norm_m',
+            'periodic_correction_x', 'periodic_correction_y',
+            'periodic_correction_z', 'periodic_correction_norm_m',
+            'periodic_coefficient_norm_m',
         ]
         return cols
 
     def _append_loop_row(
         self, timing, dq_prev, q_current, dq_measured, q_next, q_published, dq_published,
         info, command_usable, tracking_ok, guard_block, command_fk_step, guard_diag=None,
-        shadow_diag=None, dart_diag=None,
+        shadow_diag=None, dart_diag=None, periodic_diag=None,
     ):
         if not self.record_loop_csv or self._loop_record_failed:
             return
@@ -1347,8 +2509,12 @@ class MoveBaseCircleMpcIkDemo(Node):
                         else np.full(JOINT_COUNT, np.nan))
             self._prev_u0 = u0.copy()
             origin = self.traj_origin_wall
-            js_rel = (float(self._js_header_stamp_sec) - origin
-                      if origin is not None and np.isfinite(self._js_header_stamp_sec)
+            js_header_stamp_sec = float(timing.get(
+                'js_header_stamp_sec', self._js_header_stamp_sec))
+            js_recv_wall_sec = float(timing.get(
+                'js_recv_wall_sec', self._js_recv_wall_sec))
+            js_rel = (js_header_stamp_sec - origin
+                      if origin is not None and np.isfinite(js_header_stamp_sec)
                       else float('nan'))
             row = [
                 timing['t_solve'],
@@ -1362,9 +2528,12 @@ class MoveBaseCircleMpcIkDemo(Node):
                 timing['timer_interval_ms'],
                 timing['solve_to_publish_ms'],
                 timing['feedback_age_ms'],
+                int(bool(timing.get('late_tick_recovery', False))),
+                timing.get('predicted_application_delay_ms', float('nan')),
+                timing.get('state_prediction_age_ms', float('nan')),
                 js_rel,
-                float(self._js_header_stamp_sec),
-                float(self._js_recv_wall_sec),
+                js_header_stamp_sec,
+                js_recv_wall_sec,
                 timing['t_solve_wall'],
                 timing['t_publish_wall'],
             ]
@@ -1435,6 +2604,7 @@ class MoveBaseCircleMpcIkDemo(Node):
                 else float('nan'),
                 float(gd.get('lambda', float('nan'))),
                 int(bool(gd.get('projected', False))),
+                int(bool(gd.get('backup', False))),
                 int(gd.get('consecutive', 0)),
                 int(bool(gd.get('fault', False))),
                 float(ev.get('r_ori', float('nan'))),
@@ -1470,6 +2640,27 @@ class MoveBaseCircleMpcIkDemo(Node):
                 float(sd.get('vel_active_ratio', float('nan'))),
                 float(sd.get('acc_active_ratio', float('nan'))),
                 float(sd.get('min_sigma', float('nan'))),
+                float(sd.get('linearization_time_ms', float('nan'))),
+                float(sd.get('projection_time_ms', float('nan'))),
+                float(sd.get('total_optimize_time_ms', float('nan'))),
+                float(sd.get('projection_velocity_residual', float('nan'))),
+                float(sd.get('projection_acceleration_residual', float('nan'))),
+                float(sd.get('projection_velocity_active_ratio', float('nan'))),
+                float(sd.get('projection_acceleration_active_ratio', float('nan'))),
+            ]
+            pd = periodic_diag or {}
+            periodic_error = np.asarray(
+                pd.get('error_world', np.full(3, np.nan)), dtype=float)
+            periodic_correction = np.asarray(
+                pd.get('correction_world', np.zeros(3)), dtype=float)
+            row += [
+                int(bool(pd.get('active', False))),
+                int(pd.get('key', -1)),
+                *[float(value) for value in periodic_error],
+                float(pd.get('error_norm', float('nan'))),
+                *[float(value) for value in periodic_correction],
+                float(pd.get('correction_norm', 0.0)),
+                float(pd.get('coefficient_norm', 0.0)),
             ]
             self._loop_writer.writerow(row)
             self._loop_rows_since_flush += 1
@@ -1478,7 +2669,9 @@ class MoveBaseCircleMpcIkDemo(Node):
                 self._loop_rows_since_flush = 0
         except Exception as exc:
             self._loop_record_failed = True
-            self.get_logger().warn(f'loop CSV 记录失败,后续 tick 停止记录(不影响控制): {exc}')
+            self.get_logger().warn(
+                'loop CSV 记录失败,后续 tick 停止记录(不影响控制): '
+                f'{exc}\n{traceback.format_exc()}')
 
     def _close_loop_csv(self):
         if self._loop_file is not None:
@@ -1493,6 +2686,7 @@ class MoveBaseCircleMpcIkDemo(Node):
                     f'projections={self.guard_projection_count}, '
                     f'guard_fault={self.guard_fault}, '
                     f'solver_step_violations={self.solver_step_violation_count}; '
+                    f'late_tick_recoveries={self.late_tick_recovery_count}; '
                     f'DART sigma={self.dart_noise_std:.6f}rad, clipped '
                     f'{self.dart_clipped_count}/{self.dart_track_ticks}; '
                     f'dq_prev_mode={self.dq_prev_mode}, fallback '
@@ -1546,6 +2740,16 @@ class MoveBaseCircleMpcIkDemo(Node):
                 self.time_scaler.reset(0.0)
                 self._time_scaling_utilization = 0.0
                 self._time_scaling_tracking_error = 0.0
+                self._publish_latency_ewma_sec = self.latency_nominal_publish_sec
+                self._last_application_delay_sec = 0.0
+                self._last_state_prediction_age_sec = 0.0
+                self._so_last_cmd_dq = None
+                self._so_last_cmd_ddq = None
+                self.late_tick_recovery_count = 0
+                self._base_belief_offset = np.zeros(3)
+                self._base_estimator_rng = np.random.default_rng(
+                    self.base_estimator_seed)
+                self._reset_periodic_error_learning()
                 # 实时时钟卫生:控制阶段禁用 GC,消除周期性 GC 暂停造成的 solve->publish
                 # 抖动尖峰(实测偶发 ~34ms)。仅本轮实验(数十秒)禁用,close 时恢复;
                 # 不改任何控制逻辑(dq_prev/RTI/vff/守卫/horizon/权重/模型均不动)。
@@ -1555,22 +2759,35 @@ class MoveBaseCircleMpcIkDemo(Node):
         else:
             self.reset_hold_time = 0.0
 
-    def _apply_command_guard(self, q_next, q_current, t_solve, info, command_usable):
-        """阶段1E: 求解器步长契约 + 三种 guard_mode 的决策与应用(可单测,不含发布/CSV)。
+    def _apply_command_guard(
+            self, q_next, q_current, t_solve, info, command_usable,
+            t_state=None):
+        """求解器步长契约 + 四种 guard_mode 的决策与应用。
 
         副作用(与阶段1E之前的内联逻辑一致): 接受时更新 self.q_last / self.warm_start /
-        守卫锚点;拦截时保持 q_last、warm_start=None、计数并按连续上限进入 guard_fault。
+        守卫锚点。state_safe_filter 使用预计命令生效时的 q_current/t_state，
+        超限时先投影，再用主动 world-target backup，只有两者都无效才 block。
         返回 dict: command_usable(硬拒绝后可能变 False)、dq_cmd、guard_block、
         command_fk_step 及 CSV 守卫诊断字段。
         """
+        q_next = np.asarray(q_next, dtype=float)
+        q_current = np.asarray(q_current, dtype=float)
+        t_state = float(t_solve if t_state is None else t_state)
         dq_cmd = np.zeros(JOINT_COUNT)
         guard_block = False
         command_fk_step = float('nan')
-        t_new = t_solve + self.reference_lead_steps * self.dt
+        t_new = (
+            t_state + self.dt
+            if self.guard_mode == 'state_safe_filter'
+            else t_solve + self.reference_lead_steps * self.dt
+        )
         guard_ev = None
         guard_t_last_used = float('nan')
         guard_lambda = float('nan')
         guard_projected = False
+        guard_backup = False
+        solver_step_clipped = False
+        contract_lambda = 1.0
         solver_step_violation = False
         jstep_next_current = float('nan')
         jstep_next_anchor = float('nan')
@@ -1578,12 +2795,12 @@ class MoveBaseCircleMpcIkDemo(Node):
         jstep_argmax = -1
         if command_usable:
             # 阶段1E(六): 求解器步长契约 max|q_next-q_current| <= max_joint_step + eps。
-            jstep_vec = np.abs(np.asarray(q_next, dtype=float) - q_current)
+            jstep_vec = np.abs(q_next - q_current)
             jstep_next_current = float(np.max(jstep_vec))
             jstep_argmax = int(np.argmax(jstep_vec)) + 1
             if self._guard_q_last is not None:
                 jstep_next_anchor = float(np.max(np.abs(
-                    np.asarray(q_next, dtype=float) - self._guard_q_last)))
+                    q_next - self._guard_q_last)))
                 jstep_current_anchor = float(np.max(np.abs(
                     q_current - self._guard_q_last)))
             # NaN/inf 候选也算契约违反(nan 比较恒 False,不显式检查会静默漏过;
@@ -1597,16 +2814,39 @@ class MoveBaseCircleMpcIkDemo(Node):
                     '求解器输出违反步长契约: '
                     f'max|q_next-q_current|={jstep_next_current:.5f} rad > '
                     f'max_joint_step={self.max_joint_step:.5f} rad (joint{jstep_argmax})'
-                    + ('; expected_residual 模式硬拒绝,保持上一帧'
+                    + ('; residual 模式硬拒绝,保持上一帧'
                        if self.guard_mode == 'expected_residual'
+                       else '; state_safe_filter 将先裁剪再进入安全滤波'
+                       if self.guard_mode == 'state_safe_filter'
                        else '; legacy/shadow 模式仅记录(拦截行为与阶段1E之前一致)'))
-                if self.guard_mode == 'expected_residual':
+                if (
+                    self.guard_mode == 'state_safe_filter'
+                    and np.all(np.isfinite(jstep_vec))
+                    and jstep_next_current > 0.0
+                ):
+                    contract_lambda = (
+                        self.max_joint_step / jstep_next_current)
+                    q_next = (
+                        q_current
+                        + (q_next - q_current)
+                        * contract_lambda
+                    )
+                    q_next = np.clip(
+                        q_next, self.mpc_ik.q_lower, self.mpc_ik.q_upper)
+                    jstep_vec = np.abs(q_next - q_current)
+                    jstep_next_current = float(np.max(jstep_vec))
+                    guard_projected = True
+                    solver_step_clipped = True
+                    self.warm_start = None
+                elif self.guard_mode in (
+                    'expected_residual', 'state_safe_filter'):
                     # 硬拒绝: 按命令不可用处理(保持上一帧),不计入守卫拦截。
                     command_usable = False
                     self.warm_start = None
         if command_usable:
             command_fk_step = self._command_fk_step(q_next, t_solve)
-            if self.guard_mode != 'expected_residual':
+            if self.guard_mode not in (
+                    'expected_residual', 'state_safe_filter'):
                 # legacy_fixed_step 决策(与阶段1E之前逐拍一致)。expected_shadow 的拦截
                 # 也完全走这段 legacy 逻辑,shadow 只额外计算 expected 残差诊断。
                 if (
@@ -1637,7 +2877,7 @@ class MoveBaseCircleMpcIkDemo(Node):
                         np.asarray(q_next, dtype=float), t_new)
                     if not guard_block:
                         self._guard_accept(np.asarray(q_next, dtype=float), guard_ev)
-            else:
+            elif self.guard_mode == 'expected_residual':
                 # expected_residual 主动守卫: 残差超限 -> λ 投影 -> 仍不可行才 hold。
                 q_cand = np.asarray(q_next, dtype=float)
                 guard_t_last_used = self._guard_t_last_reference
@@ -1684,6 +2924,156 @@ class MoveBaseCircleMpcIkDemo(Node):
                         )
                         if self.guard_consecutive_blocks >= self.guard_max_consecutive_blocks:
                             self._guard_enter_fault()
+            else:
+                # Application-time state safety filter.  Each tick starts from
+                # the predicted current state, so one rejected command cannot
+                # leave a stale accepted-command anchor that poisons all later
+                # feasibility checks.
+                q_cand = np.asarray(q_next, dtype=float)
+                guard_t_last_used = t_state
+                guard_ev = self._guard_eval_between(
+                    q_current, t_state, q_cand, t_new)
+                candidate_safe = self._guard_candidate_safe(
+                    q_cand, q_current, guard_ev, guard_ev['r_ori'])
+                if (
+                    guard_ev['r_pos'] <= guard_ev['r_allow']
+                    and candidate_safe
+                ):
+                    guard_lambda = (
+                        contract_lambda if solver_step_clipped else 1.0)
+                    self.q_last = q_cand
+                    dq_cmd = (q_cand - q_current) / self.dt
+                    self.warm_start = (
+                        None if solver_step_clipped
+                        else info['trajectory'])
+                    if solver_step_clipped:
+                        self.guard_projection_count += 1
+                    self._guard_accept(q_cand, guard_ev)
+                else:
+                    proj = (
+                        self._guard_project_from_state(
+                            q_cand, q_current, t_state, t_new,
+                            guard_ev['r_ori'])
+                        if self.guard_projection_enabled else None
+                    )
+                    # λ=0 is geometrically safe but would merely hold the
+                    # predicted joint state. Prefer an active world-target
+                    # backup in that case.
+                    if proj is not None and proj[0] > 1e-6:
+                        guard_lambda, q_safe, ev_safe = proj
+                        guard_projected = True
+                        self.guard_projection_count += 1
+                        self.q_last = q_safe
+                        dq_cmd = (q_safe - q_current) / self.dt
+                        self.warm_start = None
+                        self._guard_accept(q_safe, ev_safe)
+                        self.get_logger().warn(
+                            '状态安全滤波投影: '
+                            f'r_pos={guard_ev["r_pos"] * 1000.0:.2f}mm > '
+                            f'r_allow={guard_ev["r_allow"] * 1000.0:.2f}mm, '
+                            f'lambda={guard_lambda:.3f}',
+                            throttle_duration_sec=1.0,
+                        )
+                    else:
+                        q_backup = self._guard_backup_command(
+                            q_current, t_new)
+                        ev_backup = self._guard_eval_between(
+                            q_current, t_state, q_backup, t_new)
+                        ev_hold = self._guard_eval_between(
+                            q_current, t_state, q_current, t_new)
+                        backup_safe = (
+                            np.all(np.isfinite(q_backup))
+                            and self._guard_candidate_safe(
+                                q_backup, q_current, ev_backup,
+                                guard_ev['r_ori'])
+                            and ev_backup['error_new']
+                            <= ev_hold['error_new'] + 1e-9
+                        )
+                        if backup_safe:
+                            guard_lambda = -1.0
+                            guard_projected = True
+                            guard_backup = True
+                            self.guard_projection_count += 1
+                            self.q_last = q_backup
+                            dq_cmd = (q_backup - q_current) / self.dt
+                            self.warm_start = None
+                            self._guard_accept(q_backup, ev_backup)
+                            guard_ev = ev_backup
+                            self.get_logger().warn(
+                                '状态安全滤波启用主动 backup: '
+                                f'error={ev_hold["error_new"] * 1000.0:.2f}'
+                                f'->{ev_backup["error_new"] * 1000.0:.2f}mm, '
+                                f'r={ev_backup["r_pos"] * 1000.0:.2f}mm',
+                                throttle_duration_sec=1.0,
+                            )
+                        else:
+                            guard_block = True
+                            guard_lambda = 0.0
+                            self.guard_block_count += 1
+                            self.guard_consecutive_blocks += 1
+                            # Hold the predicted current state rather than the
+                            # stale last accepted command. The next tick starts
+                            # from a fresh state anchor, so recovery is possible.
+                            self.q_last = np.clip(
+                                q_current,
+                                self.mpc_ik.q_lower,
+                                self.mpc_ik.q_upper)
+                            dq_cmd = np.zeros(JOINT_COUNT)
+                            self.warm_start = None
+                            if (
+                                self.guard_consecutive_blocks
+                                >= self.guard_max_consecutive_blocks
+                            ):
+                                self._guard_enter_fault()
+        elif self.guard_mode == 'state_safe_filter':
+            # Solver failure/NaN must not fall back to a stale accepted joint
+            # command while the base keeps moving. Use the same bounded local
+            # controller as the residual-rejection path, anchored at the fresh
+            # application-time state.
+            guard_t_last_used = t_state
+            ev_hold = self._guard_eval_between(
+                q_current, t_state, q_current, t_new)
+            q_backup = self._guard_backup_command(q_current, t_new)
+            ev_backup = self._guard_eval_between(
+                q_current, t_state, q_backup, t_new)
+            backup_safe = (
+                np.all(np.isfinite(q_backup))
+                and self._guard_candidate_safe(
+                    q_backup, q_current, ev_backup, float('inf'))
+                and ev_backup['error_new'] <= ev_hold['error_new'] + 1e-9
+            )
+            if backup_safe:
+                command_usable = True
+                guard_lambda = -1.0
+                guard_projected = True
+                guard_backup = True
+                self.guard_projection_count += 1
+                self.q_last = q_backup
+                dq_cmd = (q_backup - q_current) / self.dt
+                self.warm_start = None
+                self._guard_accept(q_backup, ev_backup)
+                guard_ev = ev_backup
+                self.get_logger().warn(
+                    'NMPC 命令不可用，状态安全滤波切换到主动 backup: '
+                    f'error={ev_hold["error_new"] * 1000.0:.2f}'
+                    f'->{ev_backup["error_new"] * 1000.0:.2f}mm',
+                    throttle_duration_sec=1.0,
+                )
+            else:
+                guard_block = True
+                guard_lambda = 0.0
+                self.guard_block_count += 1
+                self.guard_consecutive_blocks += 1
+                self.q_last = np.clip(
+                    q_current, self.mpc_ik.q_lower, self.mpc_ik.q_upper)
+                dq_cmd = np.zeros(JOINT_COUNT)
+                self.warm_start = None
+                guard_ev = ev_hold
+                if (
+                    self.guard_consecutive_blocks
+                    >= self.guard_max_consecutive_blocks
+                ):
+                    self._guard_enter_fault()
         return {
             'command_usable': command_usable,
             'dq_cmd': dq_cmd,
@@ -1694,6 +3084,7 @@ class MoveBaseCircleMpcIkDemo(Node):
             'guard_t_last_used': guard_t_last_used,
             'guard_lambda': guard_lambda,
             'guard_projected': guard_projected,
+            'guard_backup': guard_backup,
             'solver_step_violation': solver_step_violation,
             'jstep_next_current': jstep_next_current,
             'jstep_next_anchor': jstep_next_anchor,
@@ -1711,13 +3102,49 @@ class MoveBaseCircleMpcIkDemo(Node):
         timer_interval_ms = ((solve_wall - self._last_tick_wall) * 1000.0
                              if self._last_tick_wall is not None else float('nan'))
         self._last_tick_wall = solve_wall
+        late_tick_recovery = self._recover_from_late_tick(timer_interval_ms)
+        q_feedback, dq_feedback, js_header_stamp_sec, js_recv_wall_sec = (
+            self._feedback_snapshot())
+        if q_feedback is None:
+            self._warn_missing_joint_states()
+            return
         # feedback_age 在**求解开始时**计算(不等发布/写盘)。
-        feedback_age_ms = ((solve_wall - self._js_recv_wall_sec) * 1000.0
-                           if np.isfinite(self._js_recv_wall_sec) else float('nan'))
+        feedback_age_ms = ((solve_wall - js_recv_wall_sec) * 1000.0
+                           if np.isfinite(js_recv_wall_sec) else float('nan'))
+        transport_gap_ms = (
+            (js_recv_wall_sec - js_header_stamp_sec) * 1000.0
+            if (np.isfinite(js_recv_wall_sec)
+                and np.isfinite(js_header_stamp_sec))
+            else float('nan'))
+        if np.isfinite(transport_gap_ms) and transport_gap_ms > 30.0:
+            self._transport_gap_bad_ticks += 1
+        else:
+            self._transport_gap_bad_ticks = 0
+        if (self._transport_gap_bad_ticks >= 50
+                and not self._transport_gap_warned):
+            self._transport_gap_warned = True
+            self.get_logger().error(
+                f'/joint_states 传输延迟异常: recv-stamp 间隔持续 '
+                f'>{30.0:.0f}ms (当前 {transport_gap_ms:.1f}ms)。反馈陈旧会让'
+                '守卫大量投影、跟踪严重劣化。典型原因是 DDS 共享内存残留: '
+                '请停止所有 ROS 节点后执行 '
+                'rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_* 再重启。')
+        application_delay_sec = self._predicted_application_delay_sec()
+        self._last_application_delay_sec = application_delay_sec
 
+        # estimated 信念模式: 先更新本拍 Δ̂, 之后本拍所有 _base_pose(参考生成/
+        # 守卫/TF/记录)共享同一信念, 不会拍内不一致。
+        self._update_base_belief(t_solve)
         self._publish_base_tf(t_solve)
 
-        q_current = self.q_measured.copy()
+        q_current = q_feedback
+        feedback_time = (
+            js_header_stamp_sec - self.traj_origin_wall
+            if np.isfinite(js_header_stamp_sec)
+            else float('nan')
+        )
+        periodic_diag = self._update_periodic_error_learning(
+            q_current, feedback_time)
         if self.online_time_scaling_enabled:
             scale_dt = (timer_interval_ms * 1e-3
                         if np.isfinite(timer_interval_ms) else 0.0)
@@ -1727,7 +3154,8 @@ class MoveBaseCircleMpcIkDemo(Node):
                 self._time_scaling_tracking_error,
             )
         # 阶段1B:计算上一控制周期实际执行增量(measured_delta),或 0(zero)。
-        dqp = self._compute_dq_prev(q_current, self._js_header_stamp_sec)
+        dqp = self._compute_dq_prev(
+            q_current, js_header_stamp_sec, dq_feedback)
         self.dq_prev_total_track_ticks += 1
         if dqp['fallback'] != 0:
             self.dq_prev_fallback_count += 1
@@ -1740,8 +3168,16 @@ class MoveBaseCircleMpcIkDemo(Node):
         second_result = None
         shadow_diag = None
         dq_model_next = None
+        q_control = q_current
+        dq_control = (
+            np.asarray(dq_feedback, dtype=float)
+            if dq_feedback is not None
+            else np.zeros(JOINT_COUNT))
+        state_prediction_age_sec = 0.0
         if self.solver_model in ('first_order', 'shadow'):
-            targets, rotations = self._target_horizon_base(t_solve)
+            targets, rotations = self._target_horizon_base(
+                t_solve,
+                application_delay_sec=application_delay_sec)
             q_next, ok, info = self.mpc_ik.step(
                 targets,
                 q_current,
@@ -1755,7 +3191,9 @@ class MoveBaseCircleMpcIkDemo(Node):
                 ),
             )
             if self.solver_model == 'shadow':
-                second_result = self._solve_second_order(t_solve, q_current)
+                second_result = self._solve_second_order(
+                    t_solve, solve_wall, q_current,
+                    application_delay_sec, dq_feedback)
                 if second_result and second_result.get('available'):
                     second_info = second_result['info']
                     q_shadow = np.asarray(second_result['q_next'], dtype=float)
@@ -1779,10 +3217,17 @@ class MoveBaseCircleMpcIkDemo(Node):
                 else:
                     shadow_diag = {'available': False}
         else:
-            second_result = self._solve_second_order(t_solve, q_current)
+            second_result = self._solve_second_order(
+                t_solve, solve_wall, q_current,
+                application_delay_sec, dq_feedback)
             if second_result and second_result.get('available'):
                 q_next = second_result['q_next']
                 dq_model_next = second_result['dq_next']
+                q_control = second_result['q_control']
+                dq_control = second_result['dq_control']
+                state_prediction_age_sec = float(
+                    second_result['state_prediction_age_sec'])
+                self._last_state_prediction_age_sec = state_prediction_age_sec
                 ok = second_result['ok']
                 info = second_result['info']
                 # second_order 控制模式同样把二阶诊断进 CSV(q/dq_next=真实发布所用解)。
@@ -1820,7 +3265,9 @@ class MoveBaseCircleMpcIkDemo(Node):
 
         command_usable = bool(info.get('command_usable', ok))
         tracking_ok = bool(info.get('tracking_ok', ok))
-        g = self._apply_command_guard(q_next, q_current, t_solve, info, command_usable)
+        g = self._apply_command_guard(
+            q_next, q_control, t_solve, info, command_usable,
+            t_state=t_solve + application_delay_sec)
         command_usable = g['command_usable']
         dq_cmd = g['dq_cmd']
         guard_block = g['guard_block']
@@ -1835,16 +3282,54 @@ class MoveBaseCircleMpcIkDemo(Node):
             and not g['guard_projected']
             and np.allclose(self.q_last, q_next, atol=1e-10, rtol=0.0)
         ):
-            dq_cmd = np.clip(
-                np.asarray(dq_model_next, dtype=float)
-                / self.second_order_dq_ff_compensation,
-                -self.second_order_max_velocity, self.second_order_max_velocity)
+            if self.command_inversion_enabled:
+                # 命令逆变换: 解析求发布速度 v_c, 使 plant 从 x0(=q_control,
+                # Smith 预测的生效时刻状态) 经 n=dt/h 个执行律子步后恰好落在
+                # q_next。plant 子步: gap_{j} = gap_{j-1}*r - h*v_c, r=1-h/tau,
+                # 末端 gap=0 => v_c = Δq * r^n / (tau*(1-r^n))。
+                # 相比直接发布区间末速度 dq_{k+1}, 消除半拍相位超前和位置
+                # 反馈项带来的 ~13% 幅值增益。
+                h = self.plant_control_substep_dt
+                tau = self.plant_position_feedback_tau
+                n_sub = max(1, int(round(self.dt / h)))
+                r = 1.0 - h / tau
+                delta_q_plan = (np.asarray(q_next, dtype=float)
+                                - np.asarray(q_control, dtype=float))
+                v_c = delta_q_plan * (r ** n_sub) / (tau * (1.0 - r ** n_sub))
+                dq_cmd = np.clip(
+                    v_c / self.plant_velocity_feedforward_gain,
+                    -self.plant_max_velocity, self.plant_max_velocity)
+            else:
+                dq_cmd = np.clip(
+                    np.asarray(dq_model_next, dtype=float)
+                    / self.second_order_dq_ff_compensation,
+                    -self.second_order_max_velocity,
+                    self.second_order_max_velocity)
         if self.solver_model == 'second_order':
             accepted = (dq_model_next is not None and command_usable
                         and not guard_block and not g['guard_projected'])
-            self._so_last_cmd_dq = (np.asarray(dq_model_next, dtype=float).copy()
-                                    if accepted else np.zeros(JOINT_COUNT))
-        accepted_step = np.asarray(self.q_last, dtype=float) - q_current
+            executed_velocity = (
+                np.asarray(dq_model_next, dtype=float).copy()
+                if accepted
+                else np.asarray(g['dq_cmd'], dtype=float).copy()
+                if command_usable and not guard_block
+                else np.zeros(JOINT_COUNT)
+            )
+            self._so_last_cmd_dq = executed_velocity
+            ddq0 = np.asarray(
+                info.get('ddq0', np.zeros(JOINT_COUNT)), dtype=float)
+            self._so_last_cmd_ddq = (
+                ddq0.copy() if accepted
+                else np.clip(
+                    (executed_velocity - dq_control) / self.dt,
+                    -self.second_order_max_acceleration,
+                    self.second_order_max_acceleration))
+            # The ACADOS plan was generated for q_next/dq_next. A projected,
+            # backup, held or unusable command invalidates it; reusing that plan
+            # can immediately recreate the rejected jump on the next tick.
+            if not accepted:
+                self._reset_second_order_plan()
+        accepted_step = np.asarray(self.q_last, dtype=float) - q_control
         self._time_scaling_utilization = float(np.clip(
             np.max(np.abs(accepted_step)) / self.max_joint_step, 0.0, 2.0))
         self._time_scaling_tracking_error = float(
@@ -1874,6 +3359,21 @@ class MoveBaseCircleMpcIkDemo(Node):
 
         q_published, dq_published, publish_wall, dart_diag = (
             self._publish_joint_positions(self.q_last, dq_cmd))
+        # 首个 track tick 发布后, 把轨迹原点重锚到该次发布时刻。
+        # trajectory_visualizer_demo 以第一条 moving_base_track 命令的
+        # header.stamp 作为其时间原点; 若 MPC 原点停留在首拍求解起点,
+        # 两节点时钟相差首拍 solve->publish 延迟(实测 6~17ms 且逐次运行不同),
+        # visualizer 的定时误差 KPI 会被这个纯时钟偏移污染(~1-2mm 假滞后)。
+        # 重锚后两原点按构造相等; 首拍参考瞬时前移一次(<20ms, 处于起笔前),
+        # 不改变 header.stamp=真实发布时刻 的既有约定。
+        if self._nominal_tick_index == 0:
+            self.traj_origin_wall = publish_wall
+        actual_publish_delay_sec = max(0.0, publish_wall - solve_wall)
+        if self.latency_compensation_enabled:
+            alpha = self.latency_publish_ewma_alpha
+            self._publish_latency_ewma_sec = (
+                (1.0 - alpha) * self._publish_latency_ewma_sec
+                + alpha * actual_publish_delay_sec)
         self._warn_joint_limits(q_published)
         self._update_command_fk_monitor(q_published, t_solve)
 
@@ -1881,11 +3381,16 @@ class MoveBaseCircleMpcIkDemo(Node):
         timing = {
             't_solve': t_solve,
             't_publish': t_publish,
-            't_reference': t_solve + self.reference_lead_steps * self.dt,
+            't_reference': float(self._last_target_time0),
             't_next': t_publish + self.dt,
             'timer_interval_ms': timer_interval_ms,
             'solve_to_publish_ms': (publish_wall - solve_wall) * 1000.0,
             'feedback_age_ms': feedback_age_ms,
+            'late_tick_recovery': late_tick_recovery,
+            'predicted_application_delay_ms': application_delay_sec * 1000.0,
+            'state_prediction_age_ms': state_prediction_age_sec * 1000.0,
+            'js_header_stamp_sec': js_header_stamp_sec,
+            'js_recv_wall_sec': js_recv_wall_sec,
             't_solve_wall': solve_wall,
             't_publish_wall': publish_wall,
         }
@@ -1893,7 +3398,7 @@ class MoveBaseCircleMpcIkDemo(Node):
             timing,
             dqp,
             q_current=q_current,
-            dq_measured=self.dq_measured,
+            dq_measured=dq_feedback,
             q_next=q_next,
             q_published=q_published,
             dq_published=dq_published,
@@ -1904,12 +3409,14 @@ class MoveBaseCircleMpcIkDemo(Node):
             command_fk_step=command_fk_step,
             guard_diag={
                 'mode_code': {'legacy_fixed_step': 0, 'expected_shadow': 1,
-                              'expected_residual': 2}[self.guard_mode],
+                              'expected_residual': 2,
+                              'state_safe_filter': 3}[self.guard_mode],
                 't_new': g['t_new'],
                 't_last_reference': g['guard_t_last_used'],
                 'ev': g['guard_ev'],
                 'lambda': g['guard_lambda'],
                 'projected': g['guard_projected'],
+                'backup': g['guard_backup'],
                 'consecutive': self.guard_consecutive_blocks,
                 'fault': self.guard_fault,
                 'jstep_next_current': g['jstep_next_current'],
@@ -1923,6 +3430,7 @@ class MoveBaseCircleMpcIkDemo(Node):
             },
             shadow_diag=shadow_diag,
             dart_diag=dart_diag,
+            periodic_diag=periodic_diag,
         )
         self._nominal_tick_index += 1
         self._print_joint_angles(t_solve)
@@ -1945,6 +3453,9 @@ def main():
     rclpy.init()
     node = MoveBaseCircleMpcIkDemo()
     try:
+        # ACADOS 控制循环采用单线程确定性调度。/joint_states 的 QoS depth=1
+        # 保证求解期间只保留最新反馈，避免旧消息积压；同时避免 Python
+        # MultiThreadedExecutor 中 100Hz 反馈回调争抢 GIL、打断 50Hz NMPC。
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass

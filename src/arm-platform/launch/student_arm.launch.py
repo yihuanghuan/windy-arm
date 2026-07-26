@@ -35,10 +35,13 @@ def generate_launch_description():
         description='Serial port for real hardware (ignored in sim mode)'
     )
 
+    # 按真实电机规格 (config/motor_config.yaml): joint1-3 DM4340-48V
+    # max_velocity=3.0 rad/s, joint4-7 RS05 max_velocity=5.0 rad/s。
+    # 标量限幅取各电机最小值 3.0；旧值 1.0 是教学保守限幅，非硬件极限。
     max_velocity_arg = DeclareLaunchArgument(
         'max_velocity',
-        default_value='1.0',
-        description='Max joint velocity (rad/s) safety limit for students'
+        default_value='3.0',
+        description='Max joint velocity (rad/s), min over real motor specs'
     )
 
     # 角速度控制(关节速度前馈)默认开启,不再保留开关。
@@ -66,9 +69,12 @@ def generate_launch_description():
         description='Enable velocity command acceleration limiting'
     )
 
+    # DM4340 峰值扭矩 27Nm / RS05 5.5Nm 对本臂惯量可支撑远高于 5 rad/s² 的
+    # 关节加速度；20 rad/s² 仍属保守。旧值 5.0 会在 50Hz NMPC 的每拍速度阶跃
+    # 上长期触发限幅(实测 83% 子步活跃)，是 2Hz 跟踪残差的主要非线性来源。
     max_acceleration_arg = DeclareLaunchArgument(
         'max_acceleration',
-        default_value='5.0',
+        default_value='20.0',
         description='Velocity command acceleration limit (rad/s^2)'
     )
 

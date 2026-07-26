@@ -323,6 +323,13 @@ class TrajectoryVisualizerDemo(Node):
             self.declare_parameter('trajectory_time_scale', 1.0).value)
         self.base_motion_time_scale = float(
             self.declare_parameter('base_motion_time_scale', 1.0).value)
+        # 基座扰动真值通道(不确定性实验): actual world EE 用 名义+扰动 计算。
+        # 与 MPC demo 的 base_disturbance_* 参数必须一致(同幅值同种子),
+        # MPC 端另有 base_belief_mode 决定它"知道"多少。0=关闭(现状)。
+        self.base_disturbance_amplitude_m = float(
+            self.declare_parameter('base_disturbance_amplitude_m', 0.0).value)
+        self.base_disturbance_seed = int(
+            self.declare_parameter('base_disturbance_seed', 0).value)
         self.data_dir = Path(str(self.declare_parameter(
             'data_dir',
             '/home/windylab/code/windylab_ws/src/arm-platform/demo/data').value))
@@ -688,7 +695,13 @@ class TrajectoryVisualizerDemo(Node):
         return base_pos_world + base_rot_world @ ee_pos_base
 
     def _moving_base_pose(self, t: float) -> np.ndarray:
-        return moving_traj.base_pose(t / self.base_motion_time_scale)
+        scaled_t = t / self.base_motion_time_scale
+        pose = moving_traj.base_pose(scaled_t)
+        if self.base_disturbance_amplitude_m > 0.0:
+            pose = pose + moving_traj.base_disturbance_offset(
+                scaled_t, self.base_disturbance_amplitude_m,
+                self.base_disturbance_seed)
+        return pose
 
     def _moving_base_rotation(self, t: float) -> np.ndarray:
         return moving_traj.base_rotation(

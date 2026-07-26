@@ -18,6 +18,7 @@ import argparse
 import math
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -64,6 +65,55 @@ def test_horizon_target_times():
                       max_err < 1e-12, f'max_err={max_err:.2e}')
                 check(f'lead={lead} h={horizon} t={t0}: _last_target_time0==t+lead*dt',
                       abs(stub._last_target_time0 - (t0 + lead * DT)) < 1e-12)
+
+    stub = object.__new__(MoveBaseCircleMpcIkDemo)
+    stub.dt = DT
+    stub.horizon_steps = 3
+    stub.reference_lead_steps = 1
+    delay = 0.011
+    positions, _ = MoveBaseCircleMpcIkDemo._target_horizon_base(
+        stub, 1.0, application_delay_sec=delay)
+    expected_t0 = 1.0 + delay + DT
+    base_pos = traj.base_pose(expected_t0)
+    base_rot = traj.base_rotation(expected_t0)
+    expected = base_rot.T @ (
+        traj.ee_target_world(expected_t0) - base_pos)
+    check('application delay 同时前移 horizon 的 base/path 参考',
+          np.max(np.abs(positions[0] - expected)) < 1e-12
+          and abs(stub._last_target_time0 - expected_t0) < 1e-12)
+
+
+def test_timestamped_state_prediction():
+    print('测试 1B: joint-state 时间戳 -> 预计命令生效时刻的二阶状态预测')
+    from move_base_circle_mpc_ik_demo import MoveBaseCircleMpcIkDemo
+
+    stub = object.__new__(MoveBaseCircleMpcIkDemo)
+    stub.dt = DT
+    stub.latency_prediction_max_sec = 0.060
+    stub.second_order_max_acceleration = 5.0
+    stub.second_order_max_velocity = 1.0
+    stub._js_header_stamp_sec = 9.970
+    stub._js_recv_wall_sec = 9.990
+    stub._so_last_cmd_ddq = np.ones(7)
+    stub.mpc_ik = SimpleNamespace(
+        q_lower=np.full(7, -10.0),
+        q_upper=np.full(7, 10.0),
+    )
+    q0 = np.zeros(7)
+    dq0 = np.full(7, 0.2)
+    q_pred, dq_pred, age = (
+        MoveBaseCircleMpcIkDemo._predict_second_order_state(
+            stub, q0, dq0, solve_wall=10.0,
+            application_delay_sec=0.010))
+    expected_age = 0.040
+    expected_q = 0.2 * expected_age + 0.5 * expected_age ** 2
+    expected_dq = 0.2 + expected_age
+    check('prediction age = feedback age + application delay',
+          abs(age - expected_age) < 1e-12)
+    check('q 使用恒加速度二阶前推',
+          np.max(np.abs(q_pred - expected_q)) < 1e-12)
+    check('dq 使用已执行 ddq 前推',
+          np.max(np.abs(dq_pred - expected_dq)) < 1e-12)
 
 
 # ---------------------------------------------------------------- 测试 2
@@ -199,6 +249,7 @@ def main():
     args = parser.parse_args()
 
     test_horizon_target_times()
+    test_timestamped_state_prediction()
     if args.skip_solver:
         print('测试 2: 已跳过(--skip-solver)')
     else:

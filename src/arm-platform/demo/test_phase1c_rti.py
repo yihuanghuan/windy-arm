@@ -188,7 +188,7 @@ def test_config_validation():
 
 
 def test_demo_production_defaults():
-    print('单元4: moving-base demo 生产默认 = lead1 / measured_delta / fixed_iterations')
+    print('单元4: moving-base demo 生产默认控制/时序/安全配置')
     import ast
     src = (Path(__file__).resolve().parent / 'move_base_circle_mpc_ik_demo.py').read_text()
     tree = ast.parse(src)
@@ -206,10 +206,99 @@ def test_demo_production_defaults():
           str(defaults.get('dq_prev_mode')))
     check("rti_iteration_mode 默认='fixed_iterations'",
           defaults.get('rti_iteration_mode') == 'fixed_iterations', str(defaults.get('rti_iteration_mode')))
+    check("solver_model 默认='second_order'",
+          defaults.get('solver_model') == 'second_order',
+          str(defaults.get('solver_model')))
+    check("guard_mode 默认='state_safe_filter'",
+          defaults.get('guard_mode') == 'state_safe_filter',
+          str(defaults.get('guard_mode')))
+    check("二阶状态预测与延迟补偿默认关闭",
+          defaults.get('second_order_state_prediction') is False
+          and defaults.get('latency_compensation_enabled') is False)
+    check("迟到拍恢复默认开启且阈值为 1.5dt",
+          defaults.get('late_tick_recovery_enabled') is True
+          and defaults.get('late_tick_recovery_factor') == 1.5)
+    check("second_order_velocity_source 默认='commanded'",
+          defaults.get('second_order_velocity_source') == 'commanded',
+          str(defaults.get('second_order_velocity_source')))
+    check("NMPC 使用单线程确定性 executor",
+          'rclpy.spin(node)' in src
+          and 'from rclpy.executors import MultiThreadedExecutor' not in src)
+    check("joint_states 队列只保留最新值",
+          "'/joint_states'," in src
+          and "'/joint_states',\n            self._joint_states_callback,\n            1," in src)
+    check("实时 N=10 position-only 默认，冲突导数投影/残差关闭",
+          defaults.get('second_order_horizon_steps') == 10
+          and defaults.get('second_order_terminal_position_weight') == 500.0
+          and defaults.get('second_order_feasible_reference_projection') is False
+          and defaults.get('second_order_contour_tracking_enabled') is False
+          and defaults.get('second_order_lag_position_weight') == 750.0
+          and defaults.get('second_order_cartesian_velocity_weight') == 0.0
+          and defaults.get('second_order_acceleration_weight') == 0.0
+          and defaults.get('second_order_terminal_velocity_weight') == 0.0)
     # MpcIkConfig 层默认应仍为 legacy(兼容其他 demo),由 moving-base demo 显式传 fixed。
     from mpc_pinocchio_ik import MpcIkConfig
     check("MpcIkConfig.rti_iteration_mode 默认仍=legacy(兼容其他 demo)",
           MpcIkConfig().rti_iteration_mode == 'legacy_early_exit')
+
+
+def test_atomic_feedback_snapshot():
+    print('单元5: 反馈快照必须保持 q/dq/stamp 来自同一消息')
+    from move_base_circle_mpc_ik_demo import MoveBaseCircleMpcIkDemo
+    d = object.__new__(MoveBaseCircleMpcIkDemo)
+    q = np.arange(7, dtype=float)
+    dq = q + 10.0
+    d._latest_feedback_sample = (q, dq, 123.0, 124.0)
+    # 旧兼容字段故意放另一条消息，快照不得混用。
+    d.q_measured = q + 100.0
+    d.dq_measured = dq + 100.0
+    d._js_header_stamp_sec = 223.0
+    d._js_recv_wall_sec = 224.0
+    qs, dqs, stamp, recv = d._feedback_snapshot()
+    check('快照四项来自同一原子 sample',
+          np.array_equal(qs, q) and np.array_equal(dqs, dq)
+          and stamp == 123.0 and recv == 124.0)
+    qs[0] = -999.0
+    check('控制线程得到副本，不会修改 callback 保存的反馈',
+          d._latest_feedback_sample[0][0] == 0.0)
+
+
+def test_late_tick_recovery():
+    print('单元6: 迟到拍丢弃过期 warm start/commanded dq')
+    from move_base_circle_mpc_ik_demo import MoveBaseCircleMpcIkDemo
+
+    class Solver:
+        def __init__(self):
+            self.reset_count = 0
+
+        def reset_warm_start(self):
+            self.reset_count += 1
+
+    class Logger:
+        def warn(self, *args, **kwargs):
+            pass
+
+    d = object.__new__(MoveBaseCircleMpcIkDemo)
+    d.dt = 0.02
+    d.late_tick_recovery_enabled = True
+    d.late_tick_recovery_factor = 1.5
+    d.second_order_warm_start = 'old'
+    d.second_order_ik = Solver()
+    d._so_last_cmd_dq = np.ones(7)
+    d._so_last_cmd_ddq = np.ones(7)
+    d.late_tick_recovery_count = 0
+    d.get_logger = lambda: Logger()
+    check('29ms 正常拍不触发恢复',
+          not d._recover_from_late_tick(29.0)
+          and d.second_order_warm_start == 'old')
+    check('31ms 迟到拍触发恢复',
+          d._recover_from_late_tick(31.0))
+    check('恢复清空 warm start 与 commanded 状态',
+          d.second_order_warm_start is None
+          and d._so_last_cmd_dq is None
+          and d._so_last_cmd_ddq is None
+          and d.second_order_ik.reset_count == 1
+          and d.late_tick_recovery_count == 1)
 
 
 def main():
@@ -220,6 +309,8 @@ def main():
     test_signature_unchanged()
     test_config_validation()
     test_demo_production_defaults()
+    test_atomic_feedback_snapshot()
+    test_late_tick_recovery()
     if args.skip_solver:
         print('单元3: 跳过(--skip-solver)')
     else:

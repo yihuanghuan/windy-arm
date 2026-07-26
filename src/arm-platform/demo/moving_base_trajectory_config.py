@@ -6,6 +6,7 @@ stay consistent. Edit this file when switching between fixed-base and
 moving-base experiments.
 """
 
+from functools import lru_cache
 import math
 import os
 from typing import NamedTuple
@@ -121,8 +122,10 @@ def _validate_ee_shape(shape: str = None) -> str:
 
 
 def _smoothstep(value: float) -> float:
+    """C2 quintic time law with zero velocity/acceleration at both ends."""
     value = float(np.clip(value, 0.0, 1.0))
-    return value * value * (3.0 - 2.0 * value)
+    return value ** 3 * (
+        10.0 + value * (-15.0 + 6.0 * value))
 
 
 def _line_sample(start: np.ndarray, end: np.ndarray, phase: float) -> np.ndarray:
@@ -224,7 +227,7 @@ def _motion_duration(start: np.ndarray, end: np.ndarray, speed: float) -> float:
     return max(distance / max(float(speed), 1e-6), 0.12)
 
 
-def _build_windylab_timeline():
+def _build_windylab_timeline(include_cycle_return: bool = True):
     strokes = _letter_strokes()
     segments = []
 
@@ -243,6 +246,14 @@ def _build_windylab_timeline():
                 stroke[index], stroke[index + 1],
                 EE_DRAW_SPEED, True, stroke_id)
 
+        # A standalone ``windylab`` task is periodic, so its final ``b`` must
+        # lift/travel/lower back to the next cycle's ``w``.  Inside ``whole``
+        # the word is a one-shot primitive: after the final ``b`` the outer
+        # whole-task transition owns the lift and surface transfer.  Adding
+        # both transitions made the tool return to and touch the ``w`` start
+        # once before leaving the back board.
+        if stroke_id == len(strokes) - 1 and not include_cycle_return:
+            continue
         next_stroke = strokes[(stroke_id + 1) % len(strokes)]
         current = stroke[-1]
         next_start = next_stroke[0]
@@ -259,8 +270,11 @@ def _build_windylab_timeline():
 
 
 _WINDYLAB_STROKES, _WINDYLAB_SEGMENTS, _WINDYLAB_CUMULATIVE = (
-    _build_windylab_timeline())
+    _build_windylab_timeline(include_cycle_return=True))
 _WINDYLAB_PERIOD_SEC = float(_WINDYLAB_CUMULATIVE[-1])
+_, _WINDYLAB_ONCE_SEGMENTS, _WINDYLAB_ONCE_CUMULATIVE = (
+    _build_windylab_timeline(include_cycle_return=False))
+_WINDYLAB_ONCE_PERIOD_SEC = float(_WINDYLAB_ONCE_CUMULATIVE[-1])
 
 
 def _local_trajectory_period(shape: str) -> float:
@@ -279,26 +293,48 @@ def _local_trajectory_period(shape: str) -> float:
     }[shape]
 
 
+def _whole_task_draw_period(shape: str) -> float:
+    """One-shot draw duration used by ``whole``.
+
+    Only the word differs from its standalone period: the standalone word
+    contains the final return-to-``w`` travel needed for repetition, while
+    ``whole`` transitions directly from the final ``b`` to the next station.
+    """
+    if shape == 'windylab':
+        return _WINDYLAB_ONCE_PERIOD_SEC
+    return _local_trajectory_period(shape)
+
+
 def ee_trajectory_period(shape: str = None) -> float:
     shape = _validate_ee_shape(shape)
     if shape != 'whole':
         return _local_trajectory_period(shape)
     return (
-        sum(_local_trajectory_period(task_shape)
+        sum(_whole_task_draw_period(task_shape)
             for task_shape, _ in _WHOLE_TASKS)
         + len(_WHOLE_TASKS) * _WHOLE_TRANSITION_SEC
     )
 
 
-def _windylab_sample(t: float) -> EeTrajectorySample:
-    period = _WINDYLAB_PERIOD_SEC
-    cycle = math.floor(float(t) / period)
-    local = float(t) - cycle * period
-    index = int(np.searchsorted(_WINDYLAB_CUMULATIVE, local, side='right') - 1)
-    index = int(np.clip(index, 0, len(_WINDYLAB_SEGMENTS) - 1))
-    segment = _WINDYLAB_SEGMENTS[index]
+def _windylab_sample(
+        t: float, repeat: bool = True) -> EeTrajectorySample:
+    if repeat:
+        period = _WINDYLAB_PERIOD_SEC
+        segments = _WINDYLAB_SEGMENTS
+        cumulative = _WINDYLAB_CUMULATIVE
+        cycle = math.floor(float(t) / period)
+        local = float(t) - cycle * period
+    else:
+        period = _WINDYLAB_ONCE_PERIOD_SEC
+        segments = _WINDYLAB_ONCE_SEGMENTS
+        cumulative = _WINDYLAB_ONCE_CUMULATIVE
+        cycle = 0
+        local = float(np.clip(float(t), 0.0, period))
+    index = int(np.searchsorted(cumulative, local, side='right') - 1)
+    index = int(np.clip(index, 0, len(segments) - 1))
+    segment = segments[index]
     phase = (
-        (local - _WINDYLAB_CUMULATIVE[index])
+        (local - cumulative[index])
         / segment['duration']
     )
     stroke_id = segment['stroke_id']
@@ -311,7 +347,8 @@ def _windylab_sample(t: float) -> EeTrajectorySample:
     )
 
 
-def _local_trajectory_sample(t: float, shape: str) -> EeTrajectorySample:
+def _local_trajectory_sample(
+        t: float, shape: str, repeat: bool = True) -> EeTrajectorySample:
     """Sample a primitive in the canonical local drawing plane."""
     if shape == 'whole':
         raise ValueError('whole is not a local drawing primitive')
@@ -379,7 +416,7 @@ def _local_trajectory_sample(t: float, shape: str) -> EeTrajectorySample:
                 local / _SINE_LOWER_SEC),
             False, -1)
 
-    return _windylab_sample(t)
+    return _windylab_sample(t, repeat=repeat)
 
 
 def _rz(angle: float) -> np.ndarray:
@@ -459,10 +496,12 @@ def _whole_trajectory_sample(t: float) -> EeTrajectorySample:
     task_count = len(_WHOLE_TASKS)
 
     for task_index, (task_shape, station) in enumerate(_WHOLE_TASKS):
-        draw_period = _local_trajectory_period(task_shape)
+        draw_period = _whole_task_draw_period(task_shape)
         if local_time < draw_period:
             placed = _place_local_sample(
-                _local_trajectory_sample(local_time, task_shape),
+                _local_trajectory_sample(
+                    local_time, task_shape,
+                    repeat=(task_shape != 'windylab')),
                 station,
             )
             stroke_id = placed.stroke_id
@@ -477,7 +516,9 @@ def _whole_trajectory_sample(t: float) -> EeTrajectorySample:
 
         next_shape, next_station = _WHOLE_TASKS[(task_index + 1) % task_count]
         current_end = _place_local_sample(
-            _local_trajectory_sample(draw_period - 1e-9, task_shape),
+            _local_trajectory_sample(
+                draw_period - 1e-9, task_shape,
+                repeat=(task_shape != 'windylab')),
             station,
         )
         next_start = _place_local_sample(
@@ -530,7 +571,7 @@ def base_nominal_yaw(t: float, shape: str = None) -> float:
     cycle = math.floor(float(t) / period)
     local_time = float(t) - cycle * period
     for task_index, (task_shape, station) in enumerate(_WHOLE_TASKS):
-        draw_period = _local_trajectory_period(task_shape)
+        draw_period = _whole_task_draw_period(task_shape)
         current_yaw = _STATION_AZIMUTH[station]
         if local_time < draw_period:
             return current_yaw
@@ -612,6 +653,43 @@ def sample_ee_drawing_segments(
     if shape in ('circle', 'triangle', 'square') and segments:
         segments[0] = np.vstack([segments[0], segments[0][0]])
     return segments
+
+
+# --- 基座有界扰动(不确定性实验第1/2级: 真值=名义+扰动, MPC 信念可为
+#     nominal/truth/estimated) ---
+# 多谐波位置扰动: 每轴 n 个随机频率/相位的正弦叠加, 权重归一化保证
+# 每轴 |Δp_i(t)| <= amplitude_m(∞-范数界, 即老师所说 x*±Δx 的 Δx)。
+# 纯确定性: 同 (seed, n, fmin, fmax) 下是 t 的解析函数, 可在任意时刻求值,
+# 支持参考时域前瞻和离线复算。频带默认 0.15-2.5Hz, 模拟无人机悬停漂移+抖动。
+BASE_DISTURBANCE_HARMONICS = 6
+BASE_DISTURBANCE_FMIN_HZ = 0.15
+BASE_DISTURBANCE_FMAX_HZ = 2.5
+
+
+@lru_cache(maxsize=32)
+def _disturbance_table(seed: int, n_harmonics: int,
+                       fmin_hz: float, fmax_hz: float):
+    rng = np.random.default_rng(int(seed))
+    freqs = np.exp(rng.uniform(
+        math.log(fmin_hz), math.log(fmax_hz), (n_harmonics, 3)))
+    phases = rng.uniform(0.0, 2.0 * math.pi, (n_harmonics, 3))
+    weights = rng.uniform(0.5, 1.0, (n_harmonics, 3))
+    weights = weights / weights.sum(axis=0, keepdims=True)
+    return freqs, phases, weights
+
+
+def base_disturbance_offset(
+        t: float, amplitude_m: float, seed: int = 0,
+        n_harmonics: int = BASE_DISTURBANCE_HARMONICS,
+        fmin_hz: float = BASE_DISTURBANCE_FMIN_HZ,
+        fmax_hz: float = BASE_DISTURBANCE_FMAX_HZ) -> np.ndarray:
+    """World-frame bounded base position disturbance, |offset_i| <= amplitude_m."""
+    if amplitude_m <= 0.0:
+        return np.zeros(3)
+    freqs, phases, weights = _disturbance_table(
+        int(seed), int(n_harmonics), float(fmin_hz), float(fmax_hz))
+    s = np.sin(2.0 * math.pi * freqs * float(t) + phases)
+    return float(amplitude_m) * (weights * s).sum(axis=0)
 
 
 # 基座运动形状

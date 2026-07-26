@@ -299,7 +299,9 @@ def _vel_saturation(dq_meas, v_limit, mask=None):
 
 # ================================================================= 时钟健康
 
-def _clock_health(t_solve, t_publish, timer_interval_ms, feedback_age_ms, solve_to_publish_ms, dt):
+def _clock_health(
+        t_solve, t_publish, timer_interval_ms, feedback_age_ms,
+        solve_to_publish_ms, dt, feedback_delta_t_sec=None):
     dt_ms = dt * 1000.0
     fin = np.isfinite(timer_interval_ms)
     interval = timer_interval_ms[fin]
@@ -307,6 +309,14 @@ def _clock_health(t_solve, t_publish, timer_interval_ms, feedback_age_ms, solve_
     dev = t_solve - idx * dt
     dev_detrended_ms = (dev - np.median(dev)) * 1000.0
     fa = feedback_age_ms[np.isfinite(feedback_age_ms)]
+    if feedback_delta_t_sec is None:
+        feedback_delta_ms = np.zeros(0)
+    else:
+        feedback_delta_t_sec = np.asarray(feedback_delta_t_sec, dtype=float)
+        feedback_delta_ms = (
+            1000.0 * feedback_delta_t_sec[
+                np.isfinite(feedback_delta_t_sec)
+                & (feedback_delta_t_sec >= 0.0)])
     # steady 子集(门槛用):排除启动冷路径,只看稳态控制是否干净。
     steady = _win(t_solve, *STEADY_WINDOW)
     itv_s = timer_interval_ms[fin & steady]
@@ -336,6 +346,18 @@ def _clock_health(t_solve, t_publish, timer_interval_ms, feedback_age_ms, solve_
                             'mean': float(np.mean(fa)) if fa.size else None,
                             'p95': float(np.percentile(fa, 95)) if fa.size else None,
                             'max': float(np.max(fa)) if fa.size else None},
+        # 50Hz NMPC 从 100Hz feedback 读取“最新值”时，正常相邻样本时间差应接近
+        # 20ms。长期约 10ms 表明 executor 正在逐条消费旧队列；偶发 70--110ms
+        # 跳变表明队列溢出后批量丢弃，是 20260725 螺旋跟踪的直接时序证据。
+        'feedback_delta_t_ms': {
+            **stats(feedback_delta_ms),
+            'duplicate_count': int(np.sum(feedback_delta_ms <= 1e-6)),
+            'backlog_10ms_ratio': float(np.mean(
+                feedback_delta_ms < 0.75 * dt_ms))
+                if feedback_delta_ms.size else None,
+            'skip_over_30ms_count': int(np.sum(
+                feedback_delta_ms > 1.5 * dt_ms)),
+        },
     }
 
 
@@ -558,7 +580,9 @@ def analyze(args):
     # ---- 时钟健康
     result['clock_health'] = _clock_health(
         t_solve, t_publish, _col(h, d, 'timer_interval_ms'), _col(h, d, 'feedback_age_ms'),
-        _col(h, d, 'solve_to_publish_ms'), dt)
+        _col(h, d, 'solve_to_publish_ms'), dt,
+        (_col(h, d, 'feedback_delta_t_sec')
+         if 'feedback_delta_t_sec' in h else None))
 
     # ---- solver
     status = _col(h, d, 'solver_status').astype(int)

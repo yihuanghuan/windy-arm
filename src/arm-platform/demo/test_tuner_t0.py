@@ -252,6 +252,17 @@ def test_extended_weight_candidates():
     check('一阶 current/center posture 权重不再写死',
           cfg.current_posture_weight == 0.03
           and cfg.center_posture_weight == 0.004)
+    prod2 = T.production_second_order_config()
+    check('二阶生产配置与真机实时 N=10 demo 默认一致',
+          prod2.horizon_steps == 10
+          and prod2.position_weight == 5000.0
+          and prod2.terminal_position_weight == 500.0
+          and not prod2.feasible_reference_projection
+          and not prod2.contour_tracking_enabled
+          and prod2.lag_position_weight == 750.0
+          and prod2.cartesian_velocity_weight == 0.0
+          and prod2.joint_acceleration_weight == 0.0
+          and prod2.terminal_joint_velocity_weight == 0.0)
 
     phase2a = T.phase2a_candidates(custom)
     check('位置/平滑候选保留姿态锚权重',
@@ -301,6 +312,22 @@ def test_extended_weight_candidates():
           len(configs2) == 19
           and all(c is not base2 and c.horizon_steps == 3 for c in configs2)
           and base2.position_weight == 40.0)
+    check('二阶 position 候选同步轮廓/转场权重',
+          all(c.contour_position_weight == c.position_weight
+              and c.transition_position_weight == c.position_weight
+              and c.terminal_contour_position_weight
+                  == c.terminal_position_weight
+              for c in configs2))
+    stable2 = T.stable_contour_second_order_candidates(prod2)
+    check('稳定轮廓候选不修改速度/加速度硬约束',
+          len(stable2) >= 10
+          and all(c.max_joint_velocity == prod2.max_joint_velocity
+                  and c.max_joint_acceleration == prod2.max_joint_acceleration
+                  for c in stable2))
+    check('稳定轮廓候选含 position-only 锚点和切向权重加密扫描',
+          any(not c.contour_tracking_enabled for c in stable2)
+          and any(c.lag_position_weight == 1000.0 for c in stable2)
+          and any(c.lag_position_weight == 1500.0 for c in stable2))
 
 
 # ----------------------------------------------------------------- 测试 4
@@ -441,6 +468,15 @@ def test_error_limit_gates():
     ok_m = _mk_sm(steady_pos_err_p95=0.020, steady_pos_err_max=0.025,
                   steady_cmd_err_p95=0.021, steady_ori_err_max=0.2)
     fails, _ = T.hard_gate_reasons(ok_m, sc, None)
+    slow_control = _mk_sm(
+        steady_pos_err_p95=0.020, steady_pos_err_max=0.025,
+        steady_cmd_err_p95=0.021, steady_ori_err_max=0.2,
+        p99_control_compute_time_ms=(
+            T.MAX_CONTROL_COMPUTE_TIME_MS_HARD + 0.1))
+    slow_fails, _ = T.hard_gate_reasons(slow_control, sc, None)
+    check('完整控制计算 P99 超预算 -> 淘汰',
+          any('slow_control_compute_p99' in reason
+              for reason in slow_fails), str(slow_fails))
     check('全部门内 -> 不误杀', fails == [], str(fails))
     f1, _ = T.hard_gate_reasons(_mk_sm(steady_pos_err_p95=0.040), sc, None)
     check('P95 超限 -> 淘汰且注明', any('pos_p95' in x and 'limit' in x for x in f1), str(f1))
