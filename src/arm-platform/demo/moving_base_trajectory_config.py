@@ -661,9 +661,24 @@ def sample_ee_drawing_segments(
 # 每轴 |Δp_i(t)| <= amplitude_m(∞-范数界, 即老师所说 x*±Δx 的 Δx)。
 # 纯确定性: 同 (seed, n, fmin, fmax) 下是 t 的解析函数, 可在任意时刻求值,
 # 支持参考时域前瞻和离线复算。频带默认 0.15-2.5Hz, 模拟无人机悬停漂移+抖动。
+#
+# profile 扩展(全部满足: 每轴 |Δp_i| <= 2*amplitude_m 严格有界; 确定性;
+# 任意 t(含未来)可解析求值; 默认 'harmonic' 与历史输出比特一致):
+#   'harmonic': 多谐波(原状, 每轴界 = amplitude_m)
+#   'gust':     半幅谐波 + 1-cos 阵风脉冲串(峰值 amplitude_m, 每轴界 1.5*amp)
+#   'fault':    半幅谐波 + [fault_start, fault_end] 恒定直流偏置
+#               (幅值 amplitude_m, 每轴界 1.5*amp), 模拟飞控异常段
+#   'wideband': 谐波但频带 [0.15, 8.0] Hz、谐波数翻倍(每轴界 = amplitude_m)
 BASE_DISTURBANCE_HARMONICS = 6
 BASE_DISTURBANCE_FMIN_HZ = 0.15
 BASE_DISTURBANCE_FMAX_HZ = 2.5
+BASE_DISTURBANCE_WIDEBAND_FMIN_HZ = 0.15
+BASE_DISTURBANCE_WIDEBAND_FMAX_HZ = 8.0
+BASE_DISTURBANCE_GUST_PERIOD_SEC = 8.0
+BASE_DISTURBANCE_GUST_WIDTH_SEC = 0.8
+BASE_DISTURBANCE_FAULT_START_SEC = 6.0
+BASE_DISTURBANCE_FAULT_END_SEC = 14.0
+_DISTURBANCE_N_DIRECTIONS = 8  # gust 轮换方向数(fault 用第0个)
 
 
 @lru_cache(maxsize=32)
@@ -678,18 +693,76 @@ def _disturbance_table(seed: int, n_harmonics: int,
     return freqs, phases, weights
 
 
-def base_disturbance_offset(
-        t: float, amplitude_m: float, seed: int = 0,
-        n_harmonics: int = BASE_DISTURBANCE_HARMONICS,
-        fmin_hz: float = BASE_DISTURBANCE_FMIN_HZ,
-        fmax_hz: float = BASE_DISTURBANCE_FMAX_HZ) -> np.ndarray:
-    """World-frame bounded base position disturbance, |offset_i| <= amplitude_m."""
-    if amplitude_m <= 0.0:
-        return np.zeros(3)
+@lru_cache(maxsize=32)
+def _disturbance_directions(seed: int):
+    """Deterministic unit direction table for gust/fault (rows are unit vectors)."""
+    # 独立子流(SeedSequence [seed, tag]), 与 _disturbance_table 的谐波流解耦
+    rng = np.random.default_rng([int(seed), 0x6775_7374])  # tag: 'gust'
+    dirs = rng.normal(0.0, 1.0, (_DISTURBANCE_N_DIRECTIONS, 3))
+    norms = np.linalg.norm(dirs, axis=1, keepdims=True)
+    return dirs / np.maximum(norms, 1e-12)
+
+
+def _harmonic_offset(t: float, amplitude_m: float, seed: int,
+                     n_harmonics: int, fmin_hz: float,
+                     fmax_hz: float) -> np.ndarray:
+    """Original multi-harmonic disturbance, per-axis bound = amplitude_m."""
     freqs, phases, weights = _disturbance_table(
         int(seed), int(n_harmonics), float(fmin_hz), float(fmax_hz))
     s = np.sin(2.0 * math.pi * freqs * float(t) + phases)
     return float(amplitude_m) * (weights * s).sum(axis=0)
+
+
+def base_disturbance_offset(
+        t: float, amplitude_m: float, seed: int = 0,
+        n_harmonics: int = BASE_DISTURBANCE_HARMONICS,
+        fmin_hz: float = BASE_DISTURBANCE_FMIN_HZ,
+        fmax_hz: float = BASE_DISTURBANCE_FMAX_HZ,
+        profile: str = 'harmonic',
+        gust_period_sec: float = BASE_DISTURBANCE_GUST_PERIOD_SEC,
+        gust_width_sec: float = BASE_DISTURBANCE_GUST_WIDTH_SEC,
+        fault_start: float = BASE_DISTURBANCE_FAULT_START_SEC,
+        fault_end: float = BASE_DISTURBANCE_FAULT_END_SEC) -> np.ndarray:
+    """World-frame bounded base position disturbance, |offset_i| <= 2*amplitude_m.
+
+    profile='harmonic' (default) keeps the historical bound |offset_i| <=
+    amplitude_m and is bit-identical to the pre-profile implementation.
+    """
+    if amplitude_m <= 0.0:
+        return np.zeros(3)
+    if profile == 'harmonic':
+        return _harmonic_offset(
+            t, amplitude_m, seed, n_harmonics, fmin_hz, fmax_hz)
+    if profile == 'wideband':
+        return _harmonic_offset(
+            t, amplitude_m, seed, 2 * int(n_harmonics),
+            BASE_DISTURBANCE_WIDEBAND_FMIN_HZ,
+            BASE_DISTURBANCE_WIDEBAND_FMAX_HZ)
+    if profile == 'gust':
+        offset = _harmonic_offset(
+            t, 0.5 * amplitude_m, seed, n_harmonics, fmin_hz, fmax_hz)
+        # 脉冲串: 第 k 个周期 [k*T, k*T+width) 内一个 1-cos 平滑脉冲,
+        # 峰值 amplitude_m, 方向按 seed 抽定的单位向量表轮换(k mod N)。
+        k = math.floor(float(t) / float(gust_period_sec))
+        tau = float(t) - k * float(gust_period_sec)
+        if 0.0 <= tau < float(gust_width_sec):
+            envelope = 0.5 * (1.0 - math.cos(
+                2.0 * math.pi * tau / float(gust_width_sec)))
+            dirs = _disturbance_directions(int(seed))
+            offset = offset + (float(amplitude_m) * envelope) * dirs[
+                k % _DISTURBANCE_N_DIRECTIONS]
+        return offset
+    if profile == 'fault':
+        offset = _harmonic_offset(
+            t, 0.5 * amplitude_m, seed, n_harmonics, fmin_hz, fmax_hz)
+        # 突变直流偏置: [fault_start, fault_end] 内附加恒定 amplitude_m 偏置
+        if float(fault_start) <= float(t) <= float(fault_end):
+            dirs = _disturbance_directions(int(seed))
+            offset = offset + float(amplitude_m) * dirs[0]
+        return offset
+    raise ValueError(
+        f"unknown base disturbance profile {profile!r}; expected one of "
+        "'harmonic', 'gust', 'fault', 'wideband'")
 
 
 # 基座运动形状

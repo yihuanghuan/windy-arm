@@ -212,9 +212,9 @@ def test_demo_production_defaults():
     check("guard_mode 默认='state_safe_filter'",
           defaults.get('guard_mode') == 'state_safe_filter',
           str(defaults.get('guard_mode')))
-    check("二阶状态预测与延迟补偿默认关闭",
+    check("旧二阶状态预测关闭、生产时序延迟补偿默认开启",
           defaults.get('second_order_state_prediction') is False
-          and defaults.get('latency_compensation_enabled') is False)
+          and defaults.get('latency_compensation_enabled') is True)
     check("迟到拍恢复默认开启且阈值为 1.5dt",
           defaults.get('late_tick_recovery_enabled') is True
           and defaults.get('late_tick_recovery_factor') == 1.5)

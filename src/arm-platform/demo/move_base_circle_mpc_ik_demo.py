@@ -1,13 +1,25 @@
 #!/usr/bin/env python3
 """基座晃动场景下的 ACADOS MPC 末端轨迹跟踪 demo。"""
 
+import os
+
+# 实时时钟卫生(须在 numpy 首次 import 前生效): 本进程 numpy 全是小矩阵
+# (≤1500×25), OpenBLAS 16 线程扇出纯属延迟抖动源 —— 忙碌进程内单个
+# lstsq/matmul 实测偶发 3~15ms(线程唤醒被调度噪声放大), 直接打爆 50Hz
+# tick 预算; 单线程后同一操作 <0.5ms 且尾部消失(P99 2.96→1.38ms,
+# max 15.3→1.4ms, 60s@50Hz 负载 A/B)。acados 用 BLASFEO 不受影响。
+# setdefault: 外部显式设置可覆盖。
+os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
+os.environ.setdefault('OMP_NUM_THREADS', '1')
+
 from collections import deque
 import csv
 import dataclasses
 import gc
 import json
 import math
-import os
+import random
+import time
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -22,9 +34,19 @@ from tf2_ros import TransformBroadcaster
 from visualization_msgs.msg import Marker
 
 import moving_base_trajectory_config as traj
+from base_trust_estimator import (
+    BaseTrustEstimator,
+    TrustFeedforwardGate,
+    trust_feedforward_gain,
+)
 from dart_noise import bounded_dart_command
 from mpc_pinocchio_ik import MpcIkConfig, MpcPinocchioIK
-from online_path_time_scaler import OnlinePathTimeScaler, TimeScalingConfig
+from online_path_time_scaler import (
+    OnlinePathTimeScaler,
+    TimeScalingConfig,
+    TrustLadderConfig,
+    TrustLadderStateMachine,
+)
 from pinocchio_ik import PinocchioIK
 from second_order_mpc_ik import SecondOrderMpcConfig, SecondOrderMpcIK
 
@@ -44,6 +66,10 @@ RECOMMENDED_CONTROLLER_MAX_VELOCITY_RAD_S = 3.0
 # 完整覆盖。**若未来把 RTI 次数提高到 >MAX_RTI_LOG,超出部分的 per-iter status/terminal_error
 # 不会进 CSV(会被截断)——届时需同步调大本常量,勿误以为 per-iter 列已记录全部迭代。**
 MAX_RTI_LOG = 3
+# trust 开销"总账"通道的蓄水池抽样容量: track 阶段 GC 关闭且可小时级连续
+# 运行, 无界 append 会以 50Hz(~36 万浮点对象/小时, 10-12MB RSS/小时)累积;
+# 蓄水池(Algorithm R)使单次运行内存有上限, 分位数仍无偏反映全程分布。
+TRUST_COST_RESERVOIR_CAP = 20000
 
 WORLD_FRAME = traj.WORLD_FRAME
 BASE_FRAME = traj.BASE_FRAME
@@ -153,14 +179,96 @@ class MoveBaseCircleMpcIkDemo(Node):
         #   nominal   只知名义轨迹(第1级: 误差下界=扰动本身);
         #   truth     精确知道扰动(上界对照, 默认——amp=0 时与现状完全一致);
         #   estimated 逐拍模拟无人机状态估计: 真值(t-延迟)+高斯噪声经一阶低通,
-        #             预测域内保持常值(第2级)。
+        #             预测域内保持常值(第2级);
+        #   model     estimated 同源测量(不过低通)喂 BaseTrustEstimator,
+        #             预测域用 predict_horizon 的逐时刻 Δ̂(t)(第3级)。
         self.declare_parameter('base_disturbance_amplitude_m', 0.0)
         self.declare_parameter('base_disturbance_seed', 0)
+        # 扰动 profile 透传 base_disturbance_offset('harmonic'/'gust'/'fault'/
+        # 'wideband')。demo 内三处调用(truth 信念/估计器测量/model 测量)与
+        # trajectory_visualizer_demo 真值端必须配同一 profile。
+        self.declare_parameter('base_disturbance_profile', 'harmonic')
         self.declare_parameter('base_belief_mode', 'truth')
         self.declare_parameter('base_estimator_noise_std_m', 0.0)
         self.declare_parameter('base_estimator_delay_ms', 0.0)
         self.declare_parameter('base_estimator_lpf_hz', 10.0)
         self.declare_parameter('base_estimator_seed', 1)
+        # --- 第3级 model 信念(BaseTrustEstimator: 谱辨识谐波模型+保形校准) ---
+        # trust_* 键名与 BaseTrustEstimator.__init__ 一致。默认值=离线调参结论:
+        # n_peaks=12, lam=0.995, gamma_aci=0.005, n_cal=100; 其余照抄构造器默认。
+        # 特殊约定:
+        #   trust_meas_delay_sec < 0  -> 继承 base_estimator_delay_ms(换算秒);
+        #   trust_dt_nominal    <= 0  -> 继承控制周期 1/control_rate_hz;
+        #   trust_beta_sigma0   <= 0  -> None(构造器回退 sigma0)。
+        # 二者继承值会除以 base_motion_time_scale: 估计器运行在缩放时间基
+        # (与 _base_pose 内 scaled_t = t/scale 的扰动时间轴一致)。
+        self.declare_parameter('trust_n_freq', 6)
+        self.declare_parameter('trust_fmin_hz', 0.15)
+        self.declare_parameter('trust_fmax_hz', 2.5)
+        self.declare_parameter('trust_lam', 0.995)
+        self.declare_parameter('trust_sigma0', 2.0e-3)
+        self.declare_parameter('trust_prior_std', 1.0e-2)
+        self.declare_parameter('trust_meas_delay_sec', -1.0)
+        self.declare_parameter('trust_dt_nominal', -1.0)
+        self.declare_parameter('trust_n_peaks', 12)
+        self.declare_parameter('trust_ident_period_sec', 2.0)
+        self.declare_parameter('trust_buffer_sec', 30.0)
+        self.declare_parameter('trust_min_ident_sec', 2.5)
+        self.declare_parameter('trust_holdout_sec', 1.0)
+        self.declare_parameter('trust_f_ident_min_hz', 0.08)
+        self.declare_parameter('trust_f_ident_max_hz', 5.0)
+        self.declare_parameter('trust_peak_snr', 3.0)
+        self.declare_parameter('trust_resid_lpf_hz', 0.0)
+        self.declare_parameter('trust_beta_sigma0', -1.0)
+        self.declare_parameter('trust_beta_gamma_f', 0.98)
+        self.declare_parameter('trust_beta_n_grid', 15)
+        # E[β] 在 degraded/healthy 两个物理精度锚点间连续标定为 b∈[0,1]。
+        self.declare_parameter('trust_beta_degraded', 0.6)
+        self.declare_parameter('trust_beta_healthy', 0.9)
+        # β 加权模型前馈: b<=low 回到 nominal，b>=high 使用完整 Δ̂，
+        # 中间 smoothstep 连续门控；b 先经非对称一阶滤波，过滤健康段的
+        # 孤立低脉冲；关闭开关可生成严格的未门控消融对照。
+        self.declare_parameter('trust_feedforward_gating_enabled', True)
+        self.declare_parameter('trust_feedforward_gate_low', 0.2)
+        self.declare_parameter('trust_feedforward_gate_high', 0.5)
+        self.declare_parameter('trust_feedforward_gate_fall_tau_sec', 0.3)
+        self.declare_parameter('trust_feedforward_gate_rise_tau_sec', 1.0)
+        self.declare_parameter('trust_n_cal', 100)
+        self.declare_parameter('trust_alpha', 0.1)
+        self.declare_parameter('trust_gamma_aci', 0.005)
+        # 谱辨识分摊调度(实时性): 重辨识严禁在 50Hz tick 内整块执行(实测
+        # 30s 缓冲 ×3 轴 ×K=12 单块 150~250ms), 由估计器切成 ≤0.6ms 原子
+        # 单元跨拍推进 —— 落笔拍每拍 ≤units_per_tick 单元且墙钟 ≥budget_ms
+        # 即停; 抬笔/过渡拍放宽到 pen_up 档加速收敛。
+        self.declare_parameter('trust_ident_units_per_tick', 5)
+        self.declare_parameter('trust_ident_budget_ms', 1.8)
+        self.declare_parameter('trust_ident_units_pen_up', 8)
+        self.declare_parameter('trust_ident_budget_pen_up_ms', 2.6)
+        # trust 影子模式: 无论 belief 模式为何, 逐拍把 (t, e_meas, Δ̂_1step, δ,
+        # b, ||θ̂||) 写独立 CSV trust_shadow_<stamp>.csv(不动现有 loop CSV 列)。
+        # 扰动关闭(amp=0)时不写、不建估计器(零开销早退)。
+        self.declare_parameter('trust_shadow_csv', False)
+        # 信任降速阶梯(实验开关, 默认关)。仅 base_belief_mode=model 且
+        # online_time_scaling_enabled=true 时生效: 把 BaseTrustEstimator 每拍的
+        # (b=健康后验概率, δ=delta_1step) 送入四态状态机。先从连续健康段
+        # 学习 δ 噪声基线，之后按相对基线判故障，避免固定 4mm 阈值落在
+        # 2mm 测量噪声地板内；b/δ 均使用分离的降级/恢复门形成迟滞。
+        # 只影响图形路径时间推进速度; 不改任何关节速度/加速度硬约束, 不动守卫。
+        self.declare_parameter('trust_ladder_enabled', False)
+        self.declare_parameter('ladder_b_degraded', 0.3)
+        self.declare_parameter('ladder_b_recover', 0.7)
+        self.declare_parameter('ladder_delta_degraded_ratio', 1.35)
+        self.declare_parameter('ladder_delta_recover_ratio', 1.2)
+        self.declare_parameter('ladder_min_scale', 0.3)
+        self.declare_parameter('ladder_baseline_warmup_sec', 4.0)
+        self.declare_parameter('ladder_baseline_tau_sec', 20.0)
+        self.declare_parameter('ladder_trust_commission_sec', 1.0)
+        self.declare_parameter('ladder_recover_debounce_sec', 2.0)
+        # 阶梯验收使用独占 scale 控制：只让 trust cap 决定目标速度，避免与
+        # velocity/error 两个普通在线缩放启发式叠加后整程变慢、改变基座/路径
+        # 相位。仍经过 OnlinePathTimeScaler 的 accel/decel 斜率限制；硬约束和
+        # command guard 完全不变。关掉可恢复历史 min(velocity,error,cap) 组合。
+        self.declare_parameter('ladder_exclusive_scale_control', True)
         # Deadline miss 恢复：迟到拍不能继续复用只推进了一个 dt 的 warm start /
         # commanded dq。阈值 1.5*dt=30ms，只影响异常拍，不改变正常控制。
         self.declare_parameter('late_tick_recovery_enabled', True)
@@ -375,6 +483,9 @@ class MoveBaseCircleMpcIkDemo(Node):
             self.get_parameter('base_disturbance_amplitude_m').value)
         self.base_disturbance_seed = int(
             self.get_parameter('base_disturbance_seed').value)
+        self.base_disturbance_profile = str(
+            self.get_parameter('base_disturbance_profile').value
+        ).strip().lower()
         self.base_belief_mode = str(
             self.get_parameter('base_belief_mode').value).strip().lower()
         self.base_estimator_noise_std_m = float(
@@ -385,14 +496,123 @@ class MoveBaseCircleMpcIkDemo(Node):
             self.get_parameter('base_estimator_lpf_hz').value)
         self.base_estimator_seed = int(
             self.get_parameter('base_estimator_seed').value)
-        if self.base_belief_mode not in ('nominal', 'truth', 'estimated'):
+        self.trust_n_freq = int(self.get_parameter('trust_n_freq').value)
+        self.trust_fmin_hz = float(self.get_parameter('trust_fmin_hz').value)
+        self.trust_fmax_hz = float(self.get_parameter('trust_fmax_hz').value)
+        self.trust_lam = float(self.get_parameter('trust_lam').value)
+        self.trust_sigma0 = float(self.get_parameter('trust_sigma0').value)
+        self.trust_prior_std = float(
+            self.get_parameter('trust_prior_std').value)
+        self.trust_meas_delay_sec = float(
+            self.get_parameter('trust_meas_delay_sec').value)
+        self.trust_dt_nominal = float(
+            self.get_parameter('trust_dt_nominal').value)
+        self.trust_n_peaks = int(self.get_parameter('trust_n_peaks').value)
+        self.trust_ident_period_sec = float(
+            self.get_parameter('trust_ident_period_sec').value)
+        self.trust_buffer_sec = float(
+            self.get_parameter('trust_buffer_sec').value)
+        self.trust_min_ident_sec = float(
+            self.get_parameter('trust_min_ident_sec').value)
+        self.trust_holdout_sec = float(
+            self.get_parameter('trust_holdout_sec').value)
+        self.trust_f_ident_min_hz = float(
+            self.get_parameter('trust_f_ident_min_hz').value)
+        self.trust_f_ident_max_hz = float(
+            self.get_parameter('trust_f_ident_max_hz').value)
+        self.trust_peak_snr = float(self.get_parameter('trust_peak_snr').value)
+        self.trust_resid_lpf_hz = float(
+            self.get_parameter('trust_resid_lpf_hz').value)
+        self.trust_beta_sigma0 = float(
+            self.get_parameter('trust_beta_sigma0').value)
+        self.trust_beta_gamma_f = float(
+            self.get_parameter('trust_beta_gamma_f').value)
+        self.trust_beta_n_grid = int(
+            self.get_parameter('trust_beta_n_grid').value)
+        self.trust_beta_degraded = float(
+            self.get_parameter('trust_beta_degraded').value)
+        self.trust_beta_healthy = float(
+            self.get_parameter('trust_beta_healthy').value)
+        self.trust_feedforward_gating_enabled = bool(
+            self.get_parameter('trust_feedforward_gating_enabled').value)
+        self.trust_feedforward_gate_low = float(
+            self.get_parameter('trust_feedforward_gate_low').value)
+        self.trust_feedforward_gate_high = float(
+            self.get_parameter('trust_feedforward_gate_high').value)
+        self.trust_feedforward_gate_fall_tau_sec = float(
+            self.get_parameter(
+                'trust_feedforward_gate_fall_tau_sec').value)
+        self.trust_feedforward_gate_rise_tau_sec = float(
+            self.get_parameter(
+                'trust_feedforward_gate_rise_tau_sec').value)
+        self.trust_n_cal = int(self.get_parameter('trust_n_cal').value)
+        self.trust_alpha = float(self.get_parameter('trust_alpha').value)
+        self.trust_gamma_aci = float(
+            self.get_parameter('trust_gamma_aci').value)
+        self.trust_ident_units_per_tick = int(
+            self.get_parameter('trust_ident_units_per_tick').value)
+        self.trust_ident_budget_ms = float(
+            self.get_parameter('trust_ident_budget_ms').value)
+        self.trust_ident_units_pen_up = int(
+            self.get_parameter('trust_ident_units_pen_up').value)
+        self.trust_ident_budget_pen_up_ms = float(
+            self.get_parameter('trust_ident_budget_pen_up_ms').value)
+        self.trust_shadow_csv = bool(
+            self.get_parameter('trust_shadow_csv').value)
+        self.trust_ladder_enabled = bool(
+            self.get_parameter('trust_ladder_enabled').value)
+        self.ladder_b_degraded = float(
+            self.get_parameter('ladder_b_degraded').value)
+        self.ladder_b_recover = float(
+            self.get_parameter('ladder_b_recover').value)
+        self.ladder_delta_degraded_ratio = float(
+            self.get_parameter('ladder_delta_degraded_ratio').value)
+        self.ladder_delta_recover_ratio = float(
+            self.get_parameter('ladder_delta_recover_ratio').value)
+        self.ladder_min_scale = float(
+            self.get_parameter('ladder_min_scale').value)
+        self.ladder_baseline_warmup_sec = float(
+            self.get_parameter('ladder_baseline_warmup_sec').value)
+        self.ladder_baseline_tau_sec = float(
+            self.get_parameter('ladder_baseline_tau_sec').value)
+        self.ladder_trust_commission_sec = float(
+            self.get_parameter('ladder_trust_commission_sec').value)
+        self.ladder_recover_debounce_sec = float(
+            self.get_parameter('ladder_recover_debounce_sec').value)
+        self.ladder_exclusive_scale_control = bool(
+            self.get_parameter('ladder_exclusive_scale_control').value)
+        # 两个配置对象集中做完整 fail-fast 参数校验。
+        trust_feedforward_gain(
+            0.5, self.trust_feedforward_gate_low,
+            self.trust_feedforward_gate_high)
+        if (self.trust_feedforward_gate_fall_tau_sec <= 0.0
+                or self.trust_feedforward_gate_rise_tau_sec <= 0.0):
+            raise ValueError('trust feedforward gate 时间常数必须为正')
+        TrustLadderConfig(
+            b_degraded=self.ladder_b_degraded,
+            b_recover=self.ladder_b_recover,
+            delta_degraded_ratio=self.ladder_delta_degraded_ratio,
+            delta_recover_ratio=self.ladder_delta_recover_ratio,
+            min_scale=self.ladder_min_scale,
+            baseline_warmup_sec=self.ladder_baseline_warmup_sec,
+            baseline_tau_sec=self.ladder_baseline_tau_sec,
+            trust_commission_sec=self.ladder_trust_commission_sec,
+            recover_debounce_sec=self.ladder_recover_debounce_sec,
+        )
+        if self.base_belief_mode not in (
+                'nominal', 'truth', 'estimated', 'model'):
             raise ValueError(
-                "base_belief_mode 必须是 'nominal'/'truth'/'estimated'")
+                "base_belief_mode 必须是 'nominal'/'truth'/'estimated'/'model'")
         if (self.base_disturbance_amplitude_m < 0.0
                 or self.base_estimator_noise_std_m < 0.0
                 or self.base_estimator_delay_sec < 0.0
                 or self.base_estimator_lpf_hz < 0.0):
             raise ValueError('base 扰动/估计器参数必须 >= 0')
+        # fail-fast: 未知 profile 立即报错(合法枚举以 base_disturbance_offset
+        # 为准, 探针调用与运行时同一代码路径; amp 传正值绕过其 0 幅早退)。
+        traj.base_disturbance_offset(
+            0.0, 1.0, self.base_disturbance_seed,
+            profile=self.base_disturbance_profile)
         self.late_tick_recovery_enabled = bool(
             self.get_parameter('late_tick_recovery_enabled').value)
         self.late_tick_recovery_factor = float(
@@ -426,6 +646,16 @@ class MoveBaseCircleMpcIkDemo(Node):
             self.get_parameter('posture_reference_mode').value)
         self.online_time_scaling_enabled = bool(
             self.get_parameter('online_time_scaling_enabled').value)
+        if self.trust_ladder_enabled and not self.online_time_scaling_enabled:
+            # 阶梯的唯一执行通道就是图形路径时间缩放; 缺通道时 fail-fast,
+            # 避免"开关打开却静默无效"的假阳性实验。
+            raise ValueError(
+                'trust_ladder_enabled:=true 需要 '
+                'online_time_scaling_enabled:=true')
+        if self.trust_ladder_enabled and self.base_belief_mode != 'model':
+            self.get_logger().warn(
+                'trust_ladder_enabled 已开启但 base_belief_mode != model: '
+                '阶梯不生效(scale cap 恒为 1)')
         self.time_scaler = OnlinePathTimeScaler(TimeScalingConfig(
             min_scale=float(self.get_parameter('time_scaling_min_scale').value),
             velocity_reserve=float(
@@ -691,6 +921,37 @@ class MoveBaseCircleMpcIkDemo(Node):
         if not (0.0 < self.reference_derivative_dt_sec <= 0.5 * self.dt):
             raise ValueError(
                 'reference_derivative_dt_sec must be in (0, 0.5*control_dt]')
+        # --- 第3级 model 信念 / trust 影子通道状态 ---
+        # 预测网格覆盖本拍所有 _base_pose 查询时刻: 回看 n_back 拍(反馈时刻/
+        # 微分步长), 前瞻 lead+horizon+延迟补偿上限+2 拍余量。model 档的
+        # _base_pose(t) 只在该网格上线性插值, 拍内绝不重复 predict_horizon。
+        trust_n_back = 8
+        trust_n_fwd = (
+            max(self.reference_lead_steps,
+                self.base_reference_lead_steps,
+                self.second_order_reference_lead_steps,
+                0)
+            + max(self.horizon_steps, self.second_order_horizon_steps)
+            + int(math.ceil(self.latency_prediction_max_sec / self.dt))
+            + 2
+        )
+        self._trust_grid_offsets = self.dt * np.arange(
+            -trust_n_back, trust_n_fwd + 1)
+        self._trust_grid_n_fwd = int(trust_n_fwd)
+        self._trust_grid_1step_index = trust_n_back + 1  # 网格上 t_solve+dt
+        self._trust_file = None
+        self._trust_writer = None
+        self._trust_rows_since_flush = 0
+        self._trust_record_failed = False
+        self._trust_estimator = None
+        self._trust_meas_rng = None
+        self._trust_pred_times = None
+        self._trust_pred_delta = None
+        self._trust_pred_delta_raw = None
+        self._trust_pred_delta_cal = float('nan')
+        # amp=0 时不构造估计器(零开销); amp>0 且 model/影子开启时在此 fail-fast
+        # 校验全部 trust_* 构造参数。
+        self._reset_trust_estimator()
         config = MpcIkConfig(
             horizon_steps=self.horizon_steps,
             control_dt=self.dt,
@@ -954,37 +1215,369 @@ class MoveBaseCircleMpcIkDemo(Node):
             mode = getattr(self, 'base_belief_mode', 'truth')
             if mode == 'truth':
                 pose = pose + traj.base_disturbance_offset(
-                    scaled_t, amplitude, self.base_disturbance_seed)
+                    scaled_t, amplitude, self.base_disturbance_seed,
+                    profile=self.base_disturbance_profile)
             elif mode == 'estimated':
                 pose = pose + self._base_belief_offset
+            elif (mode == 'model'
+                  and getattr(self, '_trust_pred_times', None) is not None):
+                # 按 t 查本拍缓存的逐时刻 Δ̂(t): 最近一次 predict_horizon 的
+                # 时间网格线性插值(np.interp 越界端点保持), 拍内不重复预测。
+                # 首拍缓存前(reset 阶段 TF)不加补偿 —— θ̂ 初值本就为 0。
+                pose = pose + np.array([
+                    np.interp(t, self._trust_pred_times,
+                              self._trust_pred_delta[:, axis])
+                    for axis in range(3)])
             # 'nominal': 只知名义轨迹, 不加任何补偿
         return pose
 
-    def _update_base_belief(self, t_solve: float):
-        """estimated 模式: 每拍一次估计器更新(延迟测量+噪声+一阶低通)。
+    def _trust_estimator_enabled(self) -> bool:
+        """model 信念或 trust 影子 CSV 需要估计器; amp=0 一律关闭(零开销)。"""
+        return (self.base_disturbance_amplitude_m > 0.0
+                and (self.base_belief_mode == 'model'
+                     or self.trust_shadow_csv))
 
-        预测域内所有 _base_pose 调用共享本拍的 Δ̂(常值保持), 与离线环
-        hifi_offline_loop 的估计器模型逐式一致。
+    def _make_trust_estimator(self) -> BaseTrustEstimator:
+        """按 trust_* 参数构造 BaseTrustEstimator(运行在缩放时间基)。"""
+        scale = float(self.base_motion_time_scale)
+        meas_delay = (
+            self.trust_meas_delay_sec if self.trust_meas_delay_sec >= 0.0
+            else self.base_estimator_delay_sec / scale)
+        dt_nominal = (
+            self.trust_dt_nominal if self.trust_dt_nominal > 0.0
+            else self.dt / scale)
+        # 保形校准的最大前瞻组号: predict_horizon 的 h 相对**最近测量时刻**,
+        # 需覆盖预测网格前瞻拍数 + 测量延迟折算拍数, 外加 2 拍余量。
+        cal_horizon_steps = int(
+            self._trust_grid_n_fwd
+            + math.ceil(max(0.0, meas_delay) / dt_nominal) + 2)
+        return BaseTrustEstimator(
+            n_freq=self.trust_n_freq,
+            fmin_hz=self.trust_fmin_hz,
+            fmax_hz=self.trust_fmax_hz,
+            lam=self.trust_lam,
+            sigma0=self.trust_sigma0,
+            prior_std=self.trust_prior_std,
+            meas_delay_sec=meas_delay,
+            dt_nominal=dt_nominal,
+            n_peaks=self.trust_n_peaks,
+            ident_period_sec=self.trust_ident_period_sec,
+            buffer_sec=self.trust_buffer_sec,
+            min_ident_sec=self.trust_min_ident_sec,
+            holdout_sec=self.trust_holdout_sec,
+            f_ident_min_hz=self.trust_f_ident_min_hz,
+            f_ident_max_hz=self.trust_f_ident_max_hz,
+            peak_snr=self.trust_peak_snr,
+            resid_lpf_hz=self.trust_resid_lpf_hz,
+            beta_sigma0=(None if self.trust_beta_sigma0 <= 0.0
+                         else self.trust_beta_sigma0),
+            beta_gamma_f=self.trust_beta_gamma_f,
+            beta_n_grid=self.trust_beta_n_grid,
+            beta_degraded=self.trust_beta_degraded,
+            beta_healthy=self.trust_beta_healthy,
+            n_cal=self.trust_n_cal,
+            alpha=self.trust_alpha,
+            gamma_aci=self.trust_gamma_aci,
+            ident_units_per_tick=self.trust_ident_units_per_tick,
+            ident_budget_sec=1e-3 * self.trust_ident_budget_ms,
+            ident_units_pen_up=self.trust_ident_units_pen_up,
+            ident_budget_pen_up_sec=1e-3 * self.trust_ident_budget_pen_up_ms,
+            cal_horizon_steps=cal_horizon_steps,
+        )
+
+    def _reset_trust_estimator(self):
+        """重建估计器与本拍预测缓存(初始化及每次进入 track 时调用)。
+
+        测量噪声用独立但同种子的 RNG 流: model/影子通道的噪声序列与
+        estimated 信念完全一致, 且开关影子 CSV 不改变 estimated 通道
+        自身的噪声序列(不与 _base_estimator_rng 抢流)。
         """
-        if (self.base_disturbance_amplitude_m <= 0.0
-                or self.base_belief_mode != 'estimated'):
+        self._trust_pred_times = None
+        self._trust_pred_delta = None
+        self._trust_pred_delta_raw = None
+        self._trust_pred_delta_cal = float('nan')
+        self._trust_feedforward_gain = 0.0
+        self._trust_feedforward_gate = TrustFeedforwardGate(
+            low=self.trust_feedforward_gate_low,
+            high=self.trust_feedforward_gate_high,
+            fall_tau_sec=self.trust_feedforward_gate_fall_tau_sec,
+            rise_tau_sec=self.trust_feedforward_gate_rise_tau_sec)
+        # 估计器单拍开销实测(要求: 常规 step/predict O(K), 分摊辨识块 <3ms):
+        # 15s 窗口打印 P50/P99/max, 生命周期累积在结束时打总账。总账通道为
+        # 有界蓄水池子样(容量 TRUST_COST_RESERVOIR_CAP, 见 _trust_all_append),
+        # 计数/最大值另行精确跟踪 —— 长时间连续运行内存有上限。
+        self._trust_cost_ms_win = []
+        self._trust_ident_ms_win = []
+        self._trust_cost_ms_all = []
+        self._trust_ident_ms_all = []
+        self._trust_all_n = 0
+        self._trust_cost_ms_max = 0.0
+        self._trust_ident_ms_max = 0.0
+        self._trust_all_rng = random.Random(0)
+        self._trust_cost_last_log_wall = None
+        self._sched_pen_down = True     # 上一拍参考样本的落笔态(调度提示)
+        # 信任降速阶梯状态随估计器一起复位: 重新学习本轮健康 δ 基线。
+        self._trust_ladder = TrustLadderStateMachine(TrustLadderConfig(
+            b_degraded=self.ladder_b_degraded,
+            b_recover=self.ladder_b_recover,
+            delta_degraded_ratio=self.ladder_delta_degraded_ratio,
+            delta_recover_ratio=self.ladder_delta_recover_ratio,
+            min_scale=self.ladder_min_scale,
+            baseline_warmup_sec=self.ladder_baseline_warmup_sec,
+            baseline_tau_sec=self.ladder_baseline_tau_sec,
+            trust_commission_sec=self.ladder_trust_commission_sec,
+            recover_debounce_sec=self.ladder_recover_debounce_sec,
+        ))
+        self._ladder_scale_cap = 1.0
+        if self._trust_estimator_enabled():
+            self._trust_estimator = self._make_trust_estimator()
+            self._trust_meas_rng = np.random.default_rng(
+                self.base_estimator_seed)
+        else:
+            self._trust_estimator = None
+            self._trust_meas_rng = None
+
+    def _update_base_belief(self, t_solve: float):
+        """estimated/model 信念与 trust 影子通道的每拍更新。
+
+        estimated: 延迟测量+噪声经一阶低通, 预测域内常值保持, 与离线环
+                   hifi_offline_loop 的估计器模型逐式一致;
+        model:     同源测量(不过低通)喂 BaseTrustEstimator.step, 并缓存
+                   predict_horizon 在本拍时间网格上的逐时刻 Δ̂(t),
+                   _base_pose 只做线性插值;
+        trust_shadow_csv: 无论 belief 模式为何, 估计器照跑并逐拍写
+                   (t, e_meas, Δ̂_1step, δ, b, ||θ̂||) 到独立 CSV。
+        扰动关闭(amp=0)时直接早退, 所有新代码零开销。
+        """
+        if self.base_disturbance_amplitude_m <= 0.0:
             return
         scale = float(getattr(self, 'base_motion_time_scale', 1.0))
         measurement_time = (t_solve - self.base_estimator_delay_sec) / scale
-        measurement = traj.base_disturbance_offset(
+        if self.base_belief_mode == 'estimated':
+            measurement = traj.base_disturbance_offset(
+                measurement_time, self.base_disturbance_amplitude_m,
+                self.base_disturbance_seed,
+                profile=self.base_disturbance_profile)
+            if self.base_estimator_noise_std_m > 0.0:
+                measurement = measurement + self._base_estimator_rng.normal(
+                    0.0, self.base_estimator_noise_std_m, 3)
+            if self.base_estimator_lpf_hz > 0.0:
+                alpha = 1.0 - math.exp(
+                    -2.0 * math.pi * self.base_estimator_lpf_hz * self.dt)
+            else:
+                alpha = 1.0
+            self._base_belief_offset = (
+                self._base_belief_offset
+                + alpha * (measurement - self._base_belief_offset))
+        if self._trust_estimator is None:
+            return
+        # model/影子通道共用 estimated 同源测量(真值(t-延迟)+噪声, 不过低通),
+        # 与 hifi_offline_loop 的 belief='model' 测量通道逐式一致。
+        e_meas = traj.base_disturbance_offset(
             measurement_time, self.base_disturbance_amplitude_m,
-            self.base_disturbance_seed)
+            self.base_disturbance_seed,
+            profile=self.base_disturbance_profile)
         if self.base_estimator_noise_std_m > 0.0:
-            measurement = measurement + self._base_estimator_rng.normal(
+            e_meas = e_meas + self._trust_meas_rng.normal(
                 0.0, self.base_estimator_noise_std_m, 3)
-        if self.base_estimator_lpf_hz > 0.0:
-            alpha = 1.0 - math.exp(
-                -2.0 * math.pi * self.base_estimator_lpf_hz * self.dt)
-        else:
-            alpha = 1.0
-        self._base_belief_offset = (
-            self._base_belief_offset
-            + alpha * (measurement - self._base_belief_offset))
+        # 实时性: step 内部只做 O(K) 常规更新 + 一个 ≤budget 的分摊辨识块
+        # (sched_pen_down=False 的抬笔/过渡拍放宽预算); 整块重辨识严禁在
+        # tick 内执行。单拍开销实测累积, 周期性打印。
+        trust_t0 = time.perf_counter()
+        step_diag = self._trust_estimator.step(
+            t_solve / scale, e_meas,
+            sched_pen_down=self._sched_pen_down)
+        if self.base_belief_mode == 'model':
+            # 缓存本拍预测网格: 之后所有 _base_pose(参考生成/守卫/TF/记录)
+            # 共享同一 Δ̂(t) 网格插值, 拍内一致且不重复预测。
+            times = t_solve + self._trust_grid_offsets
+            delta_hat_raw, delta_cal = self._trust_estimator.predict_horizon(
+                times / scale)
+            gate = (self._trust_feedforward_gate.update(
+                        step_diag['trust'], self.dt)
+                    if self.trust_feedforward_gating_enabled else 1.0)
+            self._trust_pred_times = times
+            self._trust_pred_delta_raw = delta_hat_raw
+            self._trust_pred_delta = gate * delta_hat_raw
+            self._trust_pred_delta_cal = float(delta_cal)
+            self._trust_feedforward_gain = float(gate)
+        trust_cost_ms = 1e3 * (time.perf_counter() - trust_t0)
+        ident_ms = float(step_diag.get('ident_ms', 0.0))
+        self._trust_cost_ms_win.append(trust_cost_ms)
+        self._trust_ident_ms_win.append(ident_ms)
+        self._trust_all_append(trust_cost_ms, ident_ms)
+        self._maybe_log_trust_cost()
+        if self.trust_ladder_enabled and self.base_belief_mode == 'model':
+            self._update_trust_ladder(t_solve, step_diag)
+        if self.trust_shadow_csv:
+            if self._trust_pred_times is not None:
+                delta_hat_1step = self._trust_pred_delta[
+                    self._trust_grid_1step_index]
+                delta_hat_raw_1step = self._trust_pred_delta_raw[
+                    self._trust_grid_1step_index]
+            else:
+                delta_hat_raw_1step = self._trust_estimator.predict_horizon(
+                    np.array([(t_solve + self.dt) / scale]))[0][0]
+                delta_hat_1step = (
+                    self._trust_feedforward_gain * delta_hat_raw_1step)
+            self._append_trust_shadow_row(
+                t_solve, e_meas, delta_hat_1step,
+                delta_hat_raw_1step, step_diag)
+
+    def _trust_all_append(self, cost_ms: float, ident_ms: float):
+        """总账样本入有界蓄水池(Algorithm R, cost/ident 同索引配对替换).
+
+        每列各自仍是全程样本的均匀子样, 结束时分位数统计无偏; 计数与
+        最大值精确跟踪。track 阶段 GC 关闭, 无界 append 会持续累积
+        (~36 万对象/小时), 蓄水池使单次运行内存有上限。
+        """
+        self._trust_all_n += 1
+        if cost_ms > self._trust_cost_ms_max:
+            self._trust_cost_ms_max = float(cost_ms)
+        if ident_ms > self._trust_ident_ms_max:
+            self._trust_ident_ms_max = float(ident_ms)
+        if len(self._trust_cost_ms_all) < TRUST_COST_RESERVOIR_CAP:
+            self._trust_cost_ms_all.append(cost_ms)
+            self._trust_ident_ms_all.append(ident_ms)
+            return
+        j = self._trust_all_rng.randrange(self._trust_all_n)
+        if j < TRUST_COST_RESERVOIR_CAP:
+            self._trust_cost_ms_all[j] = cost_ms
+            self._trust_ident_ms_all[j] = ident_ms
+
+    def _maybe_log_trust_cost(self):
+        """每 15s 打印估计器单拍实测开销(step+predict 含分摊辨识块)。
+
+        目的: 实时性回归可观测 —— 常规路径应为亚毫秒 O(K), 分摊辨识块
+        P99 应 <3ms; 若窗口 P99 异常升高, 说明分摊调度失效或机器过载。
+        """
+        now = time.perf_counter()
+        if self._trust_cost_last_log_wall is None:
+            self._trust_cost_last_log_wall = now
+            return
+        if now - self._trust_cost_last_log_wall < 15.0:
+            return
+        self._trust_cost_last_log_wall = now
+        cost = np.asarray(self._trust_cost_ms_win)
+        ident = np.asarray(self._trust_ident_ms_win)
+        self._trust_cost_ms_win = []
+        self._trust_ident_ms_win = []
+        if cost.size == 0:
+            return
+        self.get_logger().info(
+            'trust 单拍开销(15s 窗, ms): step+pred P50/P99/max = '
+            f'{np.percentile(cost, 50):.2f}/{np.percentile(cost, 99):.2f}/'
+            f'{cost.max():.2f}; 分摊辨识块 P99/max = '
+            f'{np.percentile(ident, 99):.2f}/{ident.max():.2f} '
+            f'(辨识 {self._trust_estimator.n_ident} 轮/'
+            f'换库 {self._trust_estimator.n_ident_accepted})')
+
+    def _log_trust_cost_summary(self):
+        """结束时打总账: 全程估计器单拍开销与分摊辨识块分位数。
+
+        分位数来自有界蓄水池子样(全程均匀抽样, 见 _trust_all_append),
+        n 与 max 为全程精确值。
+        """
+        cost = np.asarray(getattr(self, '_trust_cost_ms_all', []))
+        ident = np.asarray(getattr(self, '_trust_ident_ms_all', []))
+        if cost.size == 0 or ident.size == 0 \
+                or getattr(self, '_trust_estimator', None) is None:
+            return
+        self.get_logger().info(
+            'trust 单拍开销总账(ms): step+pred P50/P95/P99/max = '
+            f'{np.percentile(cost, 50):.2f}/{np.percentile(cost, 95):.2f}/'
+            f'{np.percentile(cost, 99):.2f}/{self._trust_cost_ms_max:.2f} '
+            f'(n={self._trust_all_n}); 分摊辨识块 P99/max = '
+            f'{np.percentile(ident, 99):.2f}/{self._trust_ident_ms_max:.2f}; '
+            f'辨识 {self._trust_estimator.n_ident} 轮/'
+            f'换库 {self._trust_estimator.n_ident_accepted}')
+
+    def _update_trust_ladder(self, t_solve: float, step_diag: dict):
+        """推进健康基线 + 双迟滞四态阶梯，并更新路径 scale 上限。"""
+        delta = float(step_diag['delta_1step'])
+        b = float(step_diag['trust'])
+        cap_prev = self._ladder_scale_cap
+        state_prev = self._trust_ladder.state
+        self._ladder_scale_cap = self._trust_ladder.update(
+            t_solve, b, delta)
+        state = self._trust_ladder.state
+        baseline = self._trust_ladder.delta_baseline
+        # 只在 1.0 边界穿越时打日志(启动/完全恢复), 避免降速期间逐拍刷屏。
+        if cap_prev >= 1.0 and self._ladder_scale_cap < 1.0:
+            self.get_logger().info(
+                f'信任阶梯降速启动: cap={self._ladder_scale_cap:.3f} '
+                f'(state={state}, delta={1e3*delta:.2f}mm, '
+                f'baseline={1e3*baseline:.2f}mm, b={b:.3f})')
+        elif cap_prev < 1.0 and self._ladder_scale_cap >= 1.0:
+            self.get_logger().info(
+                f'信任阶梯恢复全速 (delta={1e3*delta:.2f}mm, '
+                f'baseline={1e3*baseline:.2f}mm, b={b:.3f})')
+        elif state_prev == 'warming' and state == 'healthy':
+            self.get_logger().info(
+                f'信任阶梯健康基线就绪: delta0={1e3*baseline:.2f}mm')
+
+    def _append_trust_shadow_row(
+            self, t_solve, e_meas, delta_hat_1step,
+            delta_hat_raw_1step, step_diag):
+        """trust 影子 CSV 独立于 loop CSV: 懒打开, 失败只停本通道记录。"""
+        if self._trust_record_failed:
+            return
+        try:
+            if self._trust_writer is None:
+                self.loop_data_dir.mkdir(parents=True, exist_ok=True)
+                path = (self.loop_data_dir
+                        / f'trust_shadow_{self._run_stamp}.csv')
+                self._trust_file = path.open('w', newline='')
+                self._trust_writer = csv.writer(self._trust_file)
+                self._trust_writer.writerow([
+                    't', 'e_meas_x', 'e_meas_y', 'e_meas_z',
+                    'delta_hat_1step_x', 'delta_hat_1step_y',
+                    'delta_hat_1step_z',
+                    'delta_1step', 'trust_b', 'theta_norm',
+                    'delta_hat_raw_1step_x', 'delta_hat_raw_1step_y',
+                    'delta_hat_raw_1step_z', 'beta_mean',
+                    'feedforward_gain', 'trust_b_filtered',
+                    'ladder_delta_baseline',
+                    'ladder_state', 'ladder_cap'])
+                self.get_logger().info(f'trust 影子 CSV 开始记录: {path}')
+            theta_norm = math.sqrt(sum(
+                float(rls.mu @ rls.mu)
+                for rls in self._trust_estimator.rls))
+            self._trust_writer.writerow([
+                float(t_solve),
+                *[float(v) for v in np.asarray(e_meas, dtype=float)],
+                *[float(v) for v in np.asarray(delta_hat_1step, dtype=float)],
+                float(step_diag['delta_1step']),
+                float(step_diag['trust']),
+                theta_norm,
+                *[float(v) for v in np.asarray(
+                    delta_hat_raw_1step, dtype=float)],
+                float(step_diag.get('beta_mean', float('nan'))),
+                float(self._trust_feedforward_gain),
+                float(self._trust_feedforward_gate.filtered_trust),
+                float(self._trust_ladder.delta_baseline),
+                str(self._trust_ladder.state),
+                float(self._ladder_scale_cap),
+            ])
+            self._trust_rows_since_flush += 1
+            if self._trust_rows_since_flush >= 100:
+                self._trust_file.flush()
+                self._trust_rows_since_flush = 0
+        except Exception as exc:
+            self._trust_record_failed = True
+            self.get_logger().warn(
+                'trust 影子 CSV 记录失败,后续 tick 停止记录(不影响控制): '
+                f'{exc}\n{traceback.format_exc()}')
+
+    def _close_trust_csv(self):
+        if self._trust_file is not None:
+            try:
+                self._trust_file.flush()
+                self._trust_file.close()
+            except Exception:
+                pass
+            self._trust_file = None
+            self._trust_writer = None
 
     def _base_rotation(
             self, t: float, path_t: float = None) -> np.ndarray:
@@ -1272,14 +1865,26 @@ class MoveBaseCircleMpcIkDemo(Node):
         h = float(self.reference_derivative_dt_sec)
         path_step = h * float(path_rate)
 
+        # model 信念档的 _base_pose 含 dt 网格缓存 Δ̂ 的**分段线性**插值:
+        # 其二阶差分在段内恒 0, 跨节点 ≈ 斜率跳变/h; 用 h ≤ 0.5*dt 的微分
+        # 步长会把 Δ̂'' 放大 ~dt/h 倍(默认 5ms 下 ≈4 倍尖峰), 且随延迟补偿
+        # 漂移跨越对齐边界时在 0 与尖峰间逐拍跳变。把基座位置差分步长对齐
+        # 到缓存网格间距 dt: 三点样本各落入相邻段且段内相位一致, 二阶差分
+        # 退化为相邻节点离散二阶差分(节点值是谐波模型精确值)的线性混合,
+        # 幅值正确、拍间一致(2Hz 分量幅值误差 <1%); 速度仍为 O(dt²) 中心
+        # 差分。truth/estimated/nominal 档 _base_pose 平滑, 保持原 h。
+        h_base = h
+        if (getattr(self, 'base_belief_mode', '') == 'model'
+                and getattr(self, '_trust_pred_times', None) is not None):
+            h_base = float(self.dt)
         base_position = self._base_pose(base_t)
-        base_position_minus = self._base_pose(base_t - h)
-        base_position_plus = self._base_pose(base_t + h)
+        base_position_minus = self._base_pose(base_t - h_base)
+        base_position_plus = self._base_pose(base_t + h_base)
         base_linear_velocity_world = (
-            base_position_plus - base_position_minus) / (2.0 * h)
+            base_position_plus - base_position_minus) / (2.0 * h_base)
         base_linear_acceleration_world = (
             base_position_plus - 2.0 * base_position + base_position_minus
-        ) / (h * h)
+        ) / (h_base * h_base)
 
         base_rotation = self._base_rotation(base_t, path_t)
         base_rotation_minus = self._base_rotation(
@@ -1745,6 +2350,9 @@ class MoveBaseCircleMpcIkDemo(Node):
         ee_pos_base, _ = self.mpc_ik.forward(q_for_marker)
         ee_pos_world = base_pos_world + base_rot_world @ ee_pos_base
         target_sample = self._ee_trajectory_sample(path_t)
+        # 落笔态存给下一拍的辨识分摊调度(滞后一拍, 缺省按落笔保守处理):
+        # 抬笔/过渡拍放宽辨识预算, 落笔拍严格 <3ms。
+        self._sched_pen_down = bool(target_sample.pen_down)
         self._append_segment_and_publish(
             self.ee_traj_marker,
             self.actual_marker_pub,
@@ -2293,11 +2901,39 @@ class MoveBaseCircleMpcIkDemo(Node):
                         'plant_control_substep_dt',
                         'base_disturbance_amplitude_m',
                         'base_disturbance_seed',
+                        'base_disturbance_profile',
                         'base_belief_mode',
                         'base_estimator_noise_std_m',
                         'base_estimator_delay_ms',
                         'base_estimator_lpf_hz',
                         'base_estimator_seed',
+                        'trust_n_freq', 'trust_fmin_hz', 'trust_fmax_hz',
+                        'trust_lam', 'trust_sigma0', 'trust_prior_std',
+                        'trust_meas_delay_sec', 'trust_dt_nominal',
+                        'trust_n_peaks', 'trust_ident_period_sec',
+                        'trust_buffer_sec', 'trust_min_ident_sec',
+                        'trust_holdout_sec', 'trust_f_ident_min_hz',
+                        'trust_f_ident_max_hz', 'trust_peak_snr',
+                        'trust_resid_lpf_hz', 'trust_beta_sigma0',
+                        'trust_beta_gamma_f', 'trust_beta_n_grid',
+                        'trust_beta_degraded', 'trust_beta_healthy',
+                        'trust_feedforward_gating_enabled',
+                        'trust_feedforward_gate_low',
+                        'trust_feedforward_gate_high',
+                        'trust_feedforward_gate_fall_tau_sec',
+                        'trust_feedforward_gate_rise_tau_sec',
+                        'trust_n_cal', 'trust_alpha', 'trust_gamma_aci',
+                        'trust_shadow_csv',
+                        'trust_ladder_enabled', 'ladder_b_degraded',
+                        'ladder_b_recover',
+                        'ladder_delta_degraded_ratio',
+                        'ladder_delta_recover_ratio',
+                        'ladder_min_scale',
+                        'ladder_baseline_warmup_sec',
+                        'ladder_baseline_tau_sec',
+                        'ladder_trust_commission_sec',
+                        'ladder_recover_debounce_sec',
+                        'ladder_exclusive_scale_control',
                         'late_tick_recovery_enabled',
                         'late_tick_recovery_factor',
                         'periodic_error_learning_enabled',
@@ -2699,7 +3335,9 @@ class MoveBaseCircleMpcIkDemo(Node):
 
     def destroy_node(self):
         gc.enable()
+        self._log_trust_cost_summary()
         self._close_loop_csv()
+        self._close_trust_csv()
         super().destroy_node()
 
     def _run_reset_phase(self):
@@ -2749,6 +3387,7 @@ class MoveBaseCircleMpcIkDemo(Node):
                 self._base_belief_offset = np.zeros(3)
                 self._base_estimator_rng = np.random.default_rng(
                     self.base_estimator_seed)
+                self._reset_trust_estimator()
                 self._reset_periodic_error_learning()
                 # 实时时钟卫生:控制阶段禁用 GC,消除周期性 GC 暂停造成的 solve->publish
                 # 抖动尖峰(实测偶发 ~34ms)。仅本轮实验(数十秒)禁用,close 时恢复;
@@ -3132,8 +3771,9 @@ class MoveBaseCircleMpcIkDemo(Node):
         application_delay_sec = self._predicted_application_delay_sec()
         self._last_application_delay_sec = application_delay_sec
 
-        # estimated 信念模式: 先更新本拍 Δ̂, 之后本拍所有 _base_pose(参考生成/
-        # 守卫/TF/记录)共享同一信念, 不会拍内不一致。
+        # estimated/model 信念模式: 先更新本拍 Δ̂(model 档缓存 predict_horizon
+        # 时间网格), 之后本拍所有 _base_pose(参考生成/守卫/TF/记录)共享同一
+        # 信念, 不会拍内不一致; trust 影子 CSV 也在此逐拍落盘。
         self._update_base_belief(t_solve)
         self._publish_base_tf(t_solve)
 
@@ -3148,10 +3788,16 @@ class MoveBaseCircleMpcIkDemo(Node):
         if self.online_time_scaling_enabled:
             scale_dt = (timer_interval_ms * 1e-3
                         if np.isfinite(timer_interval_ms) else 0.0)
+            exclusive_ladder = (
+                self.trust_ladder_enabled
+                and self.ladder_exclusive_scale_control)
             self.time_scaler.update(
                 scale_dt,
-                self._time_scaling_utilization,
-                self._time_scaling_tracking_error,
+                (0.0 if exclusive_ladder
+                 else self._time_scaling_utilization),
+                (0.0 if exclusive_ladder
+                 else self._time_scaling_tracking_error),
+                external_scale_cap=self._ladder_scale_cap,
             )
         # 阶段1B:计算上一控制周期实际执行增量(measured_delta),或 0(zero)。
         dqp = self._compute_dq_prev(

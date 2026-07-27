@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <!--
+    Validation fallback for hosts with stale Fast-DDS shared-memory segments.
+    Set FASTRTPS_DEFAULT_PROFILES_FILE to this file for every ROS participant
+    in the run; discovery and data traffic then use localhost UDP only.
+  -->
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>udp_only_transport</transport_id>
+      <type>UDPv4</type>
+      <interfaceWhiteList>
+        <address>127.0.0.1</address>
+      </interfaceWhiteList>
+    </transport_descriptor>
+  </transport_descriptors>
+
+  <participant profile_name="udp_only_participant" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>udp_only_transport</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
+</profiles>

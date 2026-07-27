@@ -330,6 +330,15 @@ class TrajectoryVisualizerDemo(Node):
             self.declare_parameter('base_disturbance_amplitude_m', 0.0).value)
         self.base_disturbance_seed = int(
             self.declare_parameter('base_disturbance_seed', 0).value)
+        # 扰动 profile 透传 base_disturbance_offset, 必须与 MPC demo 的
+        # base_disturbance_profile 一致(真值端与 demo 内三处信念/测量同源)。
+        self.base_disturbance_profile = str(self.declare_parameter(
+            'base_disturbance_profile', 'harmonic').value).strip().lower()
+        # fail-fast: 未知 profile 立即报错(合法枚举以 base_disturbance_offset
+        # 为准, 探针调用与运行时同一代码路径; amp 传正值绕过其 0 幅早退)。
+        moving_traj.base_disturbance_offset(
+            0.0, 1.0, self.base_disturbance_seed,
+            profile=self.base_disturbance_profile)
         self.data_dir = Path(str(self.declare_parameter(
             'data_dir',
             '/home/windylab/code/windylab_ws/src/arm-platform/demo/data').value))
@@ -700,7 +709,8 @@ class TrajectoryVisualizerDemo(Node):
         if self.base_disturbance_amplitude_m > 0.0:
             pose = pose + moving_traj.base_disturbance_offset(
                 scaled_t, self.base_disturbance_amplitude_m,
-                self.base_disturbance_seed)
+                self.base_disturbance_seed,
+                profile=self.base_disturbance_profile)
         return pose
 
     def _moving_base_rotation(self, t: float) -> np.ndarray:
