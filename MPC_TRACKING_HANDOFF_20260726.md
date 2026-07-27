@@ -136,6 +136,46 @@
 > 第3级（双向协作）依赖把基座状态改走 topic（本实验台已把真值/信念
 > 分离，是其前置），尚未实现。
 
+> ## 0.6 不确定性感知 P0–P3 工作流（2026-07-26 白天新增，指向独立报告）
+>
+> §0.5 之上的第 3 级台阶已落地：`base_trust_estimator.py` 三层信任估计器
+> （谱辨识谐波 RLS + β 信任标量 + 保形 δ/ACI，Mondrian 分组），接入 demo
+> `base_belief_mode:=model`；扰动契约扩展 `base_disturbance_profile`
+> （gust/fault/wideband）；一级信任降速阶梯 `trust_ladder_enabled`；
+> 离线 48 跑 + ROS whole 12+2 跑实验矩阵（四线阶梯 nominal 5.16 >
+> estimated 4.05 > model 3.57 > truth 0.48 mm 稳态成立）；model 档重辨识
+> 实时性违规（timer P99 34.7ms）已修复为分摊状态机 + BLAS 单线程
+> （复验 P99 23.4ms、稳态 0.94mm）。完整交付清单、论文逐节映射、阶梯
+> fault 对比的如实结论、复现命令与数据文件清单见仓库根
+> **`UNCERTAINTY_P0P3_REPORT.md`**；离线矩阵表见 `data_uncertainty_matrix.md`。
+
+> ## 0.7 后续增强：β 门控与一级阶梯闭环（2026-07-26 晚）
+>
+> §0.6 初版遗留的一级阶梯标定问题已解决。β 信任不再使用
+> `E[β]/β_max`（该定义把健康 β≈1 映成 b≈0.1），改为在
+> `β_degraded=0.6`、`β_healthy=0.9` 两个物理精度锚点间连续标定：
+> 健康 b=1.000，10mm 故障后 0.06s 内跌破 0.3，恢复后 3.06s 内回到 0.7。
+>
+> model 前馈现在按 `Δ̂_ff=g(b)Δ̂` 平滑门控。离线 3 seeds 正式 A/B：
+> harmonic 未门控/门控 1.645/1.638mm（收益保留），fault
+> 2.875/**2.279mm**（消除倒挂，−20.7%）。ROS harmonic/model 三条 whole
+> 稳态 mean 为 0.964/0.924/0.961mm，均值 **0.950mm**，guard block/fault
+> 全零；相对修复前 3.57mm 改善 73.4%。
+>
+> 一级阶梯改为四态状态机（warming/healthy/degraded/recovering），δ 门使用
+> 在线健康中位基线的 1.35/1.2 倍双阈值，b 门使用 0.3/0.7 双阈值，并加
+> 1s trust commission 与 2s 恢复防抖。fault whole 正式行为：
+> 4.01s 基线就绪，6.15s 降级，scale 最低 0.692，23.51s 恢复，25s 后恒为 1；
+> guard block/fault=0/0、solver success=100%。因此“β 加权前馈”和
+> “一级阶梯重标定”均从未做/待标定清单移除；尚未做的只剩 §4.4 二、三级
+> （姿态切换、抬笔退避）。
+>
+> ROS 验收期间宿主机的 Fast-DDS 域 0 出现外部 `/joint_states` participant；
+> 正式 ON 行使用独立 `ROS_DOMAIN_ID=78`，并让三个终端统一加载
+> `demo/fastdds_udp_only.xml` 禁用 SHM。参数快照 `publishers=1, valid=true`；
+> 受重复发布者/反馈陈旧影响的过程 run 已明确作废。完整数值和数据 stamp
+> 见 `UNCERTAINTY_P0P3_REPORT.md` §2.7。
+
 ## 1. 目标与不可更改条件
 
 目标是在解析浮动基座运动下，让 7-DOF 机械臂末端在 `world` 系稳定绘制：
