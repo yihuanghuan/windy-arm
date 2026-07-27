@@ -298,6 +298,10 @@ class TrajectoryVisualizerDemo(Node):
             self.declare_parameter('record_control_signal', False).value)
         self.record_command_fk = bool(
             self.declare_parameter('record_command_fk', True).value)
+        # Keep command-FK CSV/PNG diagnostics independent from the RViz
+        # overlay. The uncertainty launch records it but hides the orange line.
+        self.show_command_fk_marker = bool(
+            self.declare_parameter('show_command_fk_marker', True).value)
         self.publish_rate_hz = float(self.declare_parameter('publish_rate_hz', 10.0).value)
         # Keep at least one complete high-rate ``whole`` cycle visible in RViz.
         # The previous 2000-point deque discarded early red strokes mid-cycle.
@@ -307,6 +311,9 @@ class TrajectoryVisualizerDemo(Node):
         # serialized into RViz on every marker timer tick.
         self.max_rviz_path_points = int(
             self.declare_parameter('max_rviz_path_points', 2500).value)
+        self.actual_rviz_smoothing_window = int(
+            self.declare_parameter(
+                'actual_rviz_smoothing_window', 5).value)
         self.expected_path_points = int(
             self.declare_parameter('expected_path_points', 240).value)
         # RViz/CSV/exit-time PNG are independent of the live Matplotlib
@@ -378,6 +385,12 @@ class TrajectoryVisualizerDemo(Node):
             raise ValueError('publish_rate_hz must be positive')
         if self.max_rviz_path_points < 2:
             raise ValueError('max_rviz_path_points must be >= 2')
+        if (
+            self.actual_rviz_smoothing_window < 1
+            or self.actual_rviz_smoothing_window % 2 == 0
+        ):
+            raise ValueError(
+                'actual_rviz_smoothing_window must be a positive odd integer')
         if self.ignore_initial_sec < 0.0:
             raise ValueError('ignore_initial_sec must be non-negative')
         if self.path_clock_mode not in ('auto', 'required', 'disabled'):
@@ -429,6 +442,7 @@ class TrajectoryVisualizerDemo(Node):
         self.path_clock_required_for_run = (
             self.path_clock_mode == 'required')
         self.path_clock_wait_reported = False
+        self.actual_marker_segment_count = 0
 
         marker_qos = QoSProfile(depth=10)
         marker_qos.reliability = ReliabilityPolicy.RELIABLE
@@ -437,7 +451,7 @@ class TrajectoryVisualizerDemo(Node):
         self.expected_pub = self.create_publisher(
             Marker, '/trajectory/expected', marker_qos)
         self.actual_pub = self.create_publisher(
-            Marker, '/trajectory/actual', marker_qos)
+            MarkerArray, '/trajectory/actual', marker_qos)
         self.command_fk_pub = self.create_publisher(
             Marker, '/trajectory/command_fk', marker_qos)
         self.current_target_pub = self.create_publisher(
@@ -587,6 +601,40 @@ class TrajectoryVisualizerDemo(Node):
             reduced.append(np.asarray([
                 segment[index] for index in np.unique(indices)]))
         return reduced
+
+    @staticmethod
+    def _smooth_rviz_segments(segments, window: int):
+        """Apply display-only centered smoothing inside each pen stroke.
+
+        Stroke boundaries remain separate and the first/last point of every
+        stroke stays exact. Raw samples, CSV metrics and exit-time plots are
+        never modified.
+        """
+        window = int(window)
+        if window <= 1:
+            return [np.asarray(segment, dtype=float) for segment in segments]
+
+        half = window // 2
+        ramp = np.arange(1, half + 2, dtype=float)
+        kernel = np.concatenate([ramp, ramp[-2::-1]])
+        kernel /= kernel.sum()
+        smoothed_segments = []
+        for segment in segments:
+            points = np.asarray(segment, dtype=float)
+            if len(points) < window:
+                smoothed_segments.append(points.copy())
+                continue
+            padded = np.pad(
+                points, ((half, half), (0, 0)), mode='edge')
+            smoothed = np.column_stack([
+                np.convolve(
+                    padded[:, axis], kernel, mode='valid')
+                for axis in range(3)
+            ])
+            smoothed[0] = points[0]
+            smoothed[-1] = points[-1]
+            smoothed_segments.append(smoothed)
+        return smoothed_segments
 
     def _control_signal_cb(self, msg: JointState):
         self._record_control_signal(msg)
@@ -1032,21 +1080,20 @@ class TrajectoryVisualizerDemo(Node):
             color=(0.1, 1.0, 0.1, 1.0),
             width=0.008))
 
+        actual_segments = []
         if self.actual_points:
             actual_segments = self._records_to_segments(
                 self.actual_points, self.max_rviz_path_points)
-            self.actual_pub.publish(self._line_marker(
-                marker_id=2,
-                ns='trajectory_actual',
-                segments=actual_segments,
-                stamp=now,
-                color=(1.0, 0.1, 0.1, 1.0),
-                width=0.01))
-        else:
-            self.actual_pub.publish(self._delete_marker(
-                marker_id=2, ns='trajectory_actual', stamp=now))
+            actual_segments = self._smooth_rviz_segments(
+                actual_segments, self.actual_rviz_smoothing_window)
+        self.actual_pub.publish(MarkerArray(markers=self._line_strip_markers(
+            ns='trajectory_actual',
+            segments=actual_segments,
+            stamp=now,
+            color=(1.0, 0.1, 0.1, 1.0),
+            width=0.010)))
 
-        if self.command_fk_points:
+        if self.show_command_fk_marker and self.command_fk_points:
             command_segments = self._records_to_segments(
                 self.command_fk_points, self.max_rviz_path_points)
             self.command_fk_pub.publish(self._line_marker(
@@ -1123,6 +1170,28 @@ class TrajectoryVisualizerDemo(Node):
                     to_point(segment[index + 1]),
                 ])
         return marker
+
+    def _line_strip_markers(self, ns: str, segments, stamp, color,
+                            width: float):
+        """Return one LINE_STRIP per stroke plus DELETEs for stale strokes."""
+        markers = []
+        visible_segments = [
+            np.asarray(segment, dtype=float)
+            for segment in segments
+            if len(segment) >= 2
+        ]
+        for marker_id, segment in enumerate(visible_segments):
+            marker = self._base_marker(marker_id, ns, stamp)
+            marker.type = Marker.LINE_STRIP
+            marker.scale.x = float(width)
+            marker.color.r, marker.color.g, marker.color.b, marker.color.a = color
+            marker.points = [to_point(point) for point in segment]
+            markers.append(marker)
+        for marker_id in range(
+                len(visible_segments), self.actual_marker_segment_count):
+            markers.append(self._delete_marker(marker_id, ns, stamp))
+        self.actual_marker_segment_count = len(visible_segments)
+        return markers
 
     def _sphere_marker(self, marker_id: int, ns: str, point: np.ndarray, stamp,
                        color, scale: float):

@@ -373,6 +373,12 @@ RViz 中。
 起终点之间的差仍是未放大的真实扰动向量，文本数值也是真值。RViz 路径只对显示副本
 限点和降采样，CSV、退出时 PNG 和误差计算仍保留全率样本。
 
+专用 RViz 中不显示黄色/橙色 command-FK 轨迹，只显示绿色期望轨迹和红色实际轨迹；
+command-FK 仍在后台写入 CSV/PNG，用于区分控制命令与执行器反馈误差。红色实际轨迹
+按 `stroke_id` 分成多个 `LINE_STRIP`：同一落笔段内部连续，抬笔、换字和换面处一定
+断开。统一实验配置对每个笔画的 RViz 显示副本使用 7 点居中平滑，且保持各笔画首尾
+点不变；该平滑不修改原始采样、CSV、退出时 PNG 或误差指标。
+
 RViz 的 `Global Options -> Fixed Frame` 必须是 `world`。若固定在 `base_link`，
 网格和 world 目标会呈现反向运动，很容易被误判为末端漂移。这里的扰动直接施加到
 基座平移真值，不是直接施加给末端；末端位置变化是基座运动经过机械臂运动学后的结果。
@@ -431,9 +437,11 @@ expected_world(path_time) = p_ref_world(path_time)
 | `control_signal_topic` | `/student/joint_command` | 控制信号记录 topic |
 | `record_control_signal` | `False` | 是否记录控制信号 CSV/图 |
 | `record_command_fk` | `True` | 是否把 `/student/joint_command` 的关节角做 FK,记录命令末端轨迹 CSV/图 |
+| `show_command_fk_marker` | `True` | 是否在 RViz 显示 command-FK 轨迹；3.5 统一实验设为 `False`，不影响其 CSV/PNG 记录 |
 | `publish_rate_hz` | `10.0` | RViz Marker 发布频率 |
 | `max_actual_points` | `12000` | RViz 最多保留的实际轨迹采样点数;默认可完整保留至少一轮 `whole`,避免早期红色笔画在任务结束前被滚动删除 |
 | `max_rviz_path_points` | `2500` | 每条 RViz 路径的显示点预算；只降采样 Marker，不影响 CSV/PNG |
+| `actual_rviz_smoothing_window` | `5` | 红色实际轨迹的逐笔画显示平滑窗口，必须为正奇数；3.5 统一实验设为 `7`，不改变原始数据和指标 |
 | `expected_path_points` | `240` | 期望轨迹离散点数 |
 | `show_matplotlib` | `False` | 是否打开 CPU 开销较高的 Matplotlib 实时曲线窗口;RViz/CSV/退出时 PNG 不受影响 |
 | `start_on_command` | `True` | 是否等收到命令后再开始记录 |

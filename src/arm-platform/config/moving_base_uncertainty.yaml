@@ -215,9 +215,11 @@ trajectory_visualizer_demo:
     control_signal_topic: /student/joint_command
     record_control_signal: true
     record_command_fk: true
+    show_command_fk_marker: false
     publish_rate_hz: 5.0
     max_actual_points: 12000
     max_rviz_path_points: 2500
+    actual_rviz_smoothing_window: 7
     expected_path_points: 240
     show_matplotlib: false
     start_on_command: true

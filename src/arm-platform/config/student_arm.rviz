@@ -64,7 +64,7 @@ Visualization Manager:
       Queue Size: 100
       Topic: /trajectory/expected
       Value: true
-    - Class: rviz_default_plugins/Marker
+    - Class: rviz_default_plugins/MarkerArray
       Enabled: true
       Marker Topic:
         Depth: 5

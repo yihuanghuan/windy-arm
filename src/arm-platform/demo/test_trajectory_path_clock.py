@@ -192,6 +192,10 @@ class TrajectoryPathClockTest(unittest.TestCase):
         visualizer.current_actual = np.ones(3)
         visualizer.current_expected = np.ones(3)
         visualizer.current_base_t = 0.4
+        visualizer.max_rviz_path_points = 2500
+        visualizer.actual_rviz_smoothing_window = 7
+        visualizer.actual_marker_segment_count = 3
+        visualizer.show_command_fk_marker = False
         visualizer.show_base_disturbance = True
         visualizer.base_disturbance_amplitude_m = 0.01
         visualizer.base_disturbance_seed = 0
@@ -217,8 +221,13 @@ class TrajectoryPathClockTest(unittest.TestCase):
         self.assertIsNone(visualizer.current_actual)
         self.assertIsNone(visualizer.current_expected)
         self.assertIsNone(visualizer.current_base_t)
+        actual_markers = visualizer.actual_pub.messages[-1].markers
+        self.assertEqual(len(actual_markers), 3)
+        self.assertTrue(all(
+            marker.action == Marker.DELETE for marker in actual_markers))
+        self.assertEqual(
+            [marker.id for marker in actual_markers], [0, 1, 2])
         for publisher in (
-                visualizer.actual_pub,
                 visualizer.command_fk_pub,
                 visualizer.current_target_pub,
                 visualizer.current_actual_pub):
@@ -328,6 +337,41 @@ class TrajectoryPathClockTest(unittest.TestCase):
                 segment[0], [0.0, float(stroke_id), 0.0])
             np.testing.assert_allclose(
                 segment[-1], [999.0, float(stroke_id), 0.0])
+
+    def test_red_rviz_line_is_smoothed_but_never_bridges_strokes(self):
+        segments = [
+            np.array([
+                [float(index), 0.15 * (-1.0) ** index, 0.0]
+                for index in range(15)
+            ]),
+            np.array([
+                [100.0 + float(index), 1.0 + 0.15 * (-1.0) ** index, 0.0]
+                for index in range(15)
+            ]),
+        ]
+        original_segments = [segment.copy() for segment in segments]
+        smoothed = TrajectoryVisualizerDemo._smooth_rviz_segments(
+            segments, window=7)
+        raw_roughness = np.abs(np.diff(segments[0][:, 1], n=2)).mean()
+        smooth_roughness = np.abs(np.diff(smoothed[0][:, 1], n=2)).mean()
+        self.assertLess(smooth_roughness, raw_roughness)
+        np.testing.assert_array_equal(smoothed[0][0], segments[0][0])
+        np.testing.assert_array_equal(smoothed[0][-1], segments[0][-1])
+        for segment, original in zip(segments, original_segments):
+            np.testing.assert_array_equal(segment, original)
+
+        visualizer, _ = _visualizer_stub()
+        visualizer.frame_id = 'world'
+        visualizer.actual_marker_segment_count = 0
+        markers = visualizer._line_strip_markers(
+            'trajectory_actual', smoothed, Time(),
+            color=(1.0, 0.1, 0.1, 1.0), width=0.010)
+
+        self.assertEqual(len(markers), 2)
+        self.assertTrue(all(
+            marker.type == Marker.LINE_STRIP for marker in markers))
+        self.assertAlmostEqual(markers[0].points[-1].x, 14.0)
+        self.assertAlmostEqual(markers[1].points[0].x, 100.0)
 
 
 if __name__ == '__main__':

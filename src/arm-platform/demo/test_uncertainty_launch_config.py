@@ -116,6 +116,17 @@ class UncertaintyLaunchConfigTest(unittest.TestCase):
             display.get('Name'): display
             for display in manager['Displays']
         }
+        self.assertEqual(
+            displays['ExpectedTrajectory']['Class'],
+            'rviz_default_plugins/Marker')
+        actual = displays['ActualTrajectory']
+        self.assertEqual(
+            actual['Class'], 'rviz_default_plugins/MarkerArray')
+        self.assertNotIn('CommandFKTrajectory', displays)
+        visualizer = self.parameters[
+            'trajectory_visualizer_demo']['ros__parameters']
+        self.assertFalse(visualizer['show_command_fk_marker'])
+        self.assertEqual(visualizer['actual_rviz_smoothing_window'], 7)
         disturbance = displays['BaseDisturbance']
         self.assertTrue(disturbance['Enabled'])
         self.assertEqual(
