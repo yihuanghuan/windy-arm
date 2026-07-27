@@ -5,16 +5,21 @@
 t_next、q_pub、q_meas、dq_meas、js_header_stamp_rel、时钟诊断。分析器据此 + 参数快照
 (轨迹/URDF/lead)重建全部指标。visualizer CSV 仅作一致性交叉核对,不进门槛。
 
-时间语义(全部真实 clock,相对轨迹原点=首个 track tick 求解起点):
-- cmd@publish       : FK_world(q_pub, t_publish) vs target(t_publish)。publish-lag 由此测。
-- cmd@reference_time: FK_world(q_pub, t_reference) vs target(t_reference),t_reference=t_solve+lead*dt。
+时间语义(base/wall clock 与 path clock 均相对首个 track tick 求解起点):
+- 基座平移/浮动态度扰动用真实 base/wall clock；目标相位与 whole 工作面朝向用 path clock。
+- cmd@publish       : FK_world(q_pub, base=t_publish,path=path(t_publish))
+                      vs target(path(t_publish))。publish-lag 由此测。
+- cmd@reference_time: FK_world(q_pub, base=t_reference,path=path_target_time)
+                      vs target(path_target_time),t_reference=t_solve+lead*dt。
                       **命名不叫 effective**:lead=0 不代表命令能在发布瞬间生效。lead 相关,报告项。
-- cmd@next_tick     : FK_world(q_pub, t_publish+dt) vs target(t_publish+dt)。固定+1物理拍,lead 无关,KPI。
+- cmd@next_tick     : FK_world(q_pub,base=t_publish+dt,path=path(t_publish+dt))
+                      vs target(path(t_publish+dt))。固定+1物理拍,lead 无关,KPI。
 - exec_gap(real)    : 执行器跟随误差,按真实 publish wall 对齐:
                       joint = q_actual(t_publish+dt) - q_pub(t_publish);
                       cart  = FK_world(q_actual(t_publish+dt), t_publish+dt) - FK_world(q_pub, t_publish+dt)。
-- actual_error      : actual_world(t_js) - target(t_js),actual_world=base_pose(t_js)+R(t_js)@FK_base(q_meas),
+- actual_error      : actual_world(base=t_js,path=path(t_js))-target(path(t_js)),
                       t_js=js_header_stamp_rel(真实测量时刻)。真值跟踪误差。
+旧 loop/visualizer CSV 无 path 列时保持 path_time=wall_time 的历史语义。
 统一统计窗口:full(全交叠)与 steady(丢弃启动过程的完整周期窗口,默认[4,40]s);门槛用 steady。
 误差单位 mm;RMS=sqrt(mean(e^2))。正弦"幅值A"与"RMS"严格区分。lag>0 表示信号相对解析参考延迟。
 异步序列一律按真实时间戳 np.interp 对齐,mask 到交叠区间防端点外推。
@@ -36,11 +41,13 @@ from pathlib import Path
 import numpy as np
 import pinocchio as pin
 
+import moving_base_trajectory_config as moving_traj
+
 U0_ACTIVE_THRESHOLD_RAD = 0.0195
 SATURATION_FRACTION = 0.98
 STEADY_WINDOW = (4.0, 40.0)
-ACCEL_LIMIT = 5.0
-VEL_LIMIT = 1.0
+LEGACY_ACCEL_LIMIT = 5.0
+LEGACY_VEL_LIMIT = 1.0
 
 
 # ================================================================= 轨迹/FK 重建
@@ -53,7 +60,8 @@ class TrajectoryModel:
         self.height = float(cfg['BASE_HEIGHT'])
         self.z_amp = float(cfg.get('BASE_Z_AMPLITUDE', 0.0) or 0.0)
         self.z_phase = float(cfg.get('BASE_Z_PHASE', 0.0) or 0.0)
-        self.shape = str(cfg.get('BASE_MOTION_SHAPE', 'circle_z') or 'circle_z')
+        self.base_motion_shape = str(
+            cfg.get('BASE_MOTION_SHAPE', 'circle_z') or 'circle_z')
         self.sphere_r = float(cfg.get('BASE_SPHERE_RADIUS', 0.0) or 0.0)
         _deg = cfg.get('BASE_ATTITUDE_AMPLITUDE_DEG')
         _fb = math.radians(float(_deg)) if _deg is not None else None
@@ -63,14 +71,31 @@ class TrajectoryModel:
         self.ee_center = np.array(cfg['EE_WORLD_CIRCLE_CENTER'], dtype=float)
         self.ee_radius = float(cfg['EE_CIRCLE_RADIUS'])
         self.ee_period = float(cfg['EE_PERIOD_SEC'])
+        self.trajectory_shape = str(
+            cfg.get('EE_TRAJECTORY_SHAPE', 'circle') or 'circle'
+        ).strip().lower()
         self.trajectory_time_scale = float(trajectory_time_scale)
         self.base_motion_time_scale = float(base_motion_time_scale)
         if self.trajectory_time_scale <= 0.0 or self.base_motion_time_scale <= 0.0:
             raise ValueError('trajectory_time_scale/base_motion_time_scale must be > 0')
+        # New snapshots store EE_TRAJECTORY_PERIOD_SEC already scaled.  Older
+        # snapshots omit it, so reconstruct the scaled period exactly once.
+        period_from_snapshot = cfg.get('EE_TRAJECTORY_PERIOD_SEC')
+        if period_from_snapshot is not None:
+            self.ee_trajectory_period = float(period_from_snapshot)
+        else:
+            unscaled_period = (
+                self.ee_period
+                if self.trajectory_shape == 'circle'
+                else moving_traj.ee_trajectory_period(
+                    self.trajectory_shape)
+            )
+            self.ee_trajectory_period = (
+                float(unscaled_period) * self.trajectory_time_scale)
 
     def base_pose(self, t):
         w = 2.0 * math.pi / (self.base_period * self.base_motion_time_scale)
-        if self.shape == 'sphere':
+        if self.base_motion_shape == 'sphere':
             c = np.array([self.center[0], self.center[1], self.height])
             u = np.array([1.0, 0.0, 0.0])
             v = np.array([0.0, 1.0 / math.sqrt(2.0), 1.0 / math.sqrt(2.0)])
@@ -79,23 +104,60 @@ class TrajectoryModel:
                          self.center[1] + self.radius * math.sin(w * t),
                          self.height + self.z_amp * math.sin(w * t + self.z_phase)])
 
-    def base_rotation(self, t):
-        w = 2.0 * math.pi / (self.base_period * self.base_motion_time_scale)
-        roll = self.roll_amp * math.sin(w * t)
-        pitch = self.pitch_amp * math.sin(w * t + 2.0 * math.pi / 3.0)
-        yaw = self.yaw_amp * math.sin(w * t + 4.0 * math.pi / 3.0)
-        return pin.rpy.rpyToMatrix(roll, pitch, yaw)
+    def base_rotation(self, base_t, path_t=None):
+        """Return world-from-base rotation using the two production clocks.
+
+        Floating attitude disturbance follows physical/base time.  Only the
+        nominal task-station heading used by ``whole`` follows path time.
+        ``path_t=None`` preserves the one-clock behaviour of historical CSVs.
+        """
+        if path_t is None:
+            path_t = base_t
+        w = 2.0 * math.pi / (
+            self.base_period * self.base_motion_time_scale)
+        roll = self.roll_amp * math.sin(w * base_t)
+        pitch = self.pitch_amp * math.sin(
+            w * base_t + 2.0 * math.pi / 3.0)
+        yaw = self.yaw_amp * math.sin(
+            w * base_t + 4.0 * math.pi / 3.0)
+        disturbance = pin.rpy.rpyToMatrix(roll, pitch, yaw)
+        if self.trajectory_shape != 'whole':
+            return disturbance
+        # moving_traj consumes unscaled trajectory seconds.  The snapshot
+        # scale is applied exactly once here.
+        nominal_yaw = moving_traj.base_nominal_yaw(
+            float(path_t) / self.trajectory_time_scale,
+            self.trajectory_shape)
+        c, s = math.cos(nominal_yaw), math.sin(nominal_yaw)
+        nominal = np.array([
+            [c, -s, 0.0],
+            [s, c, 0.0],
+            [0.0, 0.0, 1.0],
+        ])
+        return nominal @ disturbance
 
     def ee_target_world(self, t):
+        if self.trajectory_shape != 'circle':
+            # Non-circle geometry is source-defined and the source file is
+            # part of the experiment fingerprint.  Snapshot time scaling is
+            # nevertheless authoritative and is applied exactly once.
+            return moving_traj.ee_target_world(
+                float(t) / self.trajectory_time_scale,
+                self.trajectory_shape)
         w = 2.0 * math.pi / (self.ee_period * self.trajectory_time_scale)
         return self.ee_center + self.ee_radius * np.array(
             [math.cos(w * t), math.sin(w * t), 0.0])
 
-    def world_from_base_point(self, p_base, t):
-        return self.base_pose(t) + self.base_rotation(t) @ p_base
+    def world_from_base_point(self, p_base, base_t, path_t=None):
+        if path_t is None:
+            path_t = base_t
+        return (
+            self.base_pose(base_t)
+            + self.base_rotation(base_t, path_t) @ p_base
+        )
 
     def repetition_period(self):
-        ee = Fraction(str(self.ee_period * self.trajectory_time_scale))
+        ee = Fraction(str(self.ee_trajectory_period))
         base = Fraction(str(self.base_period * self.base_motion_time_scale))
         num = np.lcm(ee.numerator * base.denominator, base.numerator * ee.denominator)
         return float(Fraction(int(num), ee.denominator * base.denominator))
@@ -136,6 +198,99 @@ def _cols(h, d, names):
 
 def _col(h, d, name):
     return d[:, h.index(name)]
+
+
+def _interp_path_clock(query_t, base_t, path_t, path_scale):
+    """Interpolate recorded path progress at physical/base timestamps.
+
+    Interior samples use the recorded ``path_time`` timeline, so a scale
+    change on the following controller tick is represented exactly instead
+    of being projected forever from the preceding row.  The logged local
+    scale is only used for the small boundary extrapolation.
+    """
+    query_raw = np.asarray(query_t, dtype=float)
+    scalar_query = query_raw.ndim == 0
+    query = np.atleast_1d(query_raw)
+    base = np.asarray(base_t, dtype=float)
+    path = np.asarray(path_t, dtype=float)
+    scale = np.asarray(path_scale, dtype=float)
+    if base.ndim != 1 or len(base) == 0:
+        raise ValueError('base/path clock arrays must be non-empty 1-D arrays')
+    out = np.interp(query, base, path)
+    left = query < base[0]
+    right = query > base[-1]
+    if np.any(left):
+        out[left] = path[0] + scale[0] * (query[left] - base[0])
+    if np.any(right):
+        out[right] = path[-1] + scale[-1] * (query[right] - base[-1])
+    return float(out[0]) if scalar_query else out
+
+
+def _loop_path_clocks(h, d):
+    """Return path-time arrays corresponding to each physical loop clock.
+
+    Schema <=4 did not record a separate path clock.  In that case every
+    path axis intentionally aliases its historical wall/base-time axis.
+    """
+    t_solve = _col(h, d, 't_solve')
+    t_publish = _col(h, d, 't_publish')
+    t_reference = _col(h, d, 't_reference')
+    t_next = _col(h, d, 't_next')
+    js_rel = _col(h, d, 'js_header_stamp_rel')
+    has_path_clock = (
+        'path_time' in h
+        and np.any(np.isfinite(_col(h, d, 'path_time')))
+    )
+    if not has_path_clock:
+        return {
+            'mode': 'legacy_wall',
+            'solve': t_solve.copy(),
+            'publish': t_publish.copy(),
+            'reference': t_reference.copy(),
+            'next': t_next.copy(),
+            'js': js_rel.copy(),
+            'scale': np.ones_like(t_solve),
+        }
+
+    path_solve_raw = _col(h, d, 'path_time')
+    path_solve = np.where(
+        np.isfinite(path_solve_raw), path_solve_raw, t_solve)
+    if 'path_scale' in h:
+        scale_raw = _col(h, d, 'path_scale')
+        path_scale = np.where(
+            np.isfinite(scale_raw) & (scale_raw >= 0.0),
+            scale_raw, 1.0)
+    else:
+        path_scale = np.ones_like(t_solve)
+
+    path_publish = _interp_path_clock(
+        t_publish, t_solve, path_solve, path_scale)
+    path_next = _interp_path_clock(
+        t_next, t_solve, path_solve, path_scale)
+    path_js = _interp_path_clock(
+        js_rel, t_solve, path_solve, path_scale)
+    path_reference = _interp_path_clock(
+        t_reference, t_solve, path_solve, path_scale)
+    if 'path_target_time' in h:
+        target_raw = _col(h, d, 'path_target_time')
+        path_reference = np.where(
+            np.isfinite(target_raw), target_raw, path_reference)
+    return {
+        'mode': 'recorded_path',
+        'solve': path_solve,
+        'publish': path_publish,
+        'reference': path_reference,
+        'next': path_next,
+        'js': path_js,
+        'scale': path_scale,
+    }
+
+
+def _visualizer_path_axis(header, data):
+    """Prefer the synchronized visualizer path axis, with old CSV fallback."""
+    return _col(
+        header, data,
+        'path_time_sec' if 'path_time_sec' in header else 'time_sec')
 
 
 def _win(t, lo, hi):
@@ -364,7 +519,8 @@ def _clock_health(
 # ================================================================= 指纹
 
 FINGERPRINT_ROS_PARAMS = (
-    'solver_backend', 'horizon_steps', 'max_joint_step', 'terminal_tolerance',
+    'solver_backend', 'solver_model', 'horizon_steps', 'max_joint_step',
+    'terminal_tolerance',
     'orientation_weight', 'terminal_orientation_weight', 'acados_rti_iterations',
     'position_weight', 'terminal_position_weight', 'joint_delta_weight',
     'joint_delta_change_weight', 'current_posture_weight', 'center_posture_weight',
@@ -374,6 +530,12 @@ FINGERPRINT_ROS_PARAMS = (
     'guard_residual_accel_gain', 'guard_projection_enabled',
     'guard_projection_min_lambda', 'guard_projection_max_iterations',
     'guard_max_consecutive_blocks',
+    # Executor-model and OCP limits are fixed configuration, not hidden
+    # experimental variables. Feed-forward gain is checked as a paired
+    # Phase-1D variable separately.
+    'plant_position_feedback_tau', 'plant_feedback_velocity_limit',
+    'plant_max_velocity', 'plant_max_acceleration',
+    'second_order_max_velocity', 'second_order_max_acceleration',
 )
 FINGERPRINT_FILES = (
     'demo/move_base_circle_mpc_ik_demo.py', 'demo/mpc_pinocchio_ik.py', 'demo/pinocchio_ik.py',
@@ -399,7 +561,145 @@ def _student_arm_key_params(snap):
     v = nodep.get('/student_arm_node')
     if isinstance(v, dict) and isinstance(v.get('key_params'), dict):
         return v['key_params']
+    if isinstance(v, dict) and isinstance(v.get('yaml'), str):
+        parsed = {}
+        lines = v['yaml'].splitlines()
+        for key in EXECUTOR_KEY_PARAMS:
+            prefix = f'{key}:'
+            matches = [
+                line.strip()[len(prefix):].strip()
+                for line in lines
+                if line.strip().startswith(prefix)
+            ]
+            if not matches:
+                parsed[key] = None
+                continue
+            raw = matches[-1]
+            if raw.lower() in ('true', 'false'):
+                parsed[key] = raw.lower() == 'true'
+                continue
+            try:
+                parsed[key] = float(raw)
+            except ValueError:
+                parsed[key] = raw
+        return parsed
     return {k: None for k in EXECUTOR_KEY_PARAMS}
+
+
+def _actual_executor_limits(snap):
+    """Resolve measured saturation thresholds without conflating model limits.
+
+    Actual ``student_arm_node`` provenance is authoritative. Schema-7
+    snapshots may also carry an explicit executor-limits record copied from
+    that provenance. Historical snapshots retain their top-level acceleration
+    field and 1/5 defaults for backwards-compatible analysis.
+    """
+    key_params = _student_arm_key_params(snap)
+    recorded = snap.get('executor_limits', {}) or {}
+    try:
+        schema = int(snap.get('schema_version', 0))
+    except (TypeError, ValueError):
+        schema = 0
+
+    def positive(value):
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return None
+        return value if math.isfinite(value) and value > 0.0 else None
+
+    def resolve(key_name, recorded_name, legacy_name, legacy_default):
+        value = positive(key_params.get(key_name))
+        if value is not None:
+            return value, 'provenance:/student_arm_node:key_params'
+        value = positive(recorded.get(recorded_name))
+        if value is not None:
+            return value, 'snapshot:executor_limits'
+        value = positive(snap.get(legacy_name))
+        if value is not None:
+            return value, f'snapshot:{legacy_name}:legacy'
+        if schema < 7:
+            return float(legacy_default), 'legacy-default'
+        return None, 'unavailable'
+
+    velocity, velocity_source = resolve(
+        'max_velocity', 'velocity_rad_s', 'velocity_limit_rad_s',
+        LEGACY_VEL_LIMIT)
+    acceleration, acceleration_source = resolve(
+        'max_acceleration', 'acceleration_rad_s2',
+        'accel_limit_rad_s2', LEGACY_ACCEL_LIMIT)
+    enabled = key_params.get('enable_acceleration_limit')
+    if not isinstance(enabled, bool):
+        enabled = recorded.get('acceleration_limit_enabled')
+    if not isinstance(enabled, bool):
+        enabled = True if schema < 7 else None
+    return {
+        'velocity_rad_s': velocity,
+        'velocity_source': velocity_source,
+        'acceleration_rad_s2': acceleration,
+        'acceleration_source': acceleration_source,
+        'acceleration_limit_enabled': enabled,
+    }
+
+
+def _plant_model_consistency(snap):
+    """Check controller Smith/inversion parameters against actual executor."""
+    actual = _student_arm_key_params(snap)
+    model = snap.get('ros_params', {}) or {}
+    pairs = (
+        ('velocity_feedforward_gain',
+         'plant_velocity_feedforward_gain'),
+        ('position_feedback_tau', 'plant_position_feedback_tau'),
+        ('feedback_velocity_limit', 'plant_feedback_velocity_limit'),
+        ('max_velocity', 'plant_max_velocity'),
+        ('max_acceleration', 'plant_max_acceleration'),
+    )
+    checked = {}
+    mismatches = []
+    for actual_name, model_name in pairs:
+        actual_value = _num(actual.get(actual_name), None)
+        model_value = _num(model.get(model_name), None)
+        checked[actual_name] = {
+            'actual': actual_value,
+            'controller_model': model_value,
+        }
+        if actual_value is None or model_value is None:
+            continue
+        if not math.isclose(
+                actual_value, model_value, rel_tol=0.0, abs_tol=1e-9):
+            mismatches.append(
+                f'{actual_name}: actual={actual_value}, '
+                f'model={model_value}')
+
+    limits = _actual_executor_limits(snap)
+    solver_v = _num(model.get('second_order_max_velocity'), None)
+    solver_a = _num(model.get('second_order_max_acceleration'), None)
+    if (
+        limits['velocity_rad_s'] is not None
+        and solver_v is not None
+        and solver_v > limits['velocity_rad_s'] + 1e-9
+    ):
+        mismatches.append(
+            f'solver velocity={solver_v} exceeds executor '
+            f'{limits["velocity_rad_s"]}')
+    if (
+        limits['acceleration_limit_enabled'] is True
+        and limits['acceleration_rad_s2'] is not None
+        and solver_a is not None
+        and solver_a > limits['acceleration_rad_s2'] + 1e-9
+    ):
+        mismatches.append(
+            f'solver acceleration={solver_a} exceeds executor '
+            f'{limits["acceleration_rad_s2"]}')
+    any_actual = any(
+        values['actual'] is not None for values in checked.values())
+    return {
+        'valid': (not mismatches) if any_actual else None,
+        'mismatches': mismatches,
+        'checked': checked,
+        'note': (
+            'actual is provenance /student_arm_node; model is demo plant_*'),
+    }
 
 
 def _config_fingerprint(snap):
@@ -445,7 +745,7 @@ def analyze(args):
     dt = float(snap['control_dt'])
     lead = int(snap.get('reference_lead_steps',
                         snap.get('ros_params', {}).get('reference_lead_steps', 0)))
-    ee_period = traj.ee_period * traj.trajectory_time_scale
+    ee_period = traj.ee_trajectory_period
     base_period = traj.base_period * traj.base_motion_time_scale
     ee_freq, base_freq = 1.0 / ee_period, 1.0 / base_period
 
@@ -455,6 +755,12 @@ def analyze(args):
     t_reference = _col(h, d, 't_reference')
     t_next = _col(h, d, 't_next')
     js_rel = _col(h, d, 'js_header_stamp_rel')
+    path_clock = _loop_path_clocks(h, d)
+    path_solve = path_clock['solve']
+    path_publish = path_clock['publish']
+    path_reference = path_clock['reference']
+    path_next = path_clock['next']
+    path_js = path_clock['js']
     q_pub = _cols(h, d, [f'q_pub_{i + 1}' for i in range(7)])
     q_meas = _cols(h, d, [f'q_meas_{i + 1}' for i in range(7)])
     dq_meas = _cols(h, d, [f'dq_meas_{i + 1}' for i in range(7)])
@@ -465,21 +771,29 @@ def analyze(args):
     fk_pub = np.array([fk.fk_base(q_pub[i]) for i in range(n)])
     fk_meas = np.array([fk.fk_base(q_meas[i]) for i in range(n)])
 
-    def wcmd(fkb, tarr):
-        return np.array([traj.world_from_base_point(fkb[i], float(tarr[i])) for i in range(len(tarr))])
+    def wcmd(fkb, base_tarr, path_tarr=None):
+        if path_tarr is None:
+            path_tarr = base_tarr
+        return np.array([
+            traj.world_from_base_point(
+                fkb[i], float(base_tarr[i]), float(path_tarr[i]))
+            for i in range(len(base_tarr))
+        ])
 
     def wtarget(tarr):
         return np.array([traj.ee_target_world(float(t)) for t in tarr])
 
     # ---- command metrics
-    cmd_pub_w = wcmd(fk_pub, t_publish)
-    cmd_ref_w = wcmd(fk_pub, t_reference)
-    cmd_next_w = wcmd(fk_pub, t_next)
-    tgt_pub, tgt_ref, tgt_next = wtarget(t_publish), wtarget(t_reference), wtarget(t_next)
+    cmd_pub_w = wcmd(fk_pub, t_publish, path_publish)
+    cmd_ref_w = wcmd(fk_pub, t_reference, path_reference)
+    cmd_next_w = wcmd(fk_pub, t_next, path_next)
+    tgt_pub = wtarget(path_publish)
+    tgt_ref = wtarget(path_reference)
+    tgt_next = wtarget(path_next)
 
     # ---- actual world (from loop q_meas at real js time)
-    actual_w = wcmd(fk_meas, js_rel)
-    tgt_js = wtarget(js_rel)
+    actual_w = wcmd(fk_meas, js_rel, path_js)
+    tgt_js = wtarget(path_js)
     err_actual = actual_w - tgt_js
 
     # ---- executor gap (real publish wall): q_actual interp at t_next
@@ -489,7 +803,11 @@ def analyze(args):
     q_act_next = np.column_stack([np.interp(t_next, js_rel, q_meas[:, j]) for j in range(7)])
     fk_act_next = np.array([fk.fk_base(q_act_next[i]) for i in range(n)])
     exec_joint = q_act_next - q_pub
-    exec_cart_w = np.array([traj.world_from_base_point(fk_act_next[i], float(t_next[i])) for i in range(n)]) - cmd_next_w
+    exec_cart_w = np.array([
+        traj.world_from_base_point(
+            fk_act_next[i], float(t_next[i]), float(path_next[i]))
+        for i in range(n)
+    ]) - cmd_next_w
 
     dq_prev_mode = snap.get('dq_prev_mode',
                             snap.get('ros_params', {}).get('dq_prev_mode', 'zero'))
@@ -497,14 +815,19 @@ def analyze(args):
                                   snap.get('ros_params', {}).get('rti_iteration_mode',
                                                                  'legacy_early_exit'))
     exec_params = _student_arm_key_params(snap)
+    executor_limits = _actual_executor_limits(snap)
+    plant_model_consistency = _plant_model_consistency(snap)
     vff_gain = exec_params.get('velocity_feedforward_gain')
     result = {
         'label': args.label,
         'reference_lead_steps': lead, 'control_dt': dt,
+        'path_clock_mode': path_clock['mode'],
         'dq_prev_mode': dq_prev_mode,
         'rti_iteration_mode': rti_iteration_mode,
         'velocity_feedforward_gain': vff_gain,
         'executor_params': exec_params,
+        'executor_limits': executor_limits,
+        'plant_model_consistency': plant_model_consistency,
         'experiment_valid': bool(snap.get('experiment_valid', False)),
         'joint_states_publisher_count': snap.get('graph', {}).get('joint_states_publisher_count'),
         'joint_states_publisher_nodes': snap.get('graph', {}).get('joint_states_publisher_nodes'),
@@ -512,11 +835,23 @@ def analyze(args):
         'steady_window_sec': list(STEADY_WINDOW),
         'files': {'loop_csv': str(args.loop_csv), 'params_json': str(args.params_json)},
         'definitions': {
-            'cmd@publish': 'FK_world(q_pub,t_publish) vs target(t_publish)',
-            'cmd@reference_time': f'FK_world(q_pub,t_reference=t_solve+{lead}*dt) vs target(t_reference); lead 相关,非物理生效',
-            'cmd@next_tick': 'FK_world(q_pub,t_publish+dt) vs target(t_publish+dt); 固定+1拍,lead 无关,KPI',
+            'dual_clock': (
+                'base translation/floating attitude use physical base time; '
+                'target and whole station heading use recorded path time'),
+            'cmd@publish': (
+                'FK_world(q_pub,base=t_publish,path=path(t_publish)) '
+                'vs target(path(t_publish))'),
+            'cmd@reference_time': (
+                f'FK_world(q_pub,base=t_reference=t_solve+{lead}*dt,'
+                'path=path_target_time) vs target(path_target_time); '
+                'lead 相关,非物理生效'),
+            'cmd@next_tick': (
+                'FK_world(q_pub,base=t_publish+dt,path=path(t_publish+dt)) '
+                'vs target(path(t_publish+dt)); 固定+1拍,lead 无关,KPI'),
             'exec_gap': 'q_actual(t_publish+dt)-q_pub / FK 差,按真实 publish wall 对齐',
-            'actual_error': 'actual_world(t_js)-target(t_js),真值跟踪误差',
+            'actual_error': (
+                'actual_world(base=t_js,path=path(t_js))'
+                '-target(path(t_js)),真值跟踪误差'),
             'windows': f'full=全交叠;steady={STEADY_WINDOW}s',
         },
         # ---- 误差指标(full + steady)
@@ -562,20 +897,62 @@ def analyze(args):
     sm = _win(js_rel, *STEADY_WINDOW)
     result['actual_sine_steady'] = {
         'base_freq': _sine(js_rel, err_actual, base_freq, sm),
-        'ee_freq': _sine(js_rel, err_actual, ee_freq, sm)}
+        'ee_freq': _sine(path_js, err_actual, ee_freq, sm)}
     result['actual_lag_ms_steady'] = {
-        'quad_x': _lag_ms(js_rel, tgt_js[:, 0], actual_w[:, 0], ee_freq, sm),
-        'quad_y': _lag_ms(js_rel, tgt_js[:, 1], actual_w[:, 1], ee_freq, sm)}
+        'quad_x': _lag_ms(
+            path_js, tgt_js[:, 0], actual_w[:, 0], ee_freq, sm),
+        'quad_y': _lag_ms(
+            path_js, tgt_js[:, 1], actual_w[:, 1], ee_freq, sm),
+        'axis': 'path_time_sec'}
     result['cmd_lag_ms_steady'] = {
-        'publish_x': _lag_ms(t_publish, tgt_pub[:, 0], cmd_pub_w[:, 0], ee_freq, _win(t_publish, *STEADY_WINDOW)),
-        'publish_y': _lag_ms(t_publish, tgt_pub[:, 1], cmd_pub_w[:, 1], ee_freq, _win(t_publish, *STEADY_WINDOW)),
-        'reference_x': _lag_ms(t_reference, tgt_ref[:, 0], cmd_ref_w[:, 0], ee_freq, _win(t_reference, *STEADY_WINDOW)),
-        'reference_y': _lag_ms(t_reference, tgt_ref[:, 1], cmd_ref_w[:, 1], ee_freq, _win(t_reference, *STEADY_WINDOW)),
-        'note': 'publish=命令vs发布时刻目标(随lead下降约一拍);reference=命令vs参考时刻目标'}
-    result['actual_phase_bins_steady'] = _phase_bins(js_rel, err_actual, ee_period, sm)
-    result['u0_activation_steady'] = _activation_by_sector(t_solve, u0, ee_period, U0_ACTIVE_THRESHOLD_RAD, sm)
-    result['measured_accel_saturation_steady'] = _accel_saturation(js_rel, dq_meas, ACCEL_LIMIT, sm)
-    result['measured_vel_saturation_steady'] = _vel_saturation(dq_meas, VEL_LIMIT, sm)
+        'publish_x': _lag_ms(
+            path_publish, tgt_pub[:, 0], cmd_pub_w[:, 0], ee_freq,
+            _win(t_publish, *STEADY_WINDOW)),
+        'publish_y': _lag_ms(
+            path_publish, tgt_pub[:, 1], cmd_pub_w[:, 1], ee_freq,
+            _win(t_publish, *STEADY_WINDOW)),
+        'reference_x': _lag_ms(
+            path_reference, tgt_ref[:, 0], cmd_ref_w[:, 0], ee_freq,
+            _win(t_reference, *STEADY_WINDOW)),
+        'reference_y': _lag_ms(
+            path_reference, tgt_ref[:, 1], cmd_ref_w[:, 1], ee_freq,
+            _win(t_reference, *STEADY_WINDOW)),
+        'axis': 'path_time_sec',
+        'note': 'publish=命令vs发布时刻目标;reference=命令vs参考路径相位目标'}
+    result['actual_phase_bins_steady'] = _phase_bins(
+        path_js, err_actual, ee_period, sm)
+    result['u0_activation_steady'] = _activation_by_sector(
+        path_solve, u0, ee_period, U0_ACTIVE_THRESHOLD_RAD, sm)
+    accel_limit = executor_limits['acceleration_rad_s2']
+    if executor_limits['acceleration_limit_enabled'] is False:
+        result['measured_accel_saturation_steady'] = {
+            'error': 'executor acceleration limit disabled',
+            'a_limit': accel_limit,
+            'source': executor_limits['acceleration_source'],
+        }
+    elif accel_limit is None:
+        result['measured_accel_saturation_steady'] = {
+            'error': 'actual executor acceleration limit unavailable',
+            'a_limit': None,
+            'source': executor_limits['acceleration_source'],
+        }
+    else:
+        result['measured_accel_saturation_steady'] = _accel_saturation(
+            js_rel, dq_meas, accel_limit, sm)
+        result['measured_accel_saturation_steady']['source'] = (
+            executor_limits['acceleration_source'])
+    velocity_limit = executor_limits['velocity_rad_s']
+    if velocity_limit is None:
+        result['measured_vel_saturation_steady'] = {
+            'error': 'actual executor velocity limit unavailable',
+            'v_limit': None,
+            'source': executor_limits['velocity_source'],
+        }
+    else:
+        result['measured_vel_saturation_steady'] = _vel_saturation(
+            dq_meas, velocity_limit, sm)
+        result['measured_vel_saturation_steady']['source'] = (
+            executor_limits['velocity_source'])
 
     # ---- 时钟健康
     result['clock_health'] = _clock_health(
@@ -717,14 +1094,27 @@ def analyze(args):
         vp = Path(f'{args.prefix}.csv')
         if vp.exists():
             vh, vd = _load_csv(vp)
-            tv = _col(vh, vd, 'time_sec')
+            tv = _visualizer_path_axis(vh, vd)
             exp = _cols(vh, vd, ['expected_x', 'expected_y', 'expected_z'])
             ana = wtarget(tv)
             cons['viz_expected_vs_snapshot_analytic_max_m'] = float(np.max(np.linalg.norm(exp - ana, axis=1)))
+            cons['viz_expected_time_axis'] = (
+                'path_time_sec'
+                if 'path_time_sec' in vh else 'time_sec_legacy')
         cp = Path(f'{args.prefix}_command_fk.csv')
         if cp.exists():
             ch, cd = _load_csv(cp)
             tc = _col(ch, cd, 'time_sec')
+            ptc = _visualizer_path_axis(ch, cd)
+            if all(name in ch for name in (
+                    'expected_x', 'expected_y', 'expected_z')):
+                cexp = _cols(
+                    ch, cd,
+                    ['expected_x', 'expected_y', 'expected_z'])
+                cons['viz_command_expected_vs_snapshot_analytic_max_m'] = (
+                    float(np.max(np.linalg.norm(
+                        cexp - wtarget(ptc), axis=1)))
+                )
             fkc = _cols(ch, cd, ['command_fk_x', 'command_fk_y', 'command_fk_z'])
             recomp = np.column_stack([np.interp(tc, t_publish, cmd_pub_w[:, i]) for i in range(3)])
             cons['recomputed_vs_viz_cmdfk_max_m'] = float(np.max(np.linalg.norm(recomp - fkc, axis=1)))
@@ -745,6 +1135,12 @@ def _s(st):
 def _print_summary(r):
     print(f'== {r["label"]} (lead={r["reference_lead_steps"]}, valid={r["experiment_valid"]}, '
           f'pub={r["joint_states_publisher_count"]}) ==  steady window {STEADY_WINDOW}s')
+    plant_check = r.get('plant_model_consistency', {})
+    if plant_check.get('valid') is False:
+        print('  PLANT MODEL MISMATCH: '
+              + '; '.join(plant_check.get('mismatches', ())))
+    elif plant_check.get('valid') is None:
+        print('  plant model consistency: unavailable (no executor provenance)')
     for key, lbl in (('actual_error', 'actual err'), ('cmd_error_at_publish', 'cmd@publish'),
                      ('cmd_error_at_reference_time', 'cmd@reference'), ('cmd_error_at_next_tick', 'cmd@next_tick')):
         print(f'  {lbl:14s} steady {_s(r[key]["steady"])}')
@@ -761,8 +1157,11 @@ def _print_summary(r):
     print(f'  worst phase bin {pb["worst_bin_mean_mm"]:.2f} mm @{pb["worst_bin_phase_deg"]}')
     ac = r['measured_accel_saturation_steady']
     if 'overall_near_limit_ratio' in ac:
-        print(f'  accel |a|>=0.98*{ACCEL_LIMIT}: {100 * ac["overall_near_limit_ratio"]:.1f}% frames, '
+        print(f'  accel |a|>=0.98*{ac["a_limit"]}: '
+              f'{100 * ac["overall_near_limit_ratio"]:.1f}% frames, '
               f'p95 {ac["abs_p95"]:.2f} peak {ac["abs_peak"]:.2f} rad/s^2')
+    else:
+        print(f'  accel saturation n/a: {ac.get("error", "unknown")}')
     ch = r['clock_health']
     tip = ch.get('timer_interval_ms_steady', {}).get('p95')
     print(f'  clock(steady): catch_up {ch["catch_up_tick_count"]}, dev_p95 {ch["nominal_real_dev_p95_ms"]:.3f}ms, '
@@ -837,6 +1236,11 @@ def compare(args):
             hard_fail.append(f'{lbl} experiment_valid=false')
         if r.get('joint_states_publisher_count') != 1:
             hard_fail.append(f'{lbl} publisher_count={r.get("joint_states_publisher_count")} != 1')
+        plant_check = r.get('plant_model_consistency', {})
+        if plant_check.get('valid') is False:
+            hard_fail.append(
+                f'{lbl} controller plant model 与实际执行器不一致: '
+                + '; '.join(plant_check.get('mismatches', ())))
     if phase == '1A':
         if lead_a != 0:
             hard_fail.append(f'baseline lead={lead_a} != 0')

@@ -165,6 +165,28 @@ def test_gust_structure():
     assert not np.allclose(dirs[0], dirs[1])
 
 
+def test_gust_component_sample_boundaries():
+    amp, seed = 0.02, 2
+    direction = mbt._disturbance_directions(seed)[0]
+    cases = (
+        (0.0, True, 0.0),
+        (0.4, True, 1.0),
+        (0.8, False, 0.0),
+    )
+    for t, active, strength in cases:
+        sample = mbt.base_disturbance_sample(
+            t, amp, seed=seed, profile='gust')
+        assert sample.event_active is active
+        assert sample.event_label == 'gust'
+        assert abs(sample.event_strength - strength) <= 1e-15
+        assert np.array_equal(
+            sample.total_offset,
+            sample.background_offset + sample.event_offset)
+        assert np.allclose(
+            sample.event_offset, amp * strength * direction,
+            atol=1e-15)
+
+
 def test_fault_structure():
     amp, seed = 0.02, 4
     dirs = mbt._disturbance_directions(seed)
@@ -179,6 +201,24 @@ def test_fault_structure():
         off = mbt.base_disturbance_offset(t, amp, seed=seed, profile='fault')
         half = mbt._harmonic_offset(t, 0.5 * amp, seed, 6, 0.15, 2.5)
         assert np.array_equal(off, half), f'fault 窗外应为纯半幅谐波 t={t}'
+
+
+def test_fault_component_sample_boundaries():
+    amp, seed = 0.02, 4
+    direction = mbt._disturbance_directions(seed)[0]
+    for t, active in (
+            (5.999, False), (6.0, True),
+            (14.0, True), (14.001, False)):
+        sample = mbt.base_disturbance_sample(
+            t, amp, seed=seed, profile='fault')
+        assert sample.event_active is active
+        assert sample.event_strength == (1.0 if active else 0.0)
+        assert sample.event_label == 'bias'
+        assert np.array_equal(
+            sample.total_offset,
+            sample.background_offset + sample.event_offset)
+        want = amp * direction if active else np.zeros(3)
+        assert np.array_equal(sample.event_offset, want)
 
 
 def test_wideband_structure():

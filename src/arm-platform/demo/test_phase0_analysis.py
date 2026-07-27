@@ -3,7 +3,8 @@
 
   python3 test_phase0_analysis.py
 
-单元:未来 T_WB、时间戳插值对齐、漂移不外推、轨迹只用快照、FkModel。
+单元:未来 T_WB、base/path 双时钟、旧 CSV 回退、whole 工作面 path 相位、
+缩放只应用一次、时间戳插值对齐、漂移不外推、轨迹快照、FkModel。
 端到端(真实调用 analyze()/compare() 子进程,合成 loop CSV + 快照):
   - 2s 阻塞不产生永久合成时间超前(catch-up/long-tick 被检出,t_solve=真实 wall);
   - actual/command 按真实 publish wall 时间对齐;
@@ -85,6 +86,8 @@ def make_synthetic_run(dirpath, label, lead, n_ticks=2250, cfg=None,
         row.update({'t_solve': t_solve, 't_publish': t_publish,
                     't_reference': t_solve + lead * DT, 't_next': t_publish + DT,
                     'reference_lead_steps': lead, 'timer_interval_ms': interval_ms,
+                    'path_time': t_solve, 'path_scale': 1.0,
+                    'path_target_time': t_solve + lead * DT,
                     'solve_to_publish_ms': solve_to_pub * 1000.0, 'feedback_age_ms': 6.0,
                     'js_header_stamp_rel': js_rel, 'js_header_stamp_sec': origin + js_rel,
                     'js_recv_wall_sec': origin + js_rel + 0.001,
@@ -169,8 +172,108 @@ def test_interp_alignment():
     check('越界 mask', A._win(np.array([2.0, 5.0, 11.0]), 3.0, 10.0).tolist() == [False, True, False])
 
 
+def test_executor_limit_sources():
+    print('单元2B: 执行器实际限幅来源不与 plant/OCP 模型混淆')
+    provenance = {
+        'schema_version': 7,
+        'executor_limits': {
+            'velocity_rad_s': 1.0,
+            'acceleration_rad_s2': 5.0,
+            'acceleration_limit_enabled': True,
+        },
+        'provenance': {
+            'node_params': {
+                '/student_arm_node': {
+                    'key_params': {
+                        'max_velocity': 3.0,
+                        'max_acceleration': 20.0,
+                        'enable_acceleration_limit': True,
+                    },
+                },
+            },
+        },
+        'ros_params': {
+            'plant_max_velocity': 99.0,
+            'plant_max_acceleration': 99.0,
+            'second_order_max_velocity': 88.0,
+            'second_order_max_acceleration': 88.0,
+        },
+    }
+    resolved = A._actual_executor_limits(provenance)
+    check('provenance 实际节点优先', (
+        resolved['velocity_rad_s'] == 3.0
+        and resolved['acceleration_rad_s2'] == 20.0))
+    check('不采用 plant/OCP 模型冒充 actual', (
+        resolved['velocity_rad_s'] != 99.0
+        and resolved['acceleration_rad_s2'] != 88.0))
+    mismatch = A._plant_model_consistency(provenance)
+    check('实际与 controller model 错配会硬检出',
+          mismatch['valid'] is False and bool(mismatch['mismatches']))
+
+    aligned = json.loads(json.dumps(provenance))
+    aligned['ros_params'].update({
+        'plant_max_velocity': 3.0,
+        'plant_max_acceleration': 20.0,
+        'second_order_max_velocity': 2.0,
+        'second_order_max_acceleration': 15.0,
+    })
+    check('solver 保守且 model 对齐时通过',
+          A._plant_model_consistency(aligned)['valid'] is True)
+
+    legacy = A._actual_executor_limits({
+        'schema_version': 6,
+        'accel_limit_rad_s2': 7.5,
+    })
+    check('旧 snapshot 保持兼容回退', (
+        legacy['velocity_rad_s'] == 1.0
+        and legacy['acceleration_rad_s2'] == 7.5))
+
+    unknown = A._actual_executor_limits({'schema_version': 7})
+    check('新 snapshot 缺 provenance 时明确 unknown', (
+        unknown['velocity_rad_s'] is None
+        and unknown['acceleration_rad_s2'] is None
+        and unknown['acceleration_limit_enabled'] is None))
+
+
+def test_dual_clock_mapping_and_legacy_fallback():
+    print('单元3: loop 双时钟映射 + 旧 CSV 回退')
+    h = [
+        't_solve', 't_publish', 't_reference', 't_next',
+        'js_header_stamp_rel', 'path_time', 'path_scale',
+        'path_target_time',
+    ]
+    d = np.array([
+        [0.0, 0.1, 0.2, 0.3, -0.1, 0.0, 0.5, 10.0],
+        [1.0, 1.1, 1.2, 1.3, 0.9, 0.5, 1.0, 11.0],
+        [2.0, 2.1, 2.2, 2.3, 1.9, 1.5, 1.0, 12.0],
+    ])
+    clocks = A._loop_path_clocks(h, d)
+    check('识别 recorded_path', clocks['mode'] == 'recorded_path')
+    check('publish path 按记录轨迹插值/末端局部外推',
+          np.allclose(clocks['publish'], [0.05, 0.6, 1.6]))
+    check('reference 优先精确 path_target_time',
+          np.allclose(clocks['reference'], [10.0, 11.0, 12.0]))
+    check('joint-state path 用测量 wall stamp 插值',
+          np.allclose(clocks['js'], [-0.05, 0.45, 1.4]))
+
+    legacy_h = h[:5]
+    legacy = A._loop_path_clocks(legacy_h, d[:, :5])
+    check('旧 CSV 回退 path=wall', legacy['mode'] == 'legacy_wall'
+          and np.allclose(legacy['publish'], d[:, 1])
+          and np.allclose(legacy['js'], d[:, 4]))
+
+    viz_h = ['time_sec', 'path_time_sec']
+    viz_d = np.array([[3.0, 0.4], [4.0, 0.6]])
+    check('visualizer 优先 path_time_sec',
+          np.allclose(A._visualizer_path_axis(viz_h, viz_d), [0.4, 0.6]))
+    check('旧 visualizer 回退 time_sec',
+          np.allclose(
+              A._visualizer_path_axis(['time_sec'], viz_d[:, :1]),
+              [3.0, 4.0]))
+
+
 def test_drift_no_extrap():
-    print('单元3: 漂移不越界外推')
+    print('单元4: 漂移不越界外推')
     period = 4.0
     t = np.arange(3.0, 3.0 + 3.5 * period, DT)
     q = np.column_stack([0.1 * (t - 3.0) / period + 0.01 * np.sin(2 * math.pi * t / period)]
@@ -182,7 +285,7 @@ def test_drift_no_extrap():
 
 
 def test_traj_from_snapshot():
-    print('单元4: 轨迹只用快照 dict')
+    print('单元5: 轨迹只用快照 dict')
     traj = A.TrajectoryModel(_cfg(base_period=2.5, ee_period=6.0))
     check('base 周期=2.5', np.allclose(traj.base_pose(0.0), traj.base_pose(2.5), atol=1e-12)
           and not np.allclose(traj.base_pose(0.0), traj.base_pose(1.0), atol=1e-6))
@@ -191,14 +294,81 @@ def test_traj_from_snapshot():
     check('FkModel FK 有限', fk.fk_base(np.zeros(7)).shape == (3,))
 
 
+def test_whole_dual_clock_and_scale_once():
+    print('单元6: whole 工作面 path clock + 两个 scale 各一次')
+    trajectory_scale = 2.0
+    base_scale = 3.0
+    cfg = _cfg(base_period=2.5)
+    cfg['EE_TRAJECTORY_SHAPE'] = 'whole'
+    cfg['EE_TRAJECTORY_PERIOD_SEC'] = (
+        A.moving_traj.ee_trajectory_period('whole') * trajectory_scale)
+    traj = A.TrajectoryModel(
+        cfg,
+        trajectory_time_scale=trajectory_scale,
+        base_motion_time_scale=base_scale,
+    )
+    check('snapshot 中已缩放 whole period 不再二次乘 scale',
+          abs(traj.ee_trajectory_period
+              - cfg['EE_TRAJECTORY_PERIOD_SEC']) < 1e-12)
+    check('base_motion_time_scale 只作用一次',
+          np.allclose(
+              traj.base_pose(0.0),
+              traj.base_pose(cfg['BASE_PERIOD_SEC'] * base_scale),
+              atol=1e-12))
+
+    # Pick a path phase whose station yaw differs from the initial front
+    # station.  The analyzer must divide by trajectory_scale exactly once.
+    unscaled_candidates = np.linspace(
+        0.0, A.moving_traj.ee_trajectory_period('whole'), 200,
+        endpoint=False)
+    unscaled_path_t = next(
+        float(t) for t in unscaled_candidates
+        if abs(A.moving_traj.base_nominal_yaw(t, 'whole')) > 0.2)
+    scaled_path_t = unscaled_path_t * trajectory_scale
+    target = traj.ee_target_world(scaled_path_t)
+    target_expected = A.moving_traj.ee_target_world(
+        unscaled_path_t, 'whole')
+    check('whole target 用 path clock 且 trajectory scale 一次',
+          np.allclose(target, target_expected, atol=1e-12))
+
+    base_t = 0.37
+    r_front = traj.base_rotation(base_t, 0.0)
+    r_station = traj.base_rotation(base_t, scaled_path_t)
+    check('同一 base_t 下 whole station heading 随 path_t 变化',
+          np.linalg.norm(r_front - r_station) > 0.1)
+    check('基座平移不随 path_t 变化',
+          np.allclose(
+              traj.world_from_base_point(np.zeros(3), base_t, 0.0),
+              traj.world_from_base_point(
+                  np.zeros(3), base_t, scaled_path_t),
+              atol=1e-12))
+
+
 # ----------------------------------------------------------------- 端到端
 
 def test_e2e_clean_and_windows():
     print('端到端1: 干净合成 run 全主路径 + full/steady 窗口')
     with tempfile.TemporaryDirectory() as td:
-        loop, params = make_synthetic_run(td, 'clean', lead=1, n_ticks=2250)  # ~45s
+        cfg = _cfg()
+        loop, params = make_synthetic_run(
+            td, 'clean', lead=1, n_ticks=2250, cfg=cfg)  # ~45s
+        prefix = Path(td) / 'viz'
+        viz_wall = [0.2, 0.4]
+        viz_path = [1.1, 1.3]
+        viz_traj = A.TrajectoryModel(cfg)
+        import csv as _csv
+        with prefix.with_suffix('.csv').open('w', newline='') as f:
+            writer = _csv.writer(f)
+            writer.writerow([
+                'time_sec', 'path_time_sec',
+                'expected_x', 'expected_y', 'expected_z'])
+            for wall_t, path_t in zip(viz_wall, viz_path):
+                expected = viz_traj.ee_target_world(path_t)
+                writer.writerow([wall_t, path_t, *expected])
         out = Path(td) / 'm.json'
-        r = run_analyze(loop, params, 'clean', out)
+        r = run_analyze(
+            loop, params, 'clean', out,
+            ['--prefix', str(prefix)])
         check('analyze 退出 0', r.returncode == 0, r.stderr[-300:])
         if r.returncode != 0:
             return
@@ -210,6 +380,10 @@ def test_e2e_clean_and_windows():
         check('cmd@reference 与 publish 定义不同(未来T_WB经主路径)',
               abs(m['cmd_error_at_reference_time']['steady']['mean_mm']
                   - m['cmd_error_at_publish']['steady']['mean_mm']) > 1e-6)
+        check('visualizer consistency 按 path_time_sec',
+              m['consistency']['viz_expected_time_axis'] == 'path_time_sec'
+              and m['consistency'][
+                  'viz_expected_vs_snapshot_analytic_max_m'] < 1e-12)
 
 
 def test_e2e_gap_no_synthetic_lead():
@@ -329,6 +503,14 @@ def test_compare_hard_gates():
     b_nz = mk_metrics(1); b_nz['cmd_error_at_next_tick']['steady']['p95_mm'] = 12
     b_nz['solver'] = {**b_nz['solver'], 'nonzero_status_count': 500}  # 500/1800 > 5%
     check('solver 非零占比高 -> 非零', run_compare(mk_metrics(0), b_nz) == 1)
+    # 实际 student_arm 与 controller plant model 参数错配 -> 硬门。
+    b_pm = mk_metrics(1); b_pm['cmd_error_at_next_tick']['steady']['p95_mm'] = 12
+    b_pm['plant_model_consistency'] = {
+        'valid': False,
+        'mismatches': ['max_acceleration: actual=5, model=20'],
+    }
+    check('actual/plant model 错配 -> 非零',
+          run_compare(mk_metrics(0), b_pm) == 1)
     # provenance 缺失(file_sha256 全 None)-> 非零
     a_np = mk_metrics(0); b_np = mk_metrics(1); b_np['cmd_error_at_next_tick']['steady']['p95_mm'] = 12
     a_np['config_fingerprint'] = {**a_np['config_fingerprint'], 'file_sha256': {'x': None}}
@@ -339,8 +521,11 @@ def test_compare_hard_gates():
 def main():
     test_future_twb_unit()
     test_interp_alignment()
+    test_executor_limit_sources()
+    test_dual_clock_mapping_and_legacy_fallback()
     test_drift_no_extrap()
     test_traj_from_snapshot()
+    test_whole_dual_clock_and_scale_once()
     test_e2e_clean_and_windows()
     test_e2e_gap_no_synthetic_lead()
     test_e2e_accel_recovery()

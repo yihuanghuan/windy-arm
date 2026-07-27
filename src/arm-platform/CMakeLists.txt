@@ -242,8 +242,12 @@ install(DIRECTORY meshes/
 )
 
 install(PROGRAMS
+  demo/base_trust_estimator.py
+  demo/dart_noise.py
+  demo/online_path_time_scaler.py
   demo/pinocchio_ik.py
   demo/mpc_pinocchio_ik.py
+  demo/second_order_mpc_ik.py
   demo/move_arm_mpc_ik_demo.py
   demo/move_arm_horizontal_circle_mpc_ik_demo.py
   demo/move_ll100_lh420_nmpc_demo.py
@@ -272,6 +276,16 @@ install(PROGRAMS
   scripts/setup_acados_env.sh
   scripts/check_nmpc_env.sh
   DESTINATION share/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  demo/setup_fastdds_udp_only.sh
+  DESTINATION share/${PROJECT_NAME}/demo
+)
+
+install(FILES
+  demo/fastdds_udp_only.xml
+  DESTINATION share/${PROJECT_NAME}/demo
 )
 
 install(FILES

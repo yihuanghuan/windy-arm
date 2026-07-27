@@ -681,6 +681,24 @@ BASE_DISTURBANCE_FAULT_END_SEC = 14.0
 _DISTURBANCE_N_DIRECTIONS = 8  # gust 轮换方向数(fault 用第0个)
 
 
+class BaseDisturbanceSample(NamedTuple):
+    """One decomposed world-frame base disturbance sample.
+
+    ``background_offset`` is the harmonic/wideband background and
+    ``event_offset`` is the gust pulse or fault-bias contribution.  The
+    decomposition is the single source of truth used by both the controller
+    and RViz, so the displayed event window cannot drift from the simulated
+    plant disturbance.
+    """
+
+    background_offset: np.ndarray
+    event_offset: np.ndarray
+    total_offset: np.ndarray
+    event_active: bool
+    event_strength: float
+    event_label: str
+
+
 @lru_cache(maxsize=32)
 def _disturbance_table(seed: int, n_harmonics: int,
                        fmin_hz: float, fmax_hz: float):
@@ -713,6 +731,80 @@ def _harmonic_offset(t: float, amplitude_m: float, seed: int,
     return float(amplitude_m) * (weights * s).sum(axis=0)
 
 
+def base_disturbance_sample(
+        t: float, amplitude_m: float, seed: int = 0,
+        n_harmonics: int = BASE_DISTURBANCE_HARMONICS,
+        fmin_hz: float = BASE_DISTURBANCE_FMIN_HZ,
+        fmax_hz: float = BASE_DISTURBANCE_FMAX_HZ,
+        profile: str = 'harmonic',
+        gust_period_sec: float = BASE_DISTURBANCE_GUST_PERIOD_SEC,
+        gust_width_sec: float = BASE_DISTURBANCE_GUST_WIDTH_SEC,
+        fault_start: float = BASE_DISTURBANCE_FAULT_START_SEC,
+        fault_end: float = BASE_DISTURBANCE_FAULT_END_SEC
+) -> BaseDisturbanceSample:
+    """Return background/event/total components of one base disturbance.
+
+    ``event_active`` follows the exact configured gust/fault time window.
+    Gust strength is the smooth pulse envelope in ``[0, 1]``; fault strength
+    is one while the constant position bias is connected.
+    """
+    zeros = np.zeros(3)
+    if amplitude_m <= 0.0:
+        return BaseDisturbanceSample(
+            zeros, zeros.copy(), zeros.copy(), False, 0.0, 'none')
+    if profile == 'harmonic':
+        background = _harmonic_offset(
+            t, amplitude_m, seed, n_harmonics, fmin_hz, fmax_hz)
+        return BaseDisturbanceSample(
+            background, zeros, background, False, 0.0, 'none')
+    if profile == 'wideband':
+        background = _harmonic_offset(
+            t, amplitude_m, seed, 2 * int(n_harmonics),
+            BASE_DISTURBANCE_WIDEBAND_FMIN_HZ,
+            BASE_DISTURBANCE_WIDEBAND_FMAX_HZ)
+        return BaseDisturbanceSample(
+            background, zeros, background, False, 0.0, 'none')
+    if profile == 'gust':
+        background = _harmonic_offset(
+            t, 0.5 * amplitude_m, seed, n_harmonics, fmin_hz, fmax_hz)
+        # 脉冲串: 第 k 个周期 [k*T, k*T+width) 内一个 1-cos 平滑脉冲,
+        # 峰值 amplitude_m, 方向按 seed 抽定的单位向量表轮换(k mod N)。
+        k = math.floor(float(t) / float(gust_period_sec))
+        tau = float(t) - k * float(gust_period_sec)
+        active = 0.0 <= tau < float(gust_width_sec)
+        envelope = 0.0
+        event = zeros
+        if active:
+            envelope = 0.5 * (1.0 - math.cos(
+                2.0 * math.pi * tau / float(gust_width_sec)))
+            dirs = _disturbance_directions(int(seed))
+            event = (float(amplitude_m) * envelope) * dirs[
+                k % _DISTURBANCE_N_DIRECTIONS]
+            total = background + event
+        else:
+            total = background
+        return BaseDisturbanceSample(
+            background, event, total, active, envelope, 'gust')
+    if profile == 'fault':
+        background = _harmonic_offset(
+            t, 0.5 * amplitude_m, seed, n_harmonics, fmin_hz, fmax_hz)
+        # 突变直流偏置: [fault_start, fault_end] 内附加恒定 amplitude_m 偏置
+        active = float(fault_start) <= float(t) <= float(fault_end)
+        event = zeros
+        if active:
+            dirs = _disturbance_directions(int(seed))
+            event = float(amplitude_m) * dirs[0]
+            total = background + event
+        else:
+            total = background
+        return BaseDisturbanceSample(
+            background, event, total, active,
+            1.0 if active else 0.0, 'bias')
+    raise ValueError(
+        f"unknown base disturbance profile {profile!r}; expected one of "
+        "'harmonic', 'gust', 'fault', 'wideband'")
+
+
 def base_disturbance_offset(
         t: float, amplitude_m: float, seed: int = 0,
         n_harmonics: int = BASE_DISTURBANCE_HARMONICS,
@@ -728,41 +820,19 @@ def base_disturbance_offset(
     profile='harmonic' (default) keeps the historical bound |offset_i| <=
     amplitude_m and is bit-identical to the pre-profile implementation.
     """
-    if amplitude_m <= 0.0:
-        return np.zeros(3)
-    if profile == 'harmonic':
-        return _harmonic_offset(
-            t, amplitude_m, seed, n_harmonics, fmin_hz, fmax_hz)
-    if profile == 'wideband':
-        return _harmonic_offset(
-            t, amplitude_m, seed, 2 * int(n_harmonics),
-            BASE_DISTURBANCE_WIDEBAND_FMIN_HZ,
-            BASE_DISTURBANCE_WIDEBAND_FMAX_HZ)
-    if profile == 'gust':
-        offset = _harmonic_offset(
-            t, 0.5 * amplitude_m, seed, n_harmonics, fmin_hz, fmax_hz)
-        # 脉冲串: 第 k 个周期 [k*T, k*T+width) 内一个 1-cos 平滑脉冲,
-        # 峰值 amplitude_m, 方向按 seed 抽定的单位向量表轮换(k mod N)。
-        k = math.floor(float(t) / float(gust_period_sec))
-        tau = float(t) - k * float(gust_period_sec)
-        if 0.0 <= tau < float(gust_width_sec):
-            envelope = 0.5 * (1.0 - math.cos(
-                2.0 * math.pi * tau / float(gust_width_sec)))
-            dirs = _disturbance_directions(int(seed))
-            offset = offset + (float(amplitude_m) * envelope) * dirs[
-                k % _DISTURBANCE_N_DIRECTIONS]
-        return offset
-    if profile == 'fault':
-        offset = _harmonic_offset(
-            t, 0.5 * amplitude_m, seed, n_harmonics, fmin_hz, fmax_hz)
-        # 突变直流偏置: [fault_start, fault_end] 内附加恒定 amplitude_m 偏置
-        if float(fault_start) <= float(t) <= float(fault_end):
-            dirs = _disturbance_directions(int(seed))
-            offset = offset + float(amplitude_m) * dirs[0]
-        return offset
-    raise ValueError(
-        f"unknown base disturbance profile {profile!r}; expected one of "
-        "'harmonic', 'gust', 'fault', 'wideband'")
+    return base_disturbance_sample(
+        t=t,
+        amplitude_m=amplitude_m,
+        seed=seed,
+        n_harmonics=n_harmonics,
+        fmin_hz=fmin_hz,
+        fmax_hz=fmax_hz,
+        profile=profile,
+        gust_period_sec=gust_period_sec,
+        gust_width_sec=gust_width_sec,
+        fault_start=fault_start,
+        fault_end=fault_end,
+    ).total_offset
 
 
 # 基座运动形状

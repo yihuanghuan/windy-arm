@@ -16,12 +16,12 @@ from pathlib import Path
 
 import numpy as np
 import rclpy
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Vector3Stamped
 from rclpy.node import Node
 from rclpy.executors import ExternalShutdownException
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
-from visualization_msgs.msg import Marker
+from visualization_msgs.msg import Marker, MarkerArray
 
 import moving_base_trajectory_config as moving_traj
 from pinocchio_ik import PinocchioIK
@@ -303,11 +303,25 @@ class TrajectoryVisualizerDemo(Node):
         # The previous 2000-point deque discarded early red strokes mid-cycle.
         self.max_actual_points = int(
             self.declare_parameter('max_actual_points', 12000).value)
+        # Keep full-rate samples for CSV/PNG, but bound the points copied and
+        # serialized into RViz on every marker timer tick.
+        self.max_rviz_path_points = int(
+            self.declare_parameter('max_rviz_path_points', 2500).value)
         self.expected_path_points = int(
             self.declare_parameter('expected_path_points', 240).value)
-        self.show_matplotlib = bool(self.declare_parameter('show_matplotlib', True).value)
+        # RViz/CSV/exit-time PNG are independent of the live Matplotlib
+        # window. Keep the CPU-heavy 20Hz redraw opt-in for formal runs.
+        self.show_matplotlib = bool(
+            self.declare_parameter('show_matplotlib', False).value)
         self.start_on_command = bool(self.declare_parameter('start_on_command', True).value)
         self.use_message_stamp = bool(self.declare_parameter('use_message_stamp', True).value)
+        self.path_progress_topic = str(self.declare_parameter(
+            'path_progress_topic', '/moving_base/path_progress').value)
+        self.path_clock_mode = str(self.declare_parameter(
+            'path_clock_mode', 'auto').value).strip().lower()
+        self.path_clock_max_extrapolation_sec = float(
+            self.declare_parameter(
+                'path_clock_max_extrapolation_sec', 0.10).value)
         self.reset_gap_sec = float(self.declare_parameter('reset_gap_sec', 2.0).value)
         self.stale_command_timeout_sec = float(
             self.declare_parameter('stale_command_timeout_sec', 0.2).value)
@@ -334,6 +348,13 @@ class TrajectoryVisualizerDemo(Node):
         # base_disturbance_profile 一致(真值端与 demo 内三处信念/测量同源)。
         self.base_disturbance_profile = str(self.declare_parameter(
             'base_disturbance_profile', 'harmonic').value).strip().lower()
+        self.show_base_disturbance = bool(self.declare_parameter(
+            'show_base_disturbance', True).value)
+        self.disturbance_marker_topic = str(self.declare_parameter(
+            'disturbance_marker_topic',
+            '/moving_base/disturbance_markers').value)
+        self.disturbance_display_height_m = float(self.declare_parameter(
+            'disturbance_display_height_m', 0.12).value)
         # fail-fast: 未知 profile 立即报错(合法枚举以 base_disturbance_offset
         # 为准, 探针调用与运行时同一代码路径; amp 传正值绕过其 0 幅早退)。
         moving_traj.base_disturbance_offset(
@@ -341,7 +362,7 @@ class TrajectoryVisualizerDemo(Node):
             profile=self.base_disturbance_profile)
         self.data_dir = Path(str(self.declare_parameter(
             'data_dir',
-            '/home/windylab/code/windylab_ws/src/arm-platform/demo/data').value))
+            str(Path(__file__).resolve().parent / 'data')).value))
 
         if self.trajectory_mode not in (
                 'circle', 'horizontal_circle', 'line',
@@ -355,10 +376,27 @@ class TrajectoryVisualizerDemo(Node):
                 f"{moving_traj.SUPPORTED_EE_TRAJECTORIES}")
         if self.publish_rate_hz <= 0.0:
             raise ValueError('publish_rate_hz must be positive')
+        if self.max_rviz_path_points < 2:
+            raise ValueError('max_rviz_path_points must be >= 2')
         if self.ignore_initial_sec < 0.0:
             raise ValueError('ignore_initial_sec must be non-negative')
+        if self.path_clock_mode not in ('auto', 'required', 'disabled'):
+            raise ValueError(
+                "path_clock_mode must be 'auto', 'required' or 'disabled'")
+        if (
+            not math.isfinite(self.path_clock_max_extrapolation_sec)
+            or self.path_clock_max_extrapolation_sec <= 0.0
+        ):
+            raise ValueError(
+                'path_clock_max_extrapolation_sec must be finite and > 0')
         if self.trajectory_time_scale <= 0.0 or self.base_motion_time_scale <= 0.0:
             raise ValueError('trajectory_time_scale/base_motion_time_scale must be > 0')
+        if (
+            not math.isfinite(self.disturbance_display_height_m)
+            or self.disturbance_display_height_m < 0.0
+        ):
+            raise ValueError(
+                'disturbance_display_height_m must be finite and >= 0')
         if self._is_moving_base_mode() and self.frame_id == 'base_link':
             self.frame_id = 'world'
             self.get_logger().info(
@@ -372,7 +410,11 @@ class TrajectoryVisualizerDemo(Node):
         self.expected_points = deque(maxlen=self.max_actual_points)
         self.command_fk_points = deque(maxlen=self.max_actual_points)
         self.current_actual = None
-        self.current_expected = self._target(0.0)
+        self.current_expected = None
+        # Physical base time from the synchronized controller clock.  Never
+        # substitute path_t here: online path scaling may pause the drawing
+        # while gust/fault disturbances continue to evolve in real time.
+        self.current_base_t = None
         self.start_time = None
         self.last_command_time = None
         self.last_recorded_actual = None
@@ -383,6 +425,10 @@ class TrajectoryVisualizerDemo(Node):
         self.command_fk_samples = []
         self.warmup_reported = False
         self.stale_reported = False
+        self.path_progress_samples = deque(maxlen=128)
+        self.path_clock_required_for_run = (
+            self.path_clock_mode == 'required')
+        self.path_clock_wait_reported = False
 
         marker_qos = QoSProfile(depth=10)
         marker_qos.reliability = ReliabilityPolicy.RELIABLE
@@ -398,9 +444,17 @@ class TrajectoryVisualizerDemo(Node):
             Marker, '/trajectory/current_target', marker_qos)
         self.current_actual_pub = self.create_publisher(
             Marker, '/trajectory/current_actual', marker_qos)
+        self.disturbance_marker_pub = self.create_publisher(
+            MarkerArray, self.disturbance_marker_topic, marker_qos)
 
         self.create_subscription(JointState, self.actual_topic, self._joint_state_cb, 10)
         self.create_subscription(JointState, self.command_topic, self._command_cb, 10)
+        path_progress_qos = QoSProfile(depth=8)
+        path_progress_qos.reliability = ReliabilityPolicy.BEST_EFFORT
+        path_progress_qos.durability = DurabilityPolicy.VOLATILE
+        self.create_subscription(
+            Vector3Stamped, self.path_progress_topic,
+            self._path_progress_cb, path_progress_qos)
         if self.record_control_signal and self.control_signal_topic != self.command_topic:
             self.create_subscription(JointState, self.control_signal_topic, self._control_signal_cb, 10)
 
@@ -415,7 +469,14 @@ class TrajectoryVisualizerDemo(Node):
         self.get_logger().info(
             f'Trajectory visualizer started: mode={self.trajectory_mode}, '
             f'shape={self.trajectory_shape}, '
-            f'actual_topic={self.actual_topic}, command_topic={self.command_topic}')
+            f'actual_topic={self.actual_topic}, command_topic={self.command_topic}, '
+            f'path_clock={self.path_clock_mode}:{self.path_progress_topic}, '
+            f'show_matplotlib={self.show_matplotlib}')
+        if self.show_base_disturbance and self._is_moving_base_mode():
+            self.get_logger().info(
+                'Base disturbance RViz markers enabled: '
+                f'profile={self.base_disturbance_profile}, '
+                f'topic={self.disturbance_marker_topic}')
         if self.record_control_signal:
             self.get_logger().info(
                 f'Control signal recording enabled: topic={self.control_signal_topic}')
@@ -481,14 +542,14 @@ class TrajectoryVisualizerDemo(Node):
         ))
 
     @staticmethod
-    def _records_to_segments(records):
+    def _records_to_segments(records, max_points=None):
         segments = []
         current = []
         current_stroke = None
         for point, stroke_id in records:
             if point is None:
                 if len(current) >= 2:
-                    segments.append(np.asarray(current))
+                    segments.append(current)
                 current = []
                 current_stroke = None
                 continue
@@ -496,15 +557,190 @@ class TrajectoryVisualizerDemo(Node):
                 current.append(point)
             else:
                 if len(current) >= 2:
-                    segments.append(np.asarray(current))
+                    segments.append(current)
                 current = [point]
             current_stroke = stroke_id
         if len(current) >= 2:
-            segments.append(np.asarray(current))
-        return segments
+            segments.append(current)
+
+        total_points = sum(len(segment) for segment in segments)
+        if (
+            max_points is None
+            or total_points <= int(max_points)
+            or not segments
+        ):
+            return [np.asarray(segment) for segment in segments]
+
+        # Allocate a proportional quota while preserving both endpoints of
+        # every stroke.  This bounds RViz work without dropping early strokes;
+        # the full-rate deques and CSV samples remain untouched.
+        point_budget = max(int(max_points), 2 * len(segments))
+        ratio = point_budget / float(total_points)
+        reduced = []
+        for segment in segments:
+            count = min(
+                len(segment),
+                max(2, int(math.floor(len(segment) * ratio))),
+            )
+            indices = np.linspace(
+                0, len(segment) - 1, count, dtype=int)
+            reduced.append(np.asarray([
+                segment[index] for index in np.unique(indices)]))
+        return reduced
 
     def _control_signal_cb(self, msg: JointState):
         self._record_control_signal(msg)
+
+    @staticmethod
+    def _header_stamp_sec(msg) -> float:
+        stamp = msg.header.stamp
+        return float(stamp.sec) + float(stamp.nanosec) * 1e-9
+
+    def _path_progress_cb(self, msg: Vector3Stamped):
+        """Cache one absolute wall/base/path clock correspondence.
+
+        Controller message contract:
+          vector.x = path time before the static trajectory_time_scale,
+          vector.y = local d(path_time)/d(wall_time),
+          vector.z = base time relative to the controller trajectory origin.
+        """
+        stamp_sec = self._header_stamp_sec(msg)
+        path_t = float(msg.vector.x)
+        path_scale = float(msg.vector.y)
+        base_t = float(msg.vector.z)
+        epoch = str(msg.header.frame_id)
+        if (
+            stamp_sec <= 0.0
+            or not all(math.isfinite(value) for value in (
+                stamp_sec, base_t, path_t, path_scale))
+            or base_t < -1e-9
+            or path_t < -1e-9
+            or path_scale < -1e-9
+        ):
+            self.get_logger().warn(
+                'Ignoring invalid moving-base path clock sample',
+                throttle_duration_sec=2.0)
+            return
+
+        previous = (
+            self.path_progress_samples[-1]
+            if self.path_progress_samples else None)
+        reset_epoch = bool(
+            previous is not None
+            and (
+                epoch != previous[4]
+                or stamp_sec < previous[0] - 1e-9
+                or base_t < previous[1] - 1e-9
+                or path_t < previous[2] - 1e-9
+            )
+        )
+        if reset_epoch:
+            self.path_progress_samples.clear()
+            if self.start_time is not None:
+                self._clear_recording_buffers()
+                self.start_time = None
+                self.last_command_time = None
+                self.get_logger().warn(
+                    'Moving-base path clock restarted; discarded the '
+                    'previous recording and waiting for a new track command')
+
+        was_required = self.path_clock_required_for_run
+        if self.path_clock_mode == 'auto' and self._is_moving_base_mode():
+            self.path_clock_required_for_run = True
+        if (
+            self.path_clock_required_for_run
+            and not was_required
+            and self.start_time is not None
+            and (self.samples or self.command_fk_samples)
+        ):
+            # DDS discovery may complete just after the first command. Never
+            # mix a few wall-clock fallback samples with synchronized samples.
+            self._clear_recording_buffers()
+            self.get_logger().warn(
+                'Path clock discovered after recording started; discarded '
+                'unsynchronized warm-up samples')
+
+        sample = (stamp_sec, base_t, path_t, path_scale, epoch)
+        if (
+            self.path_progress_samples
+            and abs(stamp_sec - self.path_progress_samples[-1][0]) <= 1e-9
+        ):
+            self.path_progress_samples[-1] = sample
+        else:
+            self.path_progress_samples.append(sample)
+        self.path_clock_wait_reported = False
+
+    def _path_clock_for_sample(self, sample_time: float):
+        """Return ``(base_t, path_t, scale)`` at an absolute message stamp.
+
+        A required path clock is never replaced with elapsed wall time. This
+        is what prevents online time scaling from making link7, the red marker,
+        and the expected drawing use three different trajectory phases.
+        """
+        if self.start_time is None:
+            return None
+        elapsed = float(sample_time) - float(self.start_time)
+        if elapsed < -1e-9:
+            return None
+        if (
+            not self._is_moving_base_mode()
+            or self.path_clock_mode == 'disabled'
+            or not self.path_clock_required_for_run
+        ):
+            return max(0.0, elapsed), max(0.0, elapsed), 1.0
+
+        anchors = self.path_progress_samples
+        if not anchors or sample_time < anchors[0][0] - 1e-9:
+            self._report_path_clock_wait(
+                'waiting for the first synchronized path-clock anchor')
+            return None
+
+        if sample_time <= anchors[-1][0] + 1e-9:
+            right = 0
+            while (
+                right < len(anchors)
+                and anchors[right][0] < sample_time
+            ):
+                right += 1
+            if right == 0:
+                anchor = anchors[0]
+                return anchor[1], anchor[2], anchor[3]
+            if right >= len(anchors):
+                anchor = anchors[-1]
+                return anchor[1], anchor[2], anchor[3]
+            left_anchor = anchors[right - 1]
+            right_anchor = anchors[right]
+            span = right_anchor[0] - left_anchor[0]
+            if span <= 1e-12:
+                return (
+                    right_anchor[1], right_anchor[2], right_anchor[3])
+            alpha = float(np.clip(
+                (sample_time - left_anchor[0]) / span, 0.0, 1.0))
+            return tuple(
+                (1.0 - alpha) * left_anchor[index]
+                + alpha * right_anchor[index]
+                for index in (1, 2, 3)
+            )
+
+        anchor = anchors[-1]
+        extrapolation = sample_time - anchor[0]
+        if extrapolation > self.path_clock_max_extrapolation_sec:
+            self._report_path_clock_wait(
+                f'path clock is stale by {1000.0 * extrapolation:.1f} ms')
+            return None
+        return (
+            anchor[1] + extrapolation,
+            anchor[2] + anchor[3] * extrapolation,
+            anchor[3],
+        )
+
+    def _report_path_clock_wait(self, reason: str):
+        if self.path_clock_wait_reported:
+            return
+        self.path_clock_wait_reported = True
+        self.get_logger().warn(
+            f'{reason}; pausing moving-base RViz/CSV samples instead of '
+            'falling back to wall time')
 
     def _record_command_fk(self, msg: JointState):
         q = self._extract_q(msg)
@@ -520,14 +756,17 @@ class TrajectoryVisualizerDemo(Node):
                 return
             self._reset_recording(sample_time)
 
-        elapsed = sample_time - self.start_time
-        if elapsed < self.ignore_initial_sec:
+        clock = self._path_clock_for_sample(sample_time)
+        if clock is None:
+            return
+        base_t, path_t, path_scale = clock
+        if base_t < self.ignore_initial_sec:
             return
 
-        command_fk = self._actual_position(q, elapsed)
-        expected = self._target(elapsed)
+        command_fk = self._actual_position(q, base_t, path_t)
+        expected = self._target(path_t)
         error = command_fk - expected
-        pen_down, stroke_id = self._drawing_state(elapsed)
+        pen_down, stroke_id = self._drawing_state(path_t)
 
         if (
             self.last_recorded_command_fk is not None
@@ -536,15 +775,15 @@ class TrajectoryVisualizerDemo(Node):
             return
 
         self.command_fk_samples.append((
-            elapsed, expected.copy(), command_fk.copy(), error.copy(),
-            pen_down, stroke_id,
+            base_t, expected.copy(), command_fk.copy(), error.copy(),
+            pen_down, stroke_id, path_t, path_scale,
         ))
         self._append_visible_point(
             self.command_fk_points, command_fk, pen_down, stroke_id)
         self.last_recorded_command_fk = command_fk.copy()
         if self.plotter:
             self.plotter.add_command_fk_sample(
-                elapsed, expected, command_fk, pen_down, stroke_id)
+                base_t, expected, command_fk, pen_down, stroke_id)
 
     def _record_control_signal(self, msg: JointState):
         if not self.record_control_signal:
@@ -594,12 +833,14 @@ class TrajectoryVisualizerDemo(Node):
                 self._reset_recording(sample_time)
 
         now = self.get_clock().now().nanoseconds * 1e-9
-        elapsed = sample_time - self.start_time
-        if elapsed < 0.0:
+        clock = self._path_clock_for_sample(sample_time)
+        if clock is None:
             return
-        expected = self._target(elapsed)
-        actual = self._actual_position(q, elapsed)
-        pen_down, stroke_id = self._drawing_state(elapsed)
+        base_t, path_t, path_scale = clock
+        self.current_base_t = float(base_t)
+        expected = self._target(path_t)
+        actual = self._actual_position(q, base_t, path_t)
+        pen_down, stroke_id = self._drawing_state(path_t)
         self.current_expected = expected
         self.current_actual = actual
 
@@ -614,7 +855,7 @@ class TrajectoryVisualizerDemo(Node):
             return
         self.stale_reported = False
 
-        if elapsed < self.ignore_initial_sec:
+        if base_t < self.ignore_initial_sec:
             if not self.warmup_reported:
                 self.get_logger().info(
                     f'Ignoring the first {self.ignore_initial_sec:.2f}s before recording '
@@ -622,9 +863,9 @@ class TrajectoryVisualizerDemo(Node):
                 self.warmup_reported = True
             return
 
-        # Keep the original trajectory time in CSV/plots. This makes
-        # time_sec, expected values, and the target formula share one clock.
-        recorded_t = elapsed
+        # Keep physical/base time as the plot x-axis while recording path time
+        # explicitly so target phase and online slowdown remain auditable.
+        recorded_t = base_t
         if (
             self.sample_only_on_actual_change and self.last_recorded_actual is not None
             and np.linalg.norm(actual - self.last_recorded_actual) <= self.actual_change_epsilon
@@ -637,7 +878,7 @@ class TrajectoryVisualizerDemo(Node):
             self.expected_points, expected, pen_down, stroke_id)
         self.samples.append((
             recorded_t, expected.copy(), actual.copy(), actual - expected,
-            pen_down, stroke_id,
+            pen_down, stroke_id, path_t, path_scale,
         ))
         self.last_recorded_actual = actual.copy()
 
@@ -645,11 +886,17 @@ class TrajectoryVisualizerDemo(Node):
             self.plotter.add_sample(
                 recorded_t, expected, actual, pen_down, stroke_id)
 
-    def _reset_recording(self, start_time: float):
-        self.start_time = start_time
+    def _clear_recording_buffers(self):
         self.actual_points.clear()
         self.expected_points.clear()
         self.command_fk_points.clear()
+        # Marker publishers are TRANSIENT_LOCAL. Clearing only the Python
+        # deques leaves the last red/orange trajectory and spheres latched in
+        # RViz while the robot has already returned to reset. ``None`` makes
+        # the next marker timer publish explicit DELETE actions.
+        self.current_actual = None
+        self.current_expected = None
+        self.current_base_t = None
         self.samples.clear()
         self.control_samples.clear()
         self.command_fk_samples.clear()
@@ -660,6 +907,24 @@ class TrajectoryVisualizerDemo(Node):
         self.stale_reported = False
         if self.plotter:
             self.plotter.reset()
+
+    def _reset_recording(self, start_time: float):
+        self.start_time = start_time
+        self._clear_recording_buffers()
+        self.path_progress_samples.clear()
+        if self.path_clock_mode == 'required':
+            self.path_clock_required_for_run = True
+        elif self.path_clock_mode == 'disabled':
+            self.path_clock_required_for_run = False
+        else:
+            try:
+                publisher_present = (
+                    self.count_publishers(self.path_progress_topic) > 0)
+            except Exception:
+                publisher_present = False
+            self.path_clock_required_for_run = bool(
+                self._is_moving_base_mode() and publisher_present)
+        self.path_clock_wait_reported = False
 
     def _message_time_sec(self, msg: JointState) -> float:
         stamp = msg.header.stamp
@@ -694,13 +959,17 @@ class TrajectoryVisualizerDemo(Node):
         s = 0.5 * (1.0 - math.cos(2.0 * math.pi * t / LINE_PERIOD_SEC))
         return POINT_A + s * (POINT_B - POINT_A)
 
-    def _actual_position(self, q: np.ndarray, t: float) -> np.ndarray:
+    def _actual_position(
+            self, q: np.ndarray, base_t: float,
+            path_t: float = None) -> np.ndarray:
         ee_pos_base, _ = self.ik.forward(q)
         if not self._is_moving_base_mode():
             return ee_pos_base
 
-        base_pos_world = self._moving_base_pose(t)
-        base_rot_world = self._moving_base_rotation(t)
+        if path_t is None:
+            path_t = base_t
+        base_pos_world = self._moving_base_pose(base_t)
+        base_rot_world = self._moving_base_rotation(base_t, path_t)
         return base_pos_world + base_rot_world @ ee_pos_base
 
     def _moving_base_pose(self, t: float) -> np.ndarray:
@@ -713,11 +982,14 @@ class TrajectoryVisualizerDemo(Node):
                 profile=self.base_disturbance_profile)
         return pose
 
-    def _moving_base_rotation(self, t: float) -> np.ndarray:
+    def _moving_base_rotation(
+            self, base_t: float, path_t: float = None) -> np.ndarray:
+        if path_t is None:
+            path_t = base_t
         return moving_traj.base_rotation(
-            t / self.base_motion_time_scale,
+            base_t / self.base_motion_time_scale,
             self.trajectory_shape,
-            t / self.trajectory_time_scale,
+            path_t / self.trajectory_time_scale,
         )
 
     def _moving_ee_target_world(self, t: float) -> np.ndarray:
@@ -761,7 +1033,8 @@ class TrajectoryVisualizerDemo(Node):
             width=0.008))
 
         if self.actual_points:
-            actual_segments = self._records_to_segments(self.actual_points)
+            actual_segments = self._records_to_segments(
+                self.actual_points, self.max_rviz_path_points)
             self.actual_pub.publish(self._line_marker(
                 marker_id=2,
                 ns='trajectory_actual',
@@ -769,10 +1042,13 @@ class TrajectoryVisualizerDemo(Node):
                 stamp=now,
                 color=(1.0, 0.1, 0.1, 1.0),
                 width=0.01))
+        else:
+            self.actual_pub.publish(self._delete_marker(
+                marker_id=2, ns='trajectory_actual', stamp=now))
 
         if self.command_fk_points:
             command_segments = self._records_to_segments(
-                self.command_fk_points)
+                self.command_fk_points, self.max_rviz_path_points)
             self.command_fk_pub.publish(self._line_marker(
                 marker_id=5,
                 ns='trajectory_command_fk',
@@ -780,14 +1056,21 @@ class TrajectoryVisualizerDemo(Node):
                 stamp=now,
                 color=(1.0, 0.55, 0.0, 1.0),
                 width=0.009))
+        else:
+            self.command_fk_pub.publish(self._delete_marker(
+                marker_id=5, ns='trajectory_command_fk', stamp=now))
 
-        self.current_target_pub.publish(self._sphere_marker(
-            marker_id=3,
-            ns='trajectory_current_target',
-            point=self.current_expected,
-            stamp=now,
-            color=(0.1, 1.0, 0.1, 1.0),
-            scale=0.025))
+        if self.current_expected is not None:
+            self.current_target_pub.publish(self._sphere_marker(
+                marker_id=3,
+                ns='trajectory_current_target',
+                point=self.current_expected,
+                stamp=now,
+                color=(0.1, 1.0, 0.1, 1.0),
+                scale=0.025))
+        else:
+            self.current_target_pub.publish(self._delete_marker(
+                marker_id=3, ns='trajectory_current_target', stamp=now))
 
         if self.current_actual is not None:
             self.current_actual_pub.publish(self._sphere_marker(
@@ -797,6 +1080,12 @@ class TrajectoryVisualizerDemo(Node):
                 stamp=now,
                 color=(1.0, 0.1, 0.1, 1.0),
                 scale=0.025))
+        else:
+            self.current_actual_pub.publish(self._delete_marker(
+                marker_id=4, ns='trajectory_current_actual', stamp=now))
+
+        self.disturbance_marker_pub.publish(MarkerArray(
+            markers=self._base_disturbance_markers(now)))
 
     def _print_status(self):
         self.get_logger().info(
@@ -813,6 +1102,11 @@ class TrajectoryVisualizerDemo(Node):
         marker.id = marker_id
         marker.action = Marker.ADD
         marker.pose.orientation.w = 1.0
+        return marker
+
+    def _delete_marker(self, marker_id: int, ns: str, stamp):
+        marker = self._base_marker(marker_id, ns, stamp)
+        marker.action = Marker.DELETE
         return marker
 
     def _line_marker(self, marker_id: int, ns: str, segments, stamp,
@@ -840,6 +1134,127 @@ class TrajectoryVisualizerDemo(Node):
         marker.color.r, marker.color.g, marker.color.b, marker.color.a = color
         marker.pose.position = to_point(point)
         return marker
+
+    def _arrow_marker(self, marker_id: int, ns: str, start: np.ndarray,
+                      end: np.ndarray, stamp, color, shaft: float,
+                      head: float):
+        marker = self._base_marker(marker_id, ns, stamp)
+        marker.type = Marker.ARROW
+        vector_length = float(np.linalg.norm(
+            np.asarray(end, dtype=float) - np.asarray(start, dtype=float)))
+        marker.scale.x = float(min(shaft, max(0.0005, 0.18 * vector_length)))
+        marker.scale.y = float(min(head, max(0.001, 0.45 * vector_length)))
+        # In two-point ARROW mode scale.z is head length. It must stay well
+        # below the short (millimetre-scale) disturbance vector length.
+        marker.scale.z = float(min(1.5 * head, 0.35 * vector_length))
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = color
+        marker.points = [to_point(start), to_point(end)]
+        return marker
+
+    def _text_marker(self, marker_id: int, ns: str, point: np.ndarray, stamp,
+                     color, text: str, height: float):
+        marker = self._base_marker(marker_id, ns, stamp)
+        marker.type = Marker.TEXT_VIEW_FACING
+        marker.scale.z = float(height)
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = color
+        marker.pose.position = to_point(point)
+        marker.text = str(text)
+        return marker
+
+    def _base_disturbance_delete_markers(self, stamp):
+        return [
+            self._delete_marker(
+                marker_id=marker_id,
+                ns='moving_base_disturbance',
+                stamp=stamp,
+            )
+            for marker_id in range(10, 15)
+        ]
+
+    def _base_disturbance_markers(self, stamp):
+        """Build exact world-frame truth/event disturbance markers.
+
+        IDs are stable for TRANSIENT_LOCAL cleanup:
+          10 nominal base, 11 disturbed truth, 12 total vector,
+          13 gust/fault event component, 14 numeric status.
+        """
+        if (
+            not self.show_base_disturbance
+            or not self._is_moving_base_mode()
+            or self.current_base_t is None
+            or self.base_disturbance_amplitude_m <= 0.0
+        ):
+            return self._base_disturbance_delete_markers(stamp)
+
+        disturbance_t = (
+            float(self.current_base_t) / self.base_motion_time_scale)
+        nominal = moving_traj.base_pose(disturbance_t)
+        sample = moving_traj.base_disturbance_sample(
+            disturbance_t,
+            self.base_disturbance_amplitude_m,
+            self.base_disturbance_seed,
+            profile=self.base_disturbance_profile,
+        )
+        display_offset = np.array([
+            0.0, 0.0, self.disturbance_display_height_m])
+        nominal_display = nominal + display_offset
+        background_display = (
+            nominal + sample.background_offset + display_offset)
+        truth_display = nominal + sample.total_offset + display_offset
+        namespace = 'moving_base_disturbance'
+        markers = [
+            self._sphere_marker(
+                10, namespace, nominal_display, stamp,
+                color=(0.1, 0.9, 1.0, 0.9), scale=0.012),
+            self._sphere_marker(
+                11, namespace, truth_display, stamp,
+                color=(1.0, 0.15, 0.1, 0.95), scale=0.016),
+        ]
+        if np.linalg.norm(sample.total_offset) > 1e-6:
+            markers.append(self._arrow_marker(
+                12, namespace, nominal_display, truth_display, stamp,
+                color=(0.1, 0.9, 1.0, 0.95),
+                shaft=0.003, head=0.007))
+        else:
+            markers.append(self._delete_marker(12, namespace, stamp))
+
+        if (
+            self.base_disturbance_profile in ('gust', 'fault')
+            and sample.event_active
+            and np.linalg.norm(sample.event_offset) > 1e-6
+        ):
+            markers.append(self._arrow_marker(
+                13, namespace, background_display, truth_display, stamp,
+                color=(1.0, 0.1, 0.85, 1.0),
+                shaft=0.004, head=0.009))
+        else:
+            markers.append(self._delete_marker(13, namespace, stamp))
+
+        delta_mm = 1000.0 * sample.total_offset
+        delta_norm_mm = float(np.linalg.norm(delta_mm))
+        event_norm_mm = float(
+            1000.0 * np.linalg.norm(sample.event_offset))
+        if self.base_disturbance_profile == 'gust':
+            event_status = (
+                f'GUST ACTIVE {100.0 * sample.event_strength:.0f}%'
+                if sample.event_active else 'gust inactive')
+        elif self.base_disturbance_profile == 'fault':
+            event_status = (
+                'BIAS ACTIVE' if sample.event_active else 'bias inactive')
+        else:
+            event_status = 'bounded background'
+        label = (
+            f'profile={self.base_disturbance_profile} | {event_status}\n'
+            f'Δp=[{delta_mm[0]:+.1f}, {delta_mm[1]:+.1f}, '
+            f'{delta_mm[2]:+.1f}] mm | |Δp|={delta_norm_mm:.1f} mm'
+        )
+        if self.base_disturbance_profile in ('gust', 'fault'):
+            label += f' | |event|={event_norm_mm:.1f} mm'
+        markers.append(self._text_marker(
+            14, namespace, truth_display + np.array([0.0, 0.0, 0.06]),
+            stamp, color=(1.0, 1.0, 1.0, 1.0),
+            text=label, height=0.025))
+        return markers
 
     def _save_results(self):
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -878,14 +1293,16 @@ class TrajectoryVisualizerDemo(Node):
         with samples_csv.open('w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
-                'time_sec',
+                'time_sec', 'path_time_sec', 'path_scale',
                 'expected_x', 'expected_y', 'expected_z',
                 'actual_x', 'actual_y', 'actual_z',
                 'error_x', 'error_y', 'error_z',
                 'pen_down', 'stroke_id'])
-            for t, expected, actual, error, pen_down, stroke_id in self.samples:
+            for (
+                    t, expected, actual, error, pen_down, stroke_id,
+                    path_t, path_scale) in self.samples:
                 writer.writerow([
-                    float(t),
+                    float(t), float(path_t), float(path_scale),
                     float(expected[0]), float(expected[1]), float(expected[2]),
                     float(actual[0]), float(actual[1]), float(actual[2]),
                     float(error[0]), float(error[1]), float(error[2]),
@@ -911,16 +1328,17 @@ class TrajectoryVisualizerDemo(Node):
         with command_fk_csv.open('w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
-                'time_sec',
+                'time_sec', 'path_time_sec', 'path_scale',
                 'expected_x', 'expected_y', 'expected_z',
                 'command_fk_x', 'command_fk_y', 'command_fk_z',
                 'command_error_x', 'command_error_y', 'command_error_z',
                 'pen_down', 'stroke_id'])
             for (
                     t, expected, command_fk, error,
-                    pen_down, stroke_id) in self.command_fk_samples:
+                    pen_down, stroke_id, path_t,
+                    path_scale) in self.command_fk_samples:
                 writer.writerow([
-                    float(t),
+                    float(t), float(path_t), float(path_scale),
                     float(expected[0]), float(expected[1]), float(expected[2]),
                     float(command_fk[0]), float(command_fk[1]), float(command_fk[2]),
                     float(error[0]), float(error[1]), float(error[2]),

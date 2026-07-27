@@ -56,6 +56,7 @@ def mk_demo(mode='expected_residual', **over):
     d.guard_mode = mode
     d.dt = 0.02
     d.reference_lead_steps = 1
+    d.online_time_scaling_enabled = False
     d.max_joint_step = 0.02
     d.command_fk_step_warn_m = 0.006
     d.guard_residual_abs_m = 0.0068
@@ -76,6 +77,7 @@ def mk_demo(mode='expected_residual', **over):
     d.warm_start = 'WARM_INIT'
     d._guard_q_last = None
     d._guard_t_last_reference = float('nan')
+    d._guard_path_t_last_reference = float('nan')
     d._guard_p_cmd_last = None
     d._guard_p_ref_last = None
     d._guard_R_err_last = None
@@ -84,6 +86,7 @@ def mk_demo(mode='expected_residual', **over):
     d.guard_consecutive_blocks = 0
     d.guard_projection_count = 0
     d.guard_fault = False
+    d._fault_path_time = float('nan')
     d.solver_step_violation_count = 0
     d.phase = 'track'
     logger = FakeLogger()
@@ -98,7 +101,7 @@ def freeze_world(d, p_target=None):
     """静止世界: 基座 identity 固定,期望目标固定 —— Δp_ref=0, a_ref=0。"""
     p0 = np.array([0.35, 0.0, 0.15]) if p_target is None else np.asarray(p_target, float)
     d._base_pose = lambda t: np.zeros(3)
-    d._base_rotation = lambda t: np.eye(3)
+    d._base_rotation = lambda base_t, path_t=None: np.eye(3)
     d._ee_target_world = lambda t, p=p0: p.copy()
     return p0
 
@@ -108,7 +111,7 @@ def linear_world(d, v_vec):
     p0 = np.array([0.35, 0.0, 0.15])
     v = np.asarray(v_vec, dtype=float)
     d._base_pose = lambda t: np.zeros(3)
-    d._base_rotation = lambda t: np.eye(3)
+    d._base_rotation = lambda base_t, path_t=None: np.eye(3)
     d._ee_target_world = lambda t, p=p0, vv=v: p + vv * t
     return p0, v
 
@@ -285,6 +288,7 @@ def test_projection():
         freeze_world(d2)
         d2._guard_q_last = q0.copy()
         d2._guard_t_last_reference = 0.02 + d2.dt
+        d2._guard_path_t_last_reference = 0.02 + d2.dt
         p_cmd0, _ = d2._guard_fk_world(q0, 0.02 + d2.dt)
         d2._guard_p_cmd_last = p_cmd0
         d2._guard_p_ref_last = d2._ee_target_world(0.02 + d2.dt)
@@ -396,6 +400,7 @@ def test_state_safe_filter_active_recovery():
     # must use q_current/t_state and therefore ignore this stale geometry.
     d._guard_q_last = q0 + 0.04
     d._guard_t_last_reference = -1.0
+    d._guard_path_t_last_reference = -1.0
     d._guard_p_cmd_last = np.full(3, 99.0)
     d._guard_p_ref_last = np.full(3, -99.0)
 
@@ -481,6 +486,87 @@ def test_time_correspondence():
                           - (p_ref_new - p_ref_last))
     check('虚假比较(同一基座时刻)与正确值不同', abs(fake - ev['r_pos']) > 1e-6,
           f"fake={fake*1000:.3f}mm vs {ev['r_pos']*1000:.3f}mm")
+
+
+# ---------------------------------------------------------- 9B 显式双时钟
+def test_explicit_dual_clock_pair():
+    print('测试9B: latency 补偿后的 base/path new 必须成对传入全部 guard')
+    expected_pair = (10.10, 2.025)
+    seen = {}
+
+    def safe_event(base_t, path_t):
+        return {
+            'p_cmd_new': np.zeros(3),
+            'p_ref_new': np.zeros(3),
+            'e_new': np.zeros(3),
+            'R_err_new': np.eye(3),
+            't_new': float(base_t),
+            'path_t_new': float(path_t),
+            'r_ori': 0.0,
+            'r_pos': 0.0,
+            'r_allow': 1.0,
+        }
+
+    for mode in ('expected_residual', 'state_safe_filter'):
+        d = mk_demo(mode)
+        q = np.zeros(JOINT_COUNT)
+        d.q_last = q.copy()
+        d._command_fk_step = lambda *_args: 0.0
+        if mode == 'expected_residual':
+            def expected_eval(
+                    _q, base_t, path_t=None, _path_rate=1.0):
+                seen[mode] = (float(base_t), float(path_t))
+                return safe_event(base_t, path_t)
+            d._guard_expected_eval = expected_eval
+        else:
+            def between(
+                    _qa, base_t_anchor, _qc, base_t_new,
+                    path_t_anchor=None, path_t_new=None,
+                    _path_rate=1.0):
+                seen[mode] = (
+                    float(base_t_anchor), float(path_t_anchor),
+                    float(base_t_new), float(path_t_new))
+                return safe_event(base_t_new, path_t_new)
+            d._guard_eval_between = between
+            d._guard_candidate_safe = lambda *_args: True
+        d._apply_command_guard(
+            q, q, 10.0,
+            {'trajectory': np.zeros((2, JOINT_COUNT))},
+            True,
+            t_state=10.08,
+            path_t_solve=2.0,
+            path_t_state=2.02,
+            path_t_new=expected_pair[1],
+            base_t_new=expected_pair[0],
+        )
+
+    check('expected_residual 使用同源 base/path new',
+          seen['expected_residual'] == expected_pair,
+          str(seen['expected_residual']))
+    check('state_safe_filter 使用 state pair -> 同源 new pair',
+          seen['state_safe_filter'] == (10.08, 2.02, *expected_pair),
+          str(seen['state_safe_filter']))
+
+    paused = mk_demo()
+    paused._guard_fk_world = (
+        lambda _q, _base_t, _path_t=None:
+        (np.zeros(3), np.eye(3)))
+    paused._ee_target_world = (
+        lambda path_t:
+        np.array([float(path_t) ** 2, 0.0, 0.0]))
+    paused._ee_trajectory_sample = (
+        lambda _path_t:
+        type('Sample', (), {'rotation': np.eye(3)})())
+    ev_paused = paused._guard_eval_between(
+        np.zeros(JOINT_COUNT), 5.0,
+        np.zeros(JOINT_COUNT), 6.0,
+        path_t_anchor=2.0, path_t_new=2.0,
+        path_rate=0.0)
+    check('path_scale=0 时 base 继续运动但加速度余量不推进',
+          ev_paused['path_elapsed'] == 0.0
+          and ev_paused['allow_acc'] == 0.0,
+          f"path_dt={ev_paused['path_elapsed']}, "
+          f"allow_acc={ev_paused['allow_acc']}")
 
 
 # ----------------------------------------------------------------- 10 模式回归
@@ -601,6 +687,7 @@ def main():
     test_consecutive_fault()
     test_state_safe_filter_active_recovery()
     test_time_correspondence()
+    test_explicit_dual_clock_pair()
     test_mode_regression()
     test_param_validation()
     print()

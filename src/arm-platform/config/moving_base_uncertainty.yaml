@@ -1,0 +1,242 @@
+# Production defaults for the moving-base uncertainty experiment.
+#
+# The launch file exposes only trajectory_shape, base_disturbance_profile and
+# base_belief_mode. Tune algorithms, plant assumptions, safety gates and
+# recording behavior here so a run has one reproducible source of truth.
+
+student_arm_node:
+  ros__parameters:
+    # Simulation plant and smooth position controller.
+    arm_type: sim
+    arm_version: gamma
+    port_name: /dev/ttyTHS3
+    publish_joint_feedback: false
+    command_timeout_sec: 1.0
+    joint_lower_limits: [-4.0, -3.1415, -1.5708, -4.0, -2.0, -4.0, -4.0]
+    joint_upper_limits: [4.0, 2.0, 1.5708, 4.0, 2.0, 4.0, 4.0]
+    p_gain: [30.0, 30.0, 30.0, 5.0, 5.0, 5.0, 1.0]
+    d_gain: [1.0, 1.0, 1.0, 0.1, 0.1, 0.1, 0.1]
+    max_velocity: 3.0
+    enable_velocity_feedforward: true
+    velocity_feedforward_gain: 1.0
+    position_feedback_tau: 0.15
+    feedback_velocity_limit: 0.4
+    enable_acceleration_limit: true
+    max_acceleration: 20.0
+
+move_base_circle_mpc_ik_demo:
+  ros__parameters:
+    # First-order backend (retained for baselines and shadow runs).
+    solver_backend: acados
+    solver_model: second_order
+    horizon_steps: 2
+    max_joint_step: 0.04
+    terminal_tolerance: 0.01
+    orientation_weight: 0.09375
+    terminal_orientation_weight: 1.25
+    acados_rti_iterations: 3
+    position_weight: 50.0
+    terminal_position_weight: 500.0
+    joint_delta_weight: 0.08
+    joint_delta_change_weight: 0.25
+    current_posture_weight: 0.01
+    center_posture_weight: 0.002
+
+    # Production second-order NMPC.
+    second_order_horizon_steps: 10
+    second_order_position_weight: 5000.0
+    second_order_terminal_position_weight: 500.0
+    second_order_cartesian_residual_mode: external_affine
+    second_order_cartesian_velocity_weight: 0.0
+    second_order_cartesian_acceleration_weight: 0.0
+    second_order_terminal_cartesian_velocity_weight: 0.0
+    second_order_feasible_reference_projection: false
+    second_order_feasible_reference_damping: 0.0001
+    second_order_contour_tracking_enabled: false
+    second_order_contour_position_weight: 5000.0
+    second_order_lag_position_weight: 750.0
+    second_order_transition_position_weight: 5000.0
+    second_order_terminal_contour_position_weight: 500.0
+    second_order_terminal_lag_position_weight: 75.0
+    second_order_terminal_transition_position_weight: 500.0
+    reference_derivative_dt_sec: 0.005
+    second_order_velocity_weight: 0.02
+    second_order_acceleration_weight: 0.0
+    second_order_terminal_velocity_weight: 0.0
+    second_order_current_posture_weight: 0.01
+    second_order_center_posture_weight: 0.002
+    second_order_max_velocity: 2.0
+    second_order_max_acceleration: 15.0
+    second_order_min_jacobian_sigma: 0.05
+    second_order_dq_ff_compensation: 1.0
+    second_order_reference_lead_steps: -1
+    second_order_state_prediction: false
+    second_order_velocity_source: commanded
+
+    # Timestamp/actuator-delay compensation and the matched plant model.
+    latency_compensation_enabled: true
+    latency_nominal_publish_ms: 9.0
+    latency_publish_ewma_alpha: 0.15
+    latency_actuator_delay_ms: 5.0
+    latency_prediction_max_ms: 60.0
+    smith_predictor_enabled: true
+    command_inversion_enabled: true
+    plant_velocity_feedforward_gain: 1.0
+    plant_position_feedback_tau: 0.15
+    plant_feedback_velocity_limit: 0.4
+    plant_max_velocity: 3.0
+    plant_max_acceleration: 20.0
+    plant_control_substep_dt: 0.01
+
+    # Experiment truth and estimator. The launch arguments override the three
+    # scenario selectors below while keeping amplitude/seed identical to RViz.
+    trajectory_shape: whole
+    base_disturbance_profile: gust
+    base_belief_mode: model
+    base_disturbance_amplitude_m: 0.01
+    base_disturbance_seed: 0
+    base_estimator_noise_std_m: 0.002
+    base_estimator_delay_ms: 40.0
+    base_estimator_lpf_hz: 10.0
+    base_estimator_seed: 1
+
+    # Spectral model, conformal trust and beta-weighted feed-forward.
+    trust_n_freq: 6
+    trust_fmin_hz: 0.15
+    trust_fmax_hz: 2.5
+    trust_lam: 0.995
+    trust_sigma0: 0.002
+    trust_prior_std: 0.01
+    trust_meas_delay_sec: -1.0
+    trust_dt_nominal: -1.0
+    trust_n_peaks: 12
+    trust_ident_period_sec: 2.0
+    trust_buffer_sec: 30.0
+    trust_min_ident_sec: 2.5
+    trust_holdout_sec: 1.0
+    trust_f_ident_min_hz: 0.08
+    trust_f_ident_max_hz: 5.0
+    trust_peak_snr: 3.0
+    trust_resid_lpf_hz: 0.0
+    trust_beta_sigma0: -1.0
+    trust_beta_gamma_f: 0.98
+    trust_beta_n_grid: 15
+    trust_beta_degraded: 0.6
+    trust_beta_healthy: 0.9
+    trust_feedforward_gating_enabled: true
+    trust_feedforward_gate_low: 0.2
+    trust_feedforward_gate_high: 0.5
+    trust_feedforward_gate_fall_tau_sec: 0.3
+    trust_feedforward_gate_rise_tau_sec: 1.0
+    trust_n_cal: 100
+    trust_alpha: 0.1
+    trust_gamma_aci: 0.005
+    trust_ident_units_per_tick: 5
+    trust_ident_budget_ms: 1.8
+    trust_ident_units_pen_up: 8
+    trust_ident_budget_pen_up_ms: 2.6
+    trust_shadow_csv: false
+
+    # Trust-driven path-speed ladder.
+    trust_ladder_enabled: true
+    ladder_b_degraded: 0.3
+    ladder_b_recover: 0.7
+    ladder_delta_degraded_ratio: 1.35
+    ladder_delta_recover_ratio: 1.2
+    ladder_min_scale: 0.3
+    ladder_baseline_warmup_sec: 4.0
+    ladder_baseline_tau_sec: 20.0
+    ladder_trust_commission_sec: 1.0
+    ladder_recover_debounce_sec: 2.0
+    ladder_exclusive_scale_control: true
+
+    # Optional learned correction remains disabled in the production profile.
+    late_tick_recovery_enabled: true
+    late_tick_recovery_factor: 1.5
+    periodic_error_learning_enabled: false
+    periodic_error_learning_gain: 0.5
+    periodic_error_correction_limit_m: 0.005
+    periodic_error_update_limit_m: 0.015
+    periodic_error_min_samples_per_cycle: 8
+    periodic_error_initial_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    periodic_error_learning_freeze: false
+
+    # Dual-clock trajectory progression.
+    control_rate_hz: 50.0
+    trajectory_time_scale: 1.0
+    base_motion_time_scale: 1.0
+    posture_reference_mode: reset_nominal
+    online_time_scaling_enabled: true
+    time_scaling_min_scale: 0.0
+    time_scaling_velocity_reserve: 0.15
+    time_scaling_slow_error_m: 0.01
+    time_scaling_stop_error_m: 0.03
+    path_progress_topic: /moving_base/path_progress
+
+    # Transport and command feasibility hard gates.
+    transport_delay_guard_enabled: true
+    transport_delay_threshold_ms: 30.0
+    transport_delay_fault_duration_sec: 0.25
+    transport_delay_min_fresh_samples: 3
+    feedback_stale_timeout_ms: 100.0
+    command_fk_step_warn_m: 0.006
+    guard_mode: state_safe_filter
+    guard_residual_abs_m: 0.0068
+    guard_residual_relative_gain: 0.5
+    guard_residual_accel_gain: 1.0
+    guard_projection_enabled: true
+    guard_projection_min_lambda: 0.05
+    guard_projection_max_iterations: 8
+    guard_max_consecutive_blocks: 25
+    guard_backup_damping: 0.03
+    guard_backup_position_gain: 0.8
+    reference_lead_steps: 1
+    base_reference_lead_steps: -1
+    dq_prev_mode: measured_delta
+    rti_iteration_mode: fixed_iterations
+
+    # Formal-run diagnostics.
+    record_loop_csv: true
+    dart_noise_std: 0.0
+    dart_noise_clip_sigma: 2.5
+    dart_noise_seed: 0
+    # Portable fallback; the unified launch overrides this with
+    # ${ROS_HOME:-~/.ros}/moving_base_uncertainty.
+    loop_data_dir: /tmp/moving_base_uncertainty
+    provenance_json: ''
+
+trajectory_visualizer_demo:
+  ros__parameters:
+    trajectory_mode: moving_base_circle
+    trajectory_shape: whole
+    frame_id: world
+    actual_topic: /joint_states
+    command_topic: /student/joint_command
+    control_signal_topic: /student/joint_command
+    record_control_signal: true
+    record_command_fk: true
+    publish_rate_hz: 5.0
+    max_actual_points: 12000
+    max_rviz_path_points: 2500
+    expected_path_points: 240
+    show_matplotlib: false
+    start_on_command: true
+    use_message_stamp: true
+    path_progress_topic: /moving_base/path_progress
+    path_clock_mode: required
+    path_clock_max_extrapolation_sec: 0.1
+    reset_gap_sec: 2.0
+    stale_command_timeout_sec: 0.2
+    sample_only_on_actual_change: true
+    actual_change_epsilon: 0.000000001
+    control_signal_change_epsilon: 0.000000000001
+    ignore_initial_sec: 3.0
+    trajectory_time_scale: 1.0
+    base_motion_time_scale: 1.0
+    base_disturbance_amplitude_m: 0.01
+    base_disturbance_seed: 0
+    base_disturbance_profile: gust
+    show_base_disturbance: true
+    disturbance_marker_topic: /moving_base/disturbance_markers
+    disturbance_display_height_m: 0.12
+    data_dir: /tmp/moving_base_uncertainty

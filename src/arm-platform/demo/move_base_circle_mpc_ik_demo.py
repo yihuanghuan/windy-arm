@@ -24,11 +24,12 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from geometry_msgs.msg import Point, TransformStamped
+from geometry_msgs.msg import Point, TransformStamped, Vector3Stamped
 import numpy as np
 import pinocchio as pin
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from tf2_ros import TransformBroadcaster
 from visualization_msgs.msg import Marker
@@ -303,6 +304,19 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.declare_parameter('time_scaling_velocity_reserve', 0.15)
         self.declare_parameter('time_scaling_slow_error_m', 0.010)
         self.declare_parameter('time_scaling_stop_error_m', 0.030)
+        # 带绝对时间戳发布路径时钟。可视化必须用该 path_time 选择图形/
+        # 工作面朝向；墙上时间只驱动真实基座晃动。BEST_EFFORT 避免任何
+        # 可视化订阅者反压 50Hz 控制回路。
+        self.declare_parameter(
+            'path_progress_topic', '/moving_base/path_progress')
+        # /joint_states header 到本节点 callback 的投递延迟硬门。持续异常
+        # 说明控制器正在重复使用陈旧状态；继续求解会形成 2Hz 螺旋，所得
+        # 数据不可作为正式实验。默认启用，0.25s 去抖覆盖健康运行的孤立尖峰。
+        self.declare_parameter('transport_delay_guard_enabled', True)
+        self.declare_parameter('transport_delay_threshold_ms', 30.0)
+        self.declare_parameter('transport_delay_fault_duration_sec', 0.25)
+        self.declare_parameter('transport_delay_min_fresh_samples', 3)
+        self.declare_parameter('feedback_stale_timeout_ms', 100.0)
         self.declare_parameter('command_fk_step_warn_m', 0.006)
         # 阶段1E: 期望运动感知守卫。
         #   legacy_fixed_step : 旧 6mm 固定阈值守卫,行为与阶段1E之前逐拍一致;
@@ -668,6 +682,18 @@ class MoveBaseCircleMpcIkDemo(Node):
         self._time_scaling_utilization = 0.0
         self._time_scaling_tracking_error = 0.0
         self._last_path_target_time0 = float('nan')
+        self.path_progress_topic = str(
+            self.get_parameter('path_progress_topic').value)
+        self.transport_delay_guard_enabled = bool(
+            self.get_parameter('transport_delay_guard_enabled').value)
+        self.transport_delay_threshold_ms = float(
+            self.get_parameter('transport_delay_threshold_ms').value)
+        self.transport_delay_fault_duration_sec = float(
+            self.get_parameter('transport_delay_fault_duration_sec').value)
+        self.transport_delay_min_fresh_samples = int(
+            self.get_parameter('transport_delay_min_fresh_samples').value)
+        self.feedback_stale_timeout_ms = float(
+            self.get_parameter('feedback_stale_timeout_ms').value)
         self.command_fk_step_warn_m = float(
             self.get_parameter('command_fk_step_warn_m').value)
         self.guard_mode = str(self.get_parameter('guard_mode').value)
@@ -709,6 +735,29 @@ class MoveBaseCircleMpcIkDemo(Node):
             raise ValueError("dq_prev_mode must be 'zero' or 'measured_delta'")
         if self.rti_iteration_mode not in ('legacy_early_exit', 'fixed_iterations'):
             raise ValueError("rti_iteration_mode must be 'legacy_early_exit' or 'fixed_iterations'")
+        if not self.path_progress_topic:
+            raise ValueError('path_progress_topic must not be empty')
+        if (
+            not math.isfinite(self.transport_delay_threshold_ms)
+            or self.transport_delay_threshold_ms <= 0.0
+        ):
+            raise ValueError(
+                'transport_delay_threshold_ms must be finite and > 0')
+        if (
+            not math.isfinite(self.transport_delay_fault_duration_sec)
+            or self.transport_delay_fault_duration_sec <= 0.0
+        ):
+            raise ValueError(
+                'transport_delay_fault_duration_sec must be finite and > 0')
+        if self.transport_delay_min_fresh_samples < 1:
+            raise ValueError(
+                'transport_delay_min_fresh_samples must be >= 1')
+        if (
+            not math.isfinite(self.feedback_stale_timeout_ms)
+            or self.feedback_stale_timeout_ms <= 0.0
+        ):
+            raise ValueError(
+                'feedback_stale_timeout_ms must be finite and > 0')
         if self.solver_model not in ('first_order', 'second_order', 'shadow'):
             raise ValueError(
                 "solver_model must be 'first_order', 'second_order' or 'shadow'")
@@ -836,6 +885,7 @@ class MoveBaseCircleMpcIkDemo(Node):
         # shadow 计算、被拒绝命令、求解失败一律不更新锚点。
         self._guard_q_last = None
         self._guard_t_last_reference = float('nan')
+        self._guard_path_t_last_reference = float('nan')
         self._guard_p_cmd_last = None                # 缓存 p_cmd^W(q_guard_last, t_last)
         self._guard_p_ref_last = None                # 缓存 p_desired^W(t_last)
         self._guard_R_err_last = None                # 姿态 shadow: R_ref^T R_cmd(上一接受命令)
@@ -876,6 +926,14 @@ class MoveBaseCircleMpcIkDemo(Node):
         # 基座补偿失效, 实测把 whole RMS 从 0.27mm 打到 20mm——必须显式报警。
         self._transport_gap_bad_ticks = 0
         self._transport_gap_warned = False
+        self._transport_gap_bad_duration_sec = 0.0
+        self._transport_gap_distinct_bad_samples = 0
+        self._transport_gap_last_bad_stamp = float('nan')
+        self._transport_gap_bad_active = False
+        self.transport_fault = False
+        self.transport_fault_gap_ms = float('nan')
+        self._fault_path_time = float('nan')
+        self._params_snapshot_path = None
         # 基座不确定性实验: estimated 模式的信念偏移状态与噪声源。
         self._base_belief_offset = np.zeros(3)
         self._base_estimator_rng = np.random.default_rng(
@@ -884,6 +942,7 @@ class MoveBaseCircleMpcIkDemo(Node):
         self._publish_latency_ewma_sec = self.latency_nominal_publish_sec
         self._last_application_delay_sec = 0.0
         self._last_state_prediction_age_sec = 0.0
+        self._last_path_update_wall = None
         self.late_tick_recovery_count = 0
         # key -> (3 world axes, sin/cos) coefficients. whole 模式按五个
         # 工作面分组，避免正面/侧面/顶部的补偿相互污染。
@@ -905,6 +964,11 @@ class MoveBaseCircleMpcIkDemo(Node):
         self.pub = self.create_publisher(JointState, '/student/joint_command', 10)
         self.actual_marker_pub = self.create_publisher(Marker, '/ee_traj_marker', 10)
         self.target_marker_pub = self.create_publisher(Marker, '/ee_target_traj_marker', 10)
+        path_progress_qos = QoSProfile(depth=8)
+        path_progress_qos.reliability = ReliabilityPolicy.BEST_EFFORT
+        path_progress_qos.durability = DurabilityPolicy.VOLATILE
+        self.path_progress_pub = self.create_publisher(
+            Vector3Stamped, self.path_progress_topic, path_progress_qos)
         # depth=1 是控制反馈的正确语义：若 CPU 短暂繁忙，丢弃旧状态而不是
         # 排队后让 NMPC 逐条处理过期样本。
         self.create_subscription(
@@ -1160,6 +1224,223 @@ class MoveBaseCircleMpcIkDemo(Node):
             float(recv),
         )
 
+    def _path_time_at_offset(
+            self, t_solve: float, offset_sec: float = 0.0) -> float:
+        """Map a future wall/base-clock offset to the controller path clock."""
+        offset = max(0.0, float(offset_sec))
+        if bool(getattr(self, 'online_time_scaling_enabled', False)):
+            return float(self.time_scaler.preview([offset])[0])
+        return float(t_solve) + offset
+
+    def _publish_path_progress(
+            self, stamp_wall_sec: float, t_solve: float,
+            path_time: float = None, path_scale: float = None):
+        """Publish the exact clock mapping used by references and base yaw.
+
+        Vector fields are deliberately fixed and documented:
+          x = path_time, y = d(path_time)/d(wall_time), z = t_solve.
+        The absolute ROS stamp lets consumers interpolate path_time for each
+        JointState/command stamp instead of using message arrival time.
+        """
+        if path_time is None:
+            path_time = self._path_time_at_offset(t_solve, 0.0)
+        if path_scale is None:
+            path_scale = (
+                float(self.time_scaler.scale)
+                if self.online_time_scaling_enabled else 1.0)
+        msg = Vector3Stamped()
+        stamp_ns = max(0, int(round(float(stamp_wall_sec) * 1e9)))
+        msg.header.stamp.sec = stamp_ns // 1_000_000_000
+        msg.header.stamp.nanosec = stamp_ns % 1_000_000_000
+        msg.header.frame_id = (
+            f'moving_base_path_clock_{self._run_stamp}')
+        msg.vector.x = float(path_time)
+        msg.vector.y = float(path_scale)
+        msg.vector.z = float(t_solve)
+        self.path_progress_pub.publish(msg)
+
+    def _update_transport_delay_guard(
+            self, transport_gap_ms: float, elapsed_sec: float,
+            feedback_stamp_sec: float,
+            feedback_age_ms: float = 0.0) -> bool:
+        """Return True once stale feedback has persisted long enough to abort."""
+        if not self.transport_delay_guard_enabled:
+            return False
+        valid_source_stamp = (
+            math.isfinite(feedback_stamp_sec)
+            and feedback_stamp_sec > 0.0)
+        bad_transport = (
+            not valid_source_stamp
+            or not math.isfinite(transport_gap_ms)
+            or abs(transport_gap_ms) > self.transport_delay_threshold_ms
+        )
+        stale_local = (
+            math.isfinite(feedback_age_ms)
+            and feedback_age_ms > self.feedback_stale_timeout_ms
+        )
+        # No callback has delivered a new sample for the configured timeout.
+        # This is already a direct safety fault; waiting a second debounce
+        # interval would keep solving against a known-stale state.
+        if stale_local:
+            return True
+        bad = bad_transport or stale_local
+        if not bad:
+            self._transport_gap_bad_duration_sec = 0.0
+            self._transport_gap_distinct_bad_samples = 0
+            self._transport_gap_last_bad_stamp = float('nan')
+            self._transport_gap_bad_active = False
+            return False
+
+        # The first bad observation starts the stopwatch at zero. Subsequent
+        # control intervals accrue duration, so "0.25 s" means actual observed
+        # persistence rather than 0.25 s including a fictitious interval
+        # before the first bad sample.
+        dt = float(elapsed_sec)
+        if not math.isfinite(dt) or dt <= 0.0:
+            dt = float(self.dt)
+        if self._transport_gap_bad_active:
+            self._transport_gap_bad_duration_sec += min(dt, 0.1)
+        else:
+            self._transport_gap_bad_active = True
+            self._transport_gap_bad_duration_sec = 0.0
+        if (
+            valid_source_stamp
+            and (
+                not math.isfinite(self._transport_gap_last_bad_stamp)
+                or abs(
+                    float(feedback_stamp_sec)
+                    - self._transport_gap_last_bad_stamp
+                ) > 1e-9
+            )
+        ):
+            self._transport_gap_distinct_bad_samples += 1
+            self._transport_gap_last_bad_stamp = float(feedback_stamp_sec)
+        enough_distinct = (
+            self._transport_gap_distinct_bad_samples
+            >= self.transport_delay_min_fresh_samples
+            or not valid_source_stamp)
+        return (
+            self._transport_gap_bad_duration_sec
+            >= self.transport_delay_fault_duration_sec
+            and enough_distinct
+        )
+
+    def _transport_fault_reason(
+            self, transport_gap_ms: float,
+            feedback_age_ms: float,
+            feedback_stamp_sec: float) -> str:
+        if (
+            math.isfinite(feedback_age_ms)
+            and feedback_age_ms > self.feedback_stale_timeout_ms
+        ):
+            return 'joint_states_feedback_stale'
+        if (
+            not math.isfinite(feedback_stamp_sec)
+            or feedback_stamp_sec <= 0.0
+            or not math.isfinite(transport_gap_ms)
+            or transport_gap_ms < -self.transport_delay_threshold_ms
+        ):
+            return 'joint_states_invalid_source_stamp'
+        return 'joint_states_transport_delay'
+
+    def _enter_transport_fault(
+            self, transport_gap_ms: float,
+            feedback_age_ms: float = float('nan'),
+            feedback_stamp_sec: float = float('nan'),
+            path_time: float = None):
+        """Latch the fault, publish the last safe command, then persist it."""
+        if self.transport_fault:
+            return None
+        self.transport_fault = True
+        self.transport_fault_gap_ms = float(transport_gap_ms)
+        self.phase = 'transport_fault'
+        if path_time is None:
+            path_time = (
+                float(self.time_scaler.path_time)
+                if self.online_time_scaling_enabled else 0.0)
+        self._fault_path_time = max(0.0, float(path_time))
+        # q_last is the last accepted/published safe command. A delayed
+        # q_feedback can be 100+ ms behind and must never overwrite it.
+        history = getattr(self, '_cmd_history', ())
+        if (
+            history
+            and np.all(np.isfinite(
+                np.asarray(history[-1][1], dtype=float)))
+        ):
+            # Includes any deliberate DART perturbation, so this is the exact
+            # actuator command rather than merely the nominal accepted q.
+            self.q_last = np.asarray(history[-1][1], dtype=float).copy()
+        elif (
+            self.q_last is None
+            or not np.all(np.isfinite(np.asarray(self.q_last, dtype=float)))
+        ):
+            self.q_last = np.asarray(
+                self.reset_q_target, dtype=float).copy()
+        self.warm_start = None
+        self.second_order_warm_start = None
+        self._so_last_cmd_dq = None
+        self._so_last_cmd_ddq = None
+
+        # Safety output precedes JSON/file work. A slow filesystem can no
+        # longer extend the lifetime of the previous moving command.
+        published = self._publish_joint_positions(
+            self.q_last, np.zeros(JOINT_COUNT))
+        if (
+            self.record_loop_csv
+            and self._params_snapshot_path is None
+            and hasattr(self, '_pending_config')
+        ):
+            self._write_params_snapshot(self._pending_config)
+            self._snapshot_written = self._params_snapshot_path is not None
+        reason = self._transport_fault_reason(
+            transport_gap_ms, feedback_age_ms, feedback_stamp_sec)
+        details = {
+            'transport_gap_ms': float(transport_gap_ms),
+            'feedback_age_ms': float(feedback_age_ms),
+            'feedback_stamp_sec': float(feedback_stamp_sec),
+            'bad_duration_sec': float(
+                self._transport_gap_bad_duration_sec),
+            'distinct_bad_samples': int(
+                self._transport_gap_distinct_bad_samples),
+            'threshold_ms': float(self.transport_delay_threshold_ms),
+        }
+        self._invalidate_params_snapshot(reason, details)
+        self.get_logger().error(
+            '正式实验硬门触发: /joint_states 投递延迟、时间戳或本地反馈'
+            '年龄异常，'
+            f'当前 transport_gap={transport_gap_ms:.1f}ms，'
+            f'feedback_age={feedback_age_ms:.1f}ms，'
+            f'持续 {self._transport_gap_bad_duration_sec:.2f}s，'
+            '进入 transport_fault：保持最后安全命令、冻结路径、停止求解；'
+            '本次参数快照已标记 experiment_valid=false。')
+        return published
+
+    def _invalidate_params_snapshot(self, reason: str, details: dict):
+        """Persist runtime invalidation so offline analysis cannot accept it."""
+        path = getattr(self, '_params_snapshot_path', None)
+        if path is None:
+            return
+        try:
+            snapshot = json.loads(Path(path).read_text())
+            snapshot['experiment_valid'] = False
+            snapshot['runtime_validation'] = {
+                'valid': False,
+                'reason': str(reason),
+                'invalidated_at': datetime.now().isoformat(
+                    timespec='milliseconds'),
+                **dict(details),
+            }
+            tmp_path = Path(path).with_suffix('.json.tmp')
+            with tmp_path.open('w') as stream:
+                json.dump(
+                    snapshot, stream, indent=2, ensure_ascii=False,
+                    default=str)
+            tmp_path.replace(path)
+        except Exception as exc:
+            self.get_logger().error(
+                f'运行失效状态写入参数快照失败: {exc}')
+
+
     def _create_marker(self, topic_ns: str, marker_id: int, color, scale: float) -> Marker:
         marker = Marker()
         marker.header.frame_id = WORLD_FRAME
@@ -1208,6 +1489,7 @@ class MoveBaseCircleMpcIkDemo(Node):
         pub.publish(marker)
 
     def _base_pose(self, t: float) -> np.ndarray:
+        """Controller belief for the base position."""
         scaled_t = t / float(getattr(self, 'base_motion_time_scale', 1.0))
         pose = traj.base_pose(scaled_t)
         amplitude = float(getattr(self, 'base_disturbance_amplitude_m', 0.0))
@@ -1229,6 +1511,18 @@ class MoveBaseCircleMpcIkDemo(Node):
                               self._trust_pred_delta[:, axis])
                     for axis in range(3)])
             # 'nominal': 只知名义轨迹, 不加任何补偿
+        return pose
+
+    def _base_truth_pose(self, t: float) -> np.ndarray:
+        """Physical/simulated base truth used only for TF and actual markers."""
+        scaled_t = t / float(getattr(self, 'base_motion_time_scale', 1.0))
+        pose = traj.base_pose(scaled_t)
+        amplitude = float(getattr(
+            self, 'base_disturbance_amplitude_m', 0.0))
+        if amplitude > 0.0:
+            pose = pose + traj.base_disturbance_offset(
+                scaled_t, amplitude, self.base_disturbance_seed,
+                profile=self.base_disturbance_profile)
         return pose
 
     def _trust_estimator_enabled(self) -> bool:
@@ -2176,9 +2470,17 @@ class MoveBaseCircleMpcIkDemo(Node):
         self._last_periodic_learning_diag = diag
         return diag
 
-    def _publish_base_tf(self, t: float):
-        x, y, z = self._base_pose(t)
-        path_t = self.time_scaler.path_time if self.online_time_scaling_enabled else t
+    def _publish_base_tf(
+            self, t: float, path_t_override: float = None):
+        # TF/RobotModel represents the physical simulated base, not the
+        # controller's nominal/estimated/model belief. This keeps link7 and
+        # the truth-channel current-actual marker in the same world frame.
+        x, y, z = self._base_truth_pose(t)
+        path_t = (
+            float(path_t_override)
+            if path_t_override is not None
+            else self.time_scaler.path_time
+            if self.online_time_scaling_enabled else t)
         base_rot = self._base_rotation(t, path_t)
         quat = pin.Quaternion(base_rot)
 
@@ -2340,12 +2642,17 @@ class MoveBaseCircleMpcIkDemo(Node):
         )
         return True
 
-    def _publish_world_markers(self, t: float):
+    def _publish_world_markers(
+            self, t: float, path_t_override: float = None):
         q_for_marker = self.q_measured if self.q_measured is not None else self.q_last
         if q_for_marker is None:
             return
-        path_t = self.time_scaler.path_time if self.online_time_scaling_enabled else t
-        base_pos_world = self._base_pose(t)
+        path_t = (
+            float(path_t_override)
+            if path_t_override is not None
+            else self.time_scaler.path_time
+            if self.online_time_scaling_enabled else t)
+        base_pos_world = self._base_truth_pose(t)
         base_rot_world = self._base_rotation(t, path_t)
         ee_pos_base, _ = self.mpc_ik.forward(q_for_marker)
         ee_pos_world = base_pos_world + base_rot_world @ ee_pos_base
@@ -2368,28 +2675,38 @@ class MoveBaseCircleMpcIkDemo(Node):
             target_sample.stroke_id,
         )
 
-    def _command_fk_world(self, q: np.ndarray, t: float) -> np.ndarray:
-        base_pos_world = self._base_pose(t)
-        base_rot_world = self._base_rotation(t)
+    def _command_fk_world(
+            self, q: np.ndarray, base_t: float,
+            path_t: float = None) -> np.ndarray:
+        if path_t is None:
+            path_t = self._path_time_at_offset(base_t, 0.0)
+        base_pos_world = self._base_pose(base_t)
+        base_rot_world = self._base_rotation(base_t, path_t)
         ee_pos_base, _ = self.mpc_ik.forward(q)
         return base_pos_world + base_rot_world @ ee_pos_base
 
-    def _command_fk_step(self, q: np.ndarray, t: float) -> float:
-        command_fk_world = self._command_fk_world(q, t)
+    def _command_fk_step(
+            self, q: np.ndarray, base_t: float,
+            path_t: float = None) -> float:
+        command_fk_world = self._command_fk_world(q, base_t, path_t)
         if self.last_command_fk_world is None:
             return 0.0
         return float(np.linalg.norm(command_fk_world - self.last_command_fk_world))
 
-    def _update_command_fk_monitor(self, q: np.ndarray, t: float):
+    def _update_command_fk_monitor(
+            self, q: np.ndarray, base_t: float,
+            path_t: float = None):
         if self.phase != 'track':
             return
-        command_fk_world = self._command_fk_world(q, t)
+        if path_t is None:
+            path_t = self._path_time_at_offset(base_t, 0.0)
+        command_fk_world = self._command_fk_world(q, base_t, path_t)
         if self.last_command_fk_world is not None:
             step = float(np.linalg.norm(command_fk_world - self.last_command_fk_world))
             if step > self.command_fk_step_warn_m:
                 period = float(getattr(
                     self, 'trajectory_period_sec', traj.EE_PERIOD_SEC))
-                phase_deg = (360.0 * t / period) % 360.0
+                phase_deg = (360.0 * path_t / period) % 360.0
                 self.get_logger().warn(
                     'Command FK 单步变化偏大: '
                     f'step={step * 1000.0:.2f} mm, phase={phase_deg:.1f} deg',
@@ -2422,44 +2739,61 @@ class MoveBaseCircleMpcIkDemo(Node):
         if int(max_consecutive) < 1:
             raise ValueError('guard_max_consecutive_blocks must be >= 1')
 
-    def _desired_world_accel(self, t: float, eps: float = 1e-3) -> np.ndarray:
-        """期望轨迹世界系二阶导(中心差分;解析轨迹,确定性,无随机)。"""
-        p_p = self._ee_target_world(t + eps)
-        p_0 = self._ee_target_world(t)
-        p_m = self._ee_target_world(t - eps)
+    def _desired_world_accel(
+            self, path_t: float, path_rate: float = 1.0,
+            eps: float = 1e-3) -> np.ndarray:
+        """Expected world acceleration with respect to the wall/base clock."""
+        path_step = eps * max(0.0, float(path_rate))
+        p_p = self._ee_target_world(path_t + path_step)
+        p_0 = self._ee_target_world(path_t)
+        p_m = self._ee_target_world(path_t - path_step)
         return (p_p - 2.0 * p_0 + p_m) / (eps * eps)
 
-    def _guard_fk_world(self, q: np.ndarray, t: float):
-        """世界系命令 FK(位置+姿态)。基座变换用**同一时刻 t**(新命令用 t_new,
-        锚点缓存来自其自己的 t_last —— 绝不把两条命令放在同一基座位姿下虚假比较)。"""
-        base_pos = self._base_pose(t)
-        base_rot = self._base_rotation(t)
+    def _guard_fk_world(
+            self, q: np.ndarray, base_t: float,
+            path_t: float = None):
+        """World command FK with independent physical-base and path clocks."""
+        if path_t is None:
+            path_t = base_t
+        base_pos = self._base_pose(base_t)
+        base_rot = self._base_rotation(base_t, path_t)
         ee_pos_base, ee_rot_base = self.mpc_ik.forward(q)
         return base_pos + base_rot @ ee_pos_base, base_rot @ ee_rot_base
 
     def _guard_eval_between(
-            self, q_anchor: np.ndarray, t_anchor: float,
-            q_candidate: np.ndarray, t_new: float) -> dict:
+            self, q_anchor: np.ndarray, base_t_anchor: float,
+            q_candidate: np.ndarray, base_t_new: float,
+            path_t_anchor: float = None, path_t_new: float = None,
+            path_rate: float = 1.0) -> dict:
         """Evaluate command/reference increments between two explicit states.
 
         r_vec = Δp_cmd - Δp_ref = e_new - e_last(两种算法代数恒等,单元测试逐拍核对);
         r_allow = r_abs + r_rel*||Δp_ref|| + r_acc*||a_ref||*Δt² + uncertainty。
         """
-        p_cmd_new, r_cmd_new = self._guard_fk_world(q_candidate, t_new)
-        p_ref_new = self._ee_target_world(t_new)
-        p_cmd_anchor, r_cmd_anchor = self._guard_fk_world(q_anchor, t_anchor)
-        p_ref_anchor = self._ee_target_world(t_anchor)
+        if path_t_anchor is None:
+            path_t_anchor = base_t_anchor
+        if path_t_new is None:
+            path_t_new = base_t_new
+        p_cmd_new, r_cmd_new = self._guard_fk_world(
+            q_candidate, base_t_new, path_t_new)
+        p_ref_new = self._ee_target_world(path_t_new)
+        p_cmd_anchor, r_cmd_anchor = self._guard_fk_world(
+            q_anchor, base_t_anchor, path_t_anchor)
+        p_ref_anchor = self._ee_target_world(path_t_anchor)
         e_new = p_cmd_new - p_ref_new
-        R_err_new = self._ee_trajectory_sample(t_new).rotation.T @ r_cmd_new
+        R_err_new = (
+            self._ee_trajectory_sample(path_t_new).rotation.T @ r_cmd_new)
         e_anchor = p_cmd_anchor - p_ref_anchor
         R_err_anchor = (
-            self._ee_trajectory_sample(t_anchor).rotation.T @ r_cmd_anchor)
+            self._ee_trajectory_sample(path_t_anchor).rotation.T
+            @ r_cmd_anchor)
         ev = {
             'p_cmd_new': p_cmd_new,
             'p_ref_new': p_ref_new,
             'e_new': e_new,
             'R_err_new': R_err_new,
-            't_new': float(t_new),
+            't_new': float(base_t_new),
+            'path_t_new': float(path_t_new),
             'r_ori': float(np.linalg.norm(
                 pin.log3(R_err_anchor.T @ R_err_new))),
             'first_anchor': False,
@@ -2467,14 +2801,19 @@ class MoveBaseCircleMpcIkDemo(Node):
         dp_ref = p_ref_new - p_ref_anchor
         dp_cmd = p_cmd_new - p_cmd_anchor
         r_vec = dp_cmd - dp_ref
-        a_ref = self._desired_world_accel(t_new)
-        elapsed = max(float(t_new) - float(t_anchor), 0.0)
+        # Curvature allowance belongs to path progress, not physical base
+        # elapsed time. Using Δpath² also remains exact when online scaling
+        # changes between accepted anchors or pauses at scale=0.
+        a_ref = self._desired_world_accel(path_t_new, 1.0)
+        elapsed = max(float(base_t_new) - float(base_t_anchor), 0.0)
+        path_elapsed = max(
+            float(path_t_new) - float(path_t_anchor), 0.0)
         allow_abs = self.guard_residual_abs_m
         allow_rel = self.guard_residual_relative_gain * float(np.linalg.norm(dp_ref))
         allow_acc = (
             self.guard_residual_accel_gain
             * float(np.linalg.norm(a_ref))
-            * elapsed * elapsed
+            * path_elapsed * path_elapsed
         )
         ev.update(
             r_vec=r_vec,
@@ -2488,20 +2827,28 @@ class MoveBaseCircleMpcIkDemo(Node):
             expected_step=float(np.linalg.norm(dp_ref)),
             command_step=float(np.linalg.norm(dp_cmd)),
             elapsed=elapsed,
+            path_elapsed=path_elapsed,
             e_anchor=e_anchor,
             error_new=float(np.linalg.norm(e_new)),
             error_anchor=float(np.linalg.norm(e_anchor)),
         )
         return ev
 
-    def _guard_expected_eval(self, q_candidate: np.ndarray, t_new: float) -> dict:
+    def _guard_expected_eval(
+            self, q_candidate: np.ndarray, base_t_new: float,
+            path_t_new: float = None, path_rate: float = 1.0) -> dict:
         """Evaluate against the last accepted-command anchor (legacy modes)."""
-        p_cmd_new, r_cmd_new = self._guard_fk_world(q_candidate, t_new)
-        p_ref_new = self._ee_target_world(t_new)
+        if path_t_new is None:
+            path_t_new = base_t_new
+        p_cmd_new, r_cmd_new = self._guard_fk_world(
+            q_candidate, base_t_new, path_t_new)
+        p_ref_new = self._ee_target_world(path_t_new)
         e_new = p_cmd_new - p_ref_new
-        R_err_new = self._ee_trajectory_sample(t_new).rotation.T @ r_cmd_new
+        R_err_new = (
+            self._ee_trajectory_sample(path_t_new).rotation.T @ r_cmd_new)
         ev = {'p_cmd_new': p_cmd_new, 'p_ref_new': p_ref_new, 'e_new': e_new,
-              'R_err_new': R_err_new, 't_new': float(t_new),
+              'R_err_new': R_err_new, 't_new': float(base_t_new),
+              'path_t_new': float(path_t_new),
               'r_ori': float('nan'), 'first_anchor': self._guard_q_last is None}
         if self._guard_q_last is None:
             ev.update(r_vec=np.full(3, float('nan')), r_pos=0.0, r_allow=float('inf'),
@@ -2513,7 +2860,10 @@ class MoveBaseCircleMpcIkDemo(Node):
             self._guard_q_last,
             self._guard_t_last_reference,
             q_candidate,
-            t_new,
+            base_t_new,
+            self._guard_path_t_last_reference,
+            path_t_new,
+            path_rate,
         )
 
     def _guard_candidate_safe(self, q_candidate: np.ndarray, q_current: np.ndarray,
@@ -2532,8 +2882,10 @@ class MoveBaseCircleMpcIkDemo(Node):
             return False
         return True
 
-    def _guard_project(self, q_next: np.ndarray, q_current: np.ndarray, t_new: float,
-                       r_ori_baseline: float):
+    def _guard_project(
+            self, q_next: np.ndarray, q_current: np.ndarray,
+            base_t_new: float, r_ori_baseline: float,
+            path_t_new: float = None, path_rate: float = 1.0):
         """确定性 λ 搜索: 在 [min_lambda, 1] 内找最大安全比例。
 
         先探 min_lambda(不可行 => 直接放弃,返回 None => block);再固定次数二分,
@@ -2544,7 +2896,8 @@ class MoveBaseCircleMpcIkDemo(Node):
 
         def try_lambda(lam: float):
             q_s = q_anchor + lam * (q_next - q_anchor)
-            ev = self._guard_expected_eval(q_s, t_new)
+            ev = self._guard_expected_eval(
+                q_s, base_t_new, path_t_new, path_rate)
             if (ev['r_pos'] <= ev['r_allow']
                     and self._guard_candidate_safe(q_s, q_current, ev, r_ori_baseline)):
                 return q_s, ev
@@ -2567,7 +2920,9 @@ class MoveBaseCircleMpcIkDemo(Node):
 
     def _guard_project_from_state(
             self, q_next: np.ndarray, q_current: np.ndarray,
-            t_state: float, t_new: float, r_ori_baseline: float):
+            base_t_state: float, base_t_new: float,
+            r_ori_baseline: float, path_t_state: float = None,
+            path_t_new: float = None, path_rate: float = 1.0):
         """Largest safe interpolation from the predicted current state."""
         q_anchor = np.asarray(q_current, dtype=float)
 
@@ -2575,7 +2930,8 @@ class MoveBaseCircleMpcIkDemo(Node):
             q_s = q_anchor + lam * (
                 np.asarray(q_next, dtype=float) - q_anchor)
             ev = self._guard_eval_between(
-                q_anchor, t_state, q_s, t_new)
+                q_anchor, base_t_state, q_s, base_t_new,
+                path_t_state, path_t_new, path_rate)
             if (
                 ev['r_pos'] <= ev['r_allow']
                 and self._guard_candidate_safe(
@@ -2602,12 +2958,16 @@ class MoveBaseCircleMpcIkDemo(Node):
         return best_lam, best[0], best[1]
 
     def _guard_backup_command(
-            self, q_current: np.ndarray, t_new: float) -> np.ndarray:
+            self, q_current: np.ndarray, base_t_new: float,
+            path_t_new: float = None) -> np.ndarray:
         """Bounded damped-least-squares command that actively holds the world target."""
+        if path_t_new is None:
+            path_t_new = base_t_new
         q_current = np.asarray(q_current, dtype=float)
-        p_hold, _ = self._guard_fk_world(q_current, t_new)
-        target = self._ee_target_world(t_new)
-        base_rotation = self._base_rotation(t_new)
+        p_hold, _ = self._guard_fk_world(
+            q_current, base_t_new, path_t_new)
+        target = self._ee_target_world(path_t_new)
+        base_rotation = self._base_rotation(base_t_new, path_t_new)
         jacobian_base = pin.computeFrameJacobian(
             self.mpc_ik.model,
             self.mpc_ik.data,
@@ -2660,16 +3020,24 @@ class MoveBaseCircleMpcIkDemo(Node):
         residual 模式=λ 结果)。被拒绝命令/求解失败/纯 shadow 计算不得调用。"""
         self._guard_q_last = np.asarray(q_cmd, dtype=float).copy()
         self._guard_t_last_reference = float(ev['t_new'])
+        self._guard_path_t_last_reference = float(
+            ev.get('path_t_new', ev['t_new']))
         self._guard_p_cmd_last = ev['p_cmd_new']
         self._guard_p_ref_last = ev['p_ref_new']
         self._guard_R_err_last = ev['R_err_new']
         self.guard_consecutive_blocks = 0
 
-    def _guard_enter_fault(self):
+    def _guard_enter_fault(self, path_time: float = None):
         """连续拦截达上限: 显式 fault/abort。保持位置、停止轨迹跟踪;
         **不**通过自动重锚把异常命令放行。"""
         self.guard_fault = True
         self.phase = 'guard_fault'
+        if path_time is None:
+            path_time = (
+                float(self.time_scaler.path_time)
+                if getattr(self, 'online_time_scaling_enabled', False)
+                else 0.0)
+        self._fault_path_time = max(0.0, float(path_time))
         self.get_logger().error(
             f'守卫连续拦截达到上限 {self.guard_max_consecutive_blocks},进入 guard_fault '
             f'安全停止: 保持当前位置,停止轨迹跟踪(不自动重锚放行异常命令)。'
@@ -2828,12 +3196,36 @@ class MoveBaseCircleMpcIkDemo(Node):
         try:
             self.loop_data_dir.mkdir(parents=True, exist_ok=True)
             graph = self._joint_states_graph_info()
+            provenance = self._load_provenance()
+            executor_entry = (
+                (provenance.get('node_params', {}) or {}).get(
+                    '/student_arm_node', {})
+                if isinstance(provenance, dict) else {})
+            executor_params = (
+                executor_entry.get('key_params', {})
+                if isinstance(executor_entry, dict) else {})
+
+            def finite_executor_value(name):
+                try:
+                    value = float(executor_params.get(name))
+                except (TypeError, ValueError):
+                    return None
+                return value if math.isfinite(value) and value > 0.0 else None
+
+            executor_vmax = finite_executor_value('max_velocity')
+            executor_amax = finite_executor_value('max_acceleration')
+            accel_enabled = executor_params.get(
+                'enable_acceleration_limit')
+            if not isinstance(accel_enabled, bool):
+                accel_enabled = None
             snapshot = {
-                'schema_version': 4,
+                'schema_version': 7,
                 'created': datetime.now().isoformat(timespec='seconds'),
                 'node': self.get_name(),
                 'ros_domain_id': os.environ.get('ROS_DOMAIN_ID', '(unset=0)'),
                 'rmw_implementation': os.environ.get('RMW_IMPLEMENTATION', '(default)'),
+                'fastdds_profiles_file': os.environ.get(
+                    'FASTRTPS_DEFAULT_PROFILES_FILE', '(unset)'),
                 'publish_rate_hz': self.control_rate_hz,
                 'control_dt': self.dt,
                 'joint_count': JOINT_COUNT,
@@ -2842,13 +3234,39 @@ class MoveBaseCircleMpcIkDemo(Node):
                 'dq_prev_mode': self.dq_prev_mode,
                 'rti_iteration_mode': self.rti_iteration_mode,
                 'u0_active_threshold_rad': 0.0195,
-                'accel_limit_rad_s2': 5.0,
+                # Keep actual executor, controller model and OCP constraints
+                # separate.  They were historically conflated into a
+                # hard-coded ``accel_limit_rad_s2=5`` field, which made
+                # saturation reports wrong after the plant moved to 3/20.
+                'executor_limits': {
+                    'velocity_rad_s': executor_vmax,
+                    'acceleration_rad_s2': executor_amax,
+                    'acceleration_limit_enabled': accel_enabled,
+                    'source': (
+                        'provenance:/student_arm_node:key_params'
+                        if executor_vmax is not None
+                        or executor_amax is not None
+                        else 'unavailable'),
+                },
+                'controller_plant_model_limits': {
+                    'velocity_rad_s': self.plant_max_velocity,
+                    'acceleration_rad_s2': self.plant_max_acceleration,
+                },
+                'solver_limits': {
+                    'velocity_rad_s': self.second_order_max_velocity,
+                    'acceleration_rad_s2':
+                        self.second_order_max_acceleration,
+                },
                 'max_joint_step_rad': self.max_joint_step,
                 'urdf_path': self.mpc_ik.urdf_path,
                 'ee_frame': self.mpc_ik.ee_frame,
-                'provenance': self._load_provenance(),
+                'provenance': provenance,
                 'graph': graph,
                 'experiment_valid': graph.get('joint_states_publisher_count') == 1,
+                'runtime_validation': {
+                    'valid': True,
+                    'transport_fault': False,
+                },
                 'ros_params': {
                     name: self.get_parameter(name).value
                     for name in (
@@ -2949,6 +3367,12 @@ class MoveBaseCircleMpcIkDemo(Node):
                         'online_time_scaling_enabled', 'time_scaling_min_scale',
                         'time_scaling_velocity_reserve', 'time_scaling_slow_error_m',
                         'time_scaling_stop_error_m',
+                        'path_progress_topic',
+                        'transport_delay_guard_enabled',
+                        'transport_delay_threshold_ms',
+                        'transport_delay_fault_duration_sec',
+                        'transport_delay_min_fresh_samples',
+                        'feedback_stale_timeout_ms',
                         'command_fk_step_warn_m', 'reference_lead_steps', 'dq_prev_mode',
                         'base_reference_lead_steps',
                         'rti_iteration_mode', 'record_loop_csv', 'loop_data_dir',
@@ -2994,6 +3418,7 @@ class MoveBaseCircleMpcIkDemo(Node):
             path = self.loop_data_dir / f'moving_base_mpc_params_{self._run_stamp}.json'
             with path.open('w') as f:
                 json.dump(snapshot, f, indent=2, ensure_ascii=False, default=str)
+            self._params_snapshot_path = path
             self.get_logger().info(
                 f'运行参数快照已保存: {path} '
                 f'(publishers={graph.get("joint_states_publisher_count")}, '
@@ -3024,6 +3449,7 @@ class MoveBaseCircleMpcIkDemo(Node):
         cols = ['t_solve', 't_publish', 't_reference', 't_next', 'reference_lead_steps',
                 'path_time', 'path_scale', 'path_target_time',
                 'timer_interval_ms', 'solve_to_publish_ms', 'feedback_age_ms',
+                'transport_gap_ms', 'transport_fault',
                 'late_tick_recovery',
                 'predicted_application_delay_ms', 'state_prediction_age_ms',
                 'js_header_stamp_rel', 'js_header_stamp_sec', 'js_recv_wall_sec',
@@ -3067,7 +3493,9 @@ class MoveBaseCircleMpcIkDemo(Node):
             # 每 tick 基座位姿(求解时刻 t_solve 的解析基座位置+姿态 rpy)
             'base_pos_x', 'base_pos_y', 'base_pos_z',
             'base_roll', 'base_pitch', 'base_yaw',
-            'guard_mode_code', 'guard_t_new', 'guard_t_last_reference',
+            'guard_mode_code',
+            'guard_t_new', 'guard_path_t_new',
+            'guard_t_last_reference', 'guard_path_t_last_reference',
             'guard_r_pos_m', 'guard_r_allow_m',
             'guard_allow_abs_m', 'guard_allow_rel_m', 'guard_allow_acc_m',
             'guard_r_vec_x', 'guard_r_vec_y', 'guard_r_vec_z',
@@ -3158,12 +3586,21 @@ class MoveBaseCircleMpcIkDemo(Node):
                 timing['t_reference'],
                 timing['t_next'],
                 int(self.reference_lead_steps),
-                float(self.time_scaler.path_time),
-                float(self.time_scaler.scale),
+                float(timing.get(
+                    'path_time',
+                    self.time_scaler.path_time
+                    if self.online_time_scaling_enabled
+                    else timing['t_solve'])),
+                float(timing.get(
+                    'path_scale',
+                    self.time_scaler.scale
+                    if self.online_time_scaling_enabled else 1.0)),
                 float(self._last_path_target_time0),
                 timing['timer_interval_ms'],
                 timing['solve_to_publish_ms'],
                 timing['feedback_age_ms'],
+                timing.get('transport_gap_ms', float('nan')),
+                int(bool(timing.get('transport_fault', False))),
                 int(bool(timing.get('late_tick_recovery', False))),
                 timing.get('predicted_application_delay_ms', float('nan')),
                 timing.get('state_prediction_age_ms', float('nan')),
@@ -3215,7 +3652,13 @@ class MoveBaseCircleMpcIkDemo(Node):
             ]
             # 每 tick 基座位姿(与控制所用同一解析源)
             bp = self._base_pose(timing['t_solve'])
-            brpy = pin.rpy.matrixToRpy(self._base_rotation(timing['t_solve']))
+            brpy = pin.rpy.matrixToRpy(self._base_rotation(
+                timing['t_solve'],
+                float(timing.get(
+                    'path_time',
+                    self.time_scaler.path_time
+                    if self.online_time_scaling_enabled
+                    else timing['t_solve']))))
             row += [float(bp[0]), float(bp[1]), float(bp[2]),
                     float(brpy[0]), float(brpy[1]), float(brpy[2])]
             # 阶段1E 守卫诊断列(guard_diag=None 时全 nan/0,列宽恒定)。
@@ -3227,7 +3670,10 @@ class MoveBaseCircleMpcIkDemo(Node):
             row += [
                 int(gd.get('mode_code', 0)),
                 float(gd.get('t_new', float('nan'))),
+                float(gd.get('path_t_new', float('nan'))),
                 float(gd.get('t_last_reference', float('nan'))),
+                float(gd.get(
+                    'path_t_last_reference', float('nan'))),
                 r_pos,
                 r_allow,
                 float(ev.get('allow_abs', float('nan'))),
@@ -3333,6 +3779,106 @@ class MoveBaseCircleMpcIkDemo(Node):
             self._loop_file = None
             self._loop_writer = None
 
+    def _append_transport_fault_row(
+            self, solve_wall: float, timer_interval_ms: float,
+            q_feedback: np.ndarray, dq_feedback: np.ndarray,
+            js_header_stamp_sec: float, js_recv_wall_sec: float,
+            feedback_age_ms: float, transport_gap_ms: float,
+            published):
+        """Write and flush one terminal loop row with transport_fault=1."""
+        if published is None or not self.record_loop_csv:
+            return
+        q_published, dq_published, publish_wall, dart_diag = published
+        q_current = (
+            np.asarray(q_feedback, dtype=float)
+            if q_feedback is not None
+            else np.asarray(q_published, dtype=float))
+        zeros = np.zeros(JOINT_COUNT)
+        dq_prev = {
+            'input': zeros,
+            'raw': zeros,
+            'velocity_estimate': zeros,
+            'source': 0,
+            'fallback': 90,
+            'feedback_dt': float('nan'),
+        }
+        origin = self.traj_origin_wall
+        t_solve = (
+            max(0.0, solve_wall - origin)
+            if origin is not None else 0.0)
+        t_publish = (
+            max(0.0, publish_wall - origin)
+            if origin is not None else 0.0)
+        path_t = (
+            self._fault_path_time
+            if math.isfinite(self._fault_path_time) else 0.0)
+        timing = {
+            't_solve': t_solve,
+            't_publish': t_publish,
+            't_reference': float('nan'),
+            't_next': t_publish,
+            'path_time': path_t,
+            'path_scale': 0.0,
+            'timer_interval_ms': timer_interval_ms,
+            'solve_to_publish_ms': max(
+                0.0, (publish_wall - solve_wall) * 1000.0),
+            'feedback_age_ms': feedback_age_ms,
+            'transport_gap_ms': transport_gap_ms,
+            'transport_fault': True,
+            'late_tick_recovery': False,
+            'predicted_application_delay_ms': float('nan'),
+            'state_prediction_age_ms': float('nan'),
+            'js_header_stamp_sec': js_header_stamp_sec,
+            'js_recv_wall_sec': js_recv_wall_sec,
+            't_solve_wall': solve_wall,
+            't_publish_wall': publish_wall,
+        }
+        info = {
+            'status': -30,
+            'success': False,
+            'nit': 0,
+            'message': 'transport_fault',
+            'command_usable': False,
+            'tracking_ok': False,
+            'plan_feasible': False,
+            'terminal_error': float('nan'),
+            'first_error': float('nan'),
+            'solve_time': 0.0,
+        }
+        self._append_loop_row(
+            timing,
+            dq_prev,
+            q_current=q_current,
+            dq_measured=dq_feedback,
+            q_next=q_published,
+            q_published=q_published,
+            dq_published=dq_published,
+            info=info,
+            command_usable=False,
+            tracking_ok=False,
+            # Transport freshness is an independent hard gate.  Do not make
+            # the terminal row look like a command-residual guard rejection,
+            # otherwise offline analysis attributes the DDS failure to 1E.
+            guard_block=False,
+            command_fk_step=float('nan'),
+            guard_diag={
+                'mode_code': {
+                    'legacy_fixed_step': 0,
+                    'expected_shadow': 1,
+                    'expected_residual': 2,
+                    'state_safe_filter': 3,
+                }[self.guard_mode],
+                't_new': t_solve,
+                'path_t_new': path_t,
+                'consecutive': self.guard_consecutive_blocks,
+                'fault': bool(self.guard_fault),
+            },
+            dart_diag=dart_diag,
+        )
+        if self._loop_file is not None:
+            self._loop_file.flush()
+            self._loop_rows_since_flush = 0
+
     def destroy_node(self):
         gc.enable()
         self._log_trust_cost_summary()
@@ -3346,6 +3892,49 @@ class MoveBaseCircleMpcIkDemo(Node):
         if self.q_measured is None:
             self._warn_missing_joint_states()
             return
+
+        if self.transport_delay_guard_enabled:
+            now_wall = self.get_clock().now().nanoseconds * 1e-9
+            local_age_ms = (
+                (now_wall - self._js_recv_wall_sec) * 1000.0
+                if np.isfinite(self._js_recv_wall_sec)
+                else float('inf'))
+            source_gap_ms = (
+                (self._js_recv_wall_sec - self._js_header_stamp_sec) * 1000.0
+                if (
+                    np.isfinite(self._js_recv_wall_sec)
+                    and np.isfinite(self._js_header_stamp_sec)
+                )
+                else float('inf'))
+            if self._update_transport_delay_guard(
+                    source_gap_ms, self.dt,
+                    self._js_header_stamp_sec, local_age_ms):
+                published = self._enter_transport_fault(
+                    source_gap_ms,
+                    local_age_ms,
+                    self._js_header_stamp_sec,
+                    path_time=0.0)
+                self._publish_path_progress(
+                    now_wall, 0.0, path_time=0.0, path_scale=0.0)
+                self._append_transport_fault_row(
+                    now_wall, float('nan'),
+                    self.q_measured, self.dq_measured,
+                    self._js_header_stamp_sec, self._js_recv_wall_sec,
+                    local_age_ms, source_gap_ms, published)
+                return
+            if (
+                local_age_ms > self.feedback_stale_timeout_ms
+                or abs(source_gap_ms) > self.transport_delay_threshold_ms
+            ):
+                self.reset_hold_time = 0.0
+                self.get_logger().warn(
+                    '复位姿态已到达，但 /joint_states 尚不满足新鲜度硬门：'
+                    f'transport_gap={source_gap_ms:.1f}ms, '
+                    f'feedback_age={local_age_ms:.1f}ms；'
+                    '保持 reset，不进入正式轨迹。',
+                    throttle_duration_sec=1.0,
+                )
+                return
 
         reset_err = np.abs(self.q_measured - self.reset_q_target)
         if np.all(reset_err <= RESET_TOLERANCE_RAD):
@@ -3367,6 +3956,7 @@ class MoveBaseCircleMpcIkDemo(Node):
                 # guard_fault 不在此清除 —— fault 后不会再回到 track。
                 self._guard_q_last = None
                 self._guard_t_last_reference = float('nan')
+                self._guard_path_t_last_reference = float('nan')
                 self._guard_p_cmd_last = None
                 self._guard_p_ref_last = None
                 self._guard_R_err_last = None
@@ -3384,6 +3974,16 @@ class MoveBaseCircleMpcIkDemo(Node):
                 self._so_last_cmd_dq = None
                 self._so_last_cmd_ddq = None
                 self.late_tick_recovery_count = 0
+                self._transport_gap_bad_ticks = 0
+                self._transport_gap_warned = False
+                self._transport_gap_bad_duration_sec = 0.0
+                self._transport_gap_distinct_bad_samples = 0
+                self._transport_gap_last_bad_stamp = float('nan')
+                self._transport_gap_bad_active = False
+                self.transport_fault = False
+                self.transport_fault_gap_ms = float('nan')
+                self._fault_path_time = float('nan')
+                self._last_path_update_wall = None
                 self._base_belief_offset = np.zeros(3)
                 self._base_estimator_rng = np.random.default_rng(
                     self.base_estimator_seed)
@@ -3400,7 +4000,8 @@ class MoveBaseCircleMpcIkDemo(Node):
 
     def _apply_command_guard(
             self, q_next, q_current, t_solve, info, command_usable,
-            t_state=None):
+            t_state=None, path_t_solve=None, path_t_state=None,
+            path_t_new=None, base_t_new=None):
         """求解器步长契约 + 四种 guard_mode 的决策与应用。
 
         副作用(与阶段1E之前的内联逻辑一致): 接受时更新 self.q_last / self.warm_start /
@@ -3412,16 +4013,29 @@ class MoveBaseCircleMpcIkDemo(Node):
         q_next = np.asarray(q_next, dtype=float)
         q_current = np.asarray(q_current, dtype=float)
         t_state = float(t_solve if t_state is None else t_state)
+        if path_t_solve is None:
+            path_t_solve = self._path_time_at_offset(t_solve, 0.0)
         dq_cmd = np.zeros(JOINT_COUNT)
         guard_block = False
         command_fk_step = float('nan')
-        t_new = (
-            t_state + self.dt
+        t_new = float(
+            base_t_new
+            if base_t_new is not None
+            else t_state + self.dt
             if self.guard_mode == 'state_safe_filter'
-            else t_solve + self.reference_lead_steps * self.dt
-        )
+            else t_solve + self.reference_lead_steps * self.dt)
+        if path_t_state is None:
+            path_t_state = self._path_time_at_offset(
+                t_solve, max(0.0, t_state - t_solve))
+        if path_t_new is None:
+            path_t_new = self._path_time_at_offset(
+                t_solve, max(0.0, t_new - t_solve))
+        path_rate = (
+            float(self.time_scaler.scale)
+            if self.online_time_scaling_enabled else 1.0)
         guard_ev = None
         guard_t_last_used = float('nan')
+        guard_path_t_last_used = float('nan')
         guard_lambda = float('nan')
         guard_projected = False
         guard_backup = False
@@ -3483,7 +4097,8 @@ class MoveBaseCircleMpcIkDemo(Node):
                     command_usable = False
                     self.warm_start = None
         if command_usable:
-            command_fk_step = self._command_fk_step(q_next, t_solve)
+            command_fk_step = self._command_fk_step(
+                q_next, t_solve, path_t_solve)
             if self.guard_mode not in (
                     'expected_residual', 'state_safe_filter'):
                 # legacy_fixed_step 决策(与阶段1E之前逐拍一致)。expected_shadow 的拦截
@@ -3512,15 +4127,21 @@ class MoveBaseCircleMpcIkDemo(Node):
                     # shadow: 只诊断,不改 q/dq/warm_start/状态机;锚点只在命令被
                     # (legacy 规则)接受时更新,拒绝帧不污染。
                     guard_t_last_used = self._guard_t_last_reference
+                    guard_path_t_last_used = (
+                        self._guard_path_t_last_reference)
                     guard_ev = self._guard_expected_eval(
-                        np.asarray(q_next, dtype=float), t_new)
+                        np.asarray(q_next, dtype=float), t_new,
+                        path_t_new, path_rate)
                     if not guard_block:
                         self._guard_accept(np.asarray(q_next, dtype=float), guard_ev)
             elif self.guard_mode == 'expected_residual':
                 # expected_residual 主动守卫: 残差超限 -> λ 投影 -> 仍不可行才 hold。
                 q_cand = np.asarray(q_next, dtype=float)
                 guard_t_last_used = self._guard_t_last_reference
-                guard_ev = self._guard_expected_eval(q_cand, t_new)
+                guard_path_t_last_used = (
+                    self._guard_path_t_last_reference)
+                guard_ev = self._guard_expected_eval(
+                    q_cand, t_new, path_t_new, path_rate)
                 if guard_ev['r_pos'] <= guard_ev['r_allow']:
                     guard_lambda = 1.0                       # 正常通过,不修改命令
                     self.q_last = q_cand
@@ -3528,8 +4149,9 @@ class MoveBaseCircleMpcIkDemo(Node):
                     self.warm_start = info['trajectory']
                     self._guard_accept(q_cand, guard_ev)
                 else:
-                    proj = (self._guard_project(q_cand, q_current, t_new,
-                                                guard_ev['r_ori'])
+                    proj = (self._guard_project(
+                                q_cand, q_current, t_new,
+                                guard_ev['r_ori'], path_t_new, path_rate)
                             if self.guard_projection_enabled else None)
                     if proj is not None:
                         guard_lambda, q_safe, ev_safe = proj
@@ -3562,7 +4184,7 @@ class MoveBaseCircleMpcIkDemo(Node):
                             throttle_duration_sec=1.0,
                         )
                         if self.guard_consecutive_blocks >= self.guard_max_consecutive_blocks:
-                            self._guard_enter_fault()
+                            self._guard_enter_fault(path_t_solve)
             else:
                 # Application-time state safety filter.  Each tick starts from
                 # the predicted current state, so one rejected command cannot
@@ -3570,8 +4192,10 @@ class MoveBaseCircleMpcIkDemo(Node):
                 # feasibility checks.
                 q_cand = np.asarray(q_next, dtype=float)
                 guard_t_last_used = t_state
+                guard_path_t_last_used = path_t_state
                 guard_ev = self._guard_eval_between(
-                    q_current, t_state, q_cand, t_new)
+                    q_current, t_state, q_cand, t_new,
+                    path_t_state, path_t_new, path_rate)
                 candidate_safe = self._guard_candidate_safe(
                     q_cand, q_current, guard_ev, guard_ev['r_ori'])
                 if (
@@ -3592,7 +4216,8 @@ class MoveBaseCircleMpcIkDemo(Node):
                     proj = (
                         self._guard_project_from_state(
                             q_cand, q_current, t_state, t_new,
-                            guard_ev['r_ori'])
+                            guard_ev['r_ori'], path_t_state, path_t_new,
+                            path_rate)
                         if self.guard_projection_enabled else None
                     )
                     # λ=0 is geometrically safe but would merely hold the
@@ -3615,11 +4240,13 @@ class MoveBaseCircleMpcIkDemo(Node):
                         )
                     else:
                         q_backup = self._guard_backup_command(
-                            q_current, t_new)
+                            q_current, t_new, path_t_new)
                         ev_backup = self._guard_eval_between(
-                            q_current, t_state, q_backup, t_new)
+                            q_current, t_state, q_backup, t_new,
+                            path_t_state, path_t_new, path_rate)
                         ev_hold = self._guard_eval_between(
-                            q_current, t_state, q_current, t_new)
+                            q_current, t_state, q_current, t_new,
+                            path_t_state, path_t_new, path_rate)
                         backup_safe = (
                             np.all(np.isfinite(q_backup))
                             and self._guard_candidate_safe(
@@ -3663,18 +4290,22 @@ class MoveBaseCircleMpcIkDemo(Node):
                                 self.guard_consecutive_blocks
                                 >= self.guard_max_consecutive_blocks
                             ):
-                                self._guard_enter_fault()
+                                self._guard_enter_fault(path_t_solve)
         elif self.guard_mode == 'state_safe_filter':
             # Solver failure/NaN must not fall back to a stale accepted joint
             # command while the base keeps moving. Use the same bounded local
             # controller as the residual-rejection path, anchored at the fresh
             # application-time state.
             guard_t_last_used = t_state
+            guard_path_t_last_used = path_t_state
             ev_hold = self._guard_eval_between(
-                q_current, t_state, q_current, t_new)
-            q_backup = self._guard_backup_command(q_current, t_new)
+                q_current, t_state, q_current, t_new,
+                path_t_state, path_t_new, path_rate)
+            q_backup = self._guard_backup_command(
+                q_current, t_new, path_t_new)
             ev_backup = self._guard_eval_between(
-                q_current, t_state, q_backup, t_new)
+                q_current, t_state, q_backup, t_new,
+                path_t_state, path_t_new, path_rate)
             backup_safe = (
                 np.all(np.isfinite(q_backup))
                 and self._guard_candidate_safe(
@@ -3712,15 +4343,17 @@ class MoveBaseCircleMpcIkDemo(Node):
                     self.guard_consecutive_blocks
                     >= self.guard_max_consecutive_blocks
                 ):
-                    self._guard_enter_fault()
+                    self._guard_enter_fault(path_t_solve)
         return {
             'command_usable': command_usable,
             'dq_cmd': dq_cmd,
             'guard_block': guard_block,
             'command_fk_step': command_fk_step,
             't_new': t_new,
+            'path_t_new': path_t_new,
             'guard_ev': guard_ev,
             'guard_t_last_used': guard_t_last_used,
+            'guard_path_t_last_used': guard_path_t_last_used,
             'guard_lambda': guard_lambda,
             'guard_projected': guard_projected,
             'guard_backup': guard_backup,
@@ -3755,7 +4388,10 @@ class MoveBaseCircleMpcIkDemo(Node):
             if (np.isfinite(js_recv_wall_sec)
                 and np.isfinite(js_header_stamp_sec))
             else float('nan'))
-        if np.isfinite(transport_gap_ms) and transport_gap_ms > 30.0:
+        if (
+            np.isfinite(transport_gap_ms)
+            and abs(transport_gap_ms) > self.transport_delay_threshold_ms
+        ):
             self._transport_gap_bad_ticks += 1
         else:
             self._transport_gap_bad_ticks = 0
@@ -3764,10 +4400,35 @@ class MoveBaseCircleMpcIkDemo(Node):
             self._transport_gap_warned = True
             self.get_logger().error(
                 f'/joint_states 传输延迟异常: recv-stamp 间隔持续 '
-                f'>{30.0:.0f}ms (当前 {transport_gap_ms:.1f}ms)。反馈陈旧会让'
+                f'>{self.transport_delay_threshold_ms:.0f}ms '
+                f'(当前 {transport_gap_ms:.1f}ms)。反馈陈旧会让'
                 '守卫大量投影、跟踪严重劣化。典型原因是 DDS 共享内存残留: '
                 '请停止所有 ROS 节点后执行 '
                 'rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_* 再重启。')
+        guard_dt_sec = (
+            timer_interval_ms * 1e-3
+            if np.isfinite(timer_interval_ms) else self.dt)
+        if self._update_transport_delay_guard(
+                transport_gap_ms, guard_dt_sec, js_header_stamp_sec,
+                feedback_age_ms):
+            fault_path_t = self._path_time_at_offset(t_solve, 0.0)
+            published = self._enter_transport_fault(
+                transport_gap_ms,
+                feedback_age_ms,
+                js_header_stamp_sec,
+                path_time=fault_path_t)
+            self._publish_base_tf(t_solve, fault_path_t)
+            self._publish_path_progress(
+                solve_wall, t_solve,
+                path_time=fault_path_t,
+                path_scale=0.0)
+            self._append_transport_fault_row(
+                solve_wall, timer_interval_ms,
+                q_feedback, dq_feedback,
+                js_header_stamp_sec, js_recv_wall_sec,
+                feedback_age_ms, transport_gap_ms, published)
+            self._publish_world_markers(t_solve, fault_path_t)
+            return
         application_delay_sec = self._predicted_application_delay_sec()
         self._last_application_delay_sec = application_delay_sec
 
@@ -3775,7 +4436,6 @@ class MoveBaseCircleMpcIkDemo(Node):
         # 时间网格), 之后本拍所有 _base_pose(参考生成/守卫/TF/记录)共享同一
         # 信念, 不会拍内不一致; trust 影子 CSV 也在此逐拍落盘。
         self._update_base_belief(t_solve)
-        self._publish_base_tf(t_solve)
 
         q_current = q_feedback
         feedback_time = (
@@ -3786,8 +4446,10 @@ class MoveBaseCircleMpcIkDemo(Node):
         periodic_diag = self._update_periodic_error_learning(
             q_current, feedback_time)
         if self.online_time_scaling_enabled:
-            scale_dt = (timer_interval_ms * 1e-3
-                        if np.isfinite(timer_interval_ms) else 0.0)
+            scale_dt = (
+                max(0.0, solve_wall - self._last_path_update_wall)
+                if self._last_path_update_wall is not None else 0.0)
+            self._last_path_update_wall = solve_wall
             exclusive_ladder = (
                 self.trust_ladder_enabled
                 and self.ladder_exclusive_scale_control)
@@ -3799,6 +4461,16 @@ class MoveBaseCircleMpcIkDemo(Node):
                  else self._time_scaling_tracking_error),
                 external_scale_cap=self._ladder_scale_cap,
             )
+        # scaler 更新后再统一派生 guard/TF 的双时钟。物理基座继续按
+        # wall/base clock 运动，路径目标与 whole 工作面朝向按 path clock。
+        base_t_state = t_solve + application_delay_sec
+        base_t_new = base_t_state + self.dt
+        path_t_solve = self._path_time_at_offset(t_solve, 0.0)
+        path_t_state = self._path_time_at_offset(
+            t_solve, application_delay_sec)
+        path_t_new = self._path_time_at_offset(
+            t_solve, application_delay_sec + self.dt)
+        self._publish_base_tf(t_solve)
         # 阶段1B:计算上一控制周期实际执行增量(measured_delta),或 0(zero)。
         dqp = self._compute_dq_prev(
             q_current, js_header_stamp_sec, dq_feedback)
@@ -3913,7 +4585,11 @@ class MoveBaseCircleMpcIkDemo(Node):
         tracking_ok = bool(info.get('tracking_ok', ok))
         g = self._apply_command_guard(
             q_next, q_control, t_solve, info, command_usable,
-            t_state=t_solve + application_delay_sec)
+            t_state=base_t_state,
+            path_t_solve=path_t_solve,
+            path_t_state=path_t_state,
+            path_t_new=path_t_new,
+            base_t_new=base_t_new)
         command_usable = g['command_usable']
         dq_cmd = g['dq_cmd']
         guard_block = g['guard_block']
@@ -4003,6 +4679,25 @@ class MoveBaseCircleMpcIkDemo(Node):
             )
             self.warm_start = None
 
+        first_track_tick = self._nominal_tick_index == 0
+        clock_path_t = (
+            self._fault_path_time
+            if self.guard_fault and math.isfinite(self._fault_path_time)
+            else 0.0 if first_track_tick else path_t_solve)
+        clock_path_scale = (
+            0.0 if self.guard_fault
+            else float(self.time_scaler.scale)
+            if self.online_time_scaling_enabled else 1.0)
+        if not first_track_tick:
+            # Publish this solve anchor before the command.  During a scale
+            # transition the visualizer can then map the command stamp using
+            # the current scale instead of extrapolating from the previous
+            # tick and permanently recording a small orange-FK phase error.
+            self._publish_path_progress(
+                solve_wall, t_solve,
+                path_time=clock_path_t,
+                path_scale=clock_path_scale)
+
         q_published, dq_published, publish_wall, dart_diag = (
             self._publish_joint_positions(self.q_last, dq_cmd))
         # 首个 track tick 发布后, 把轨迹原点重锚到该次发布时刻。
@@ -4012,8 +4707,16 @@ class MoveBaseCircleMpcIkDemo(Node):
         # visualizer 的定时误差 KPI 会被这个纯时钟偏移污染(~1-2mm 假滞后)。
         # 重锚后两原点按构造相等; 首拍参考瞬时前移一次(<20ms, 处于起笔前),
         # 不改变 header.stamp=真实发布时刻 的既有约定。
-        if self._nominal_tick_index == 0:
+        if first_track_tick:
             self.traj_origin_wall = publish_wall
+            # Path-time integration uses the same re-anchored origin. Without
+            # this, the second tick integrates solve->solve while base_t uses
+            # publish->solve, permanently leading by first solve latency.
+            self._last_path_update_wall = publish_wall
+            self._publish_path_progress(
+                publish_wall, 0.0,
+                path_time=0.0,
+                path_scale=clock_path_scale)
         actual_publish_delay_sec = max(0.0, publish_wall - solve_wall)
         if self.latency_compensation_enabled:
             alpha = self.latency_publish_ewma_alpha
@@ -4021,7 +4724,8 @@ class MoveBaseCircleMpcIkDemo(Node):
                 (1.0 - alpha) * self._publish_latency_ewma_sec
                 + alpha * actual_publish_delay_sec)
         self._warn_joint_limits(q_published)
-        self._update_command_fk_monitor(q_published, t_solve)
+        self._update_command_fk_monitor(
+            q_published, t_solve, path_t_solve)
 
         t_publish = publish_wall - self.traj_origin_wall
         timing = {
@@ -4029,9 +4733,16 @@ class MoveBaseCircleMpcIkDemo(Node):
             't_publish': t_publish,
             't_reference': float(self._last_target_time0),
             't_next': t_publish + self.dt,
+            'path_time': path_t_solve,
+            'path_scale': (
+                0.0 if self.guard_fault
+                else float(self.time_scaler.scale)
+                if self.online_time_scaling_enabled else 1.0),
             'timer_interval_ms': timer_interval_ms,
             'solve_to_publish_ms': (publish_wall - solve_wall) * 1000.0,
             'feedback_age_ms': feedback_age_ms,
+            'transport_gap_ms': transport_gap_ms,
+            'transport_fault': self.transport_fault,
             'late_tick_recovery': late_tick_recovery,
             'predicted_application_delay_ms': application_delay_sec * 1000.0,
             'state_prediction_age_ms': state_prediction_age_sec * 1000.0,
@@ -4058,7 +4769,10 @@ class MoveBaseCircleMpcIkDemo(Node):
                               'expected_residual': 2,
                               'state_safe_filter': 3}[self.guard_mode],
                 't_new': g['t_new'],
+                'path_t_new': g['path_t_new'],
                 't_last_reference': g['guard_t_last_used'],
+                'path_t_last_reference': g[
+                    'guard_path_t_last_used'],
                 'ev': g['guard_ev'],
                 'lambda': g['guard_lambda'],
                 'projected': g['guard_projected'],
@@ -4080,13 +4794,30 @@ class MoveBaseCircleMpcIkDemo(Node):
         )
         self._nominal_tick_index += 1
         self._print_joint_angles(t_solve)
-        self._publish_world_markers(t_solve)
+        self._publish_world_markers(
+            t_solve,
+            self._fault_path_time
+            if self.guard_fault and math.isfinite(self._fault_path_time)
+            else None)
 
     def tick(self):
-        if self.phase == 'guard_fault':
+        if self.phase in ('guard_fault', 'transport_fault'):
             # 阶段1E: 显式安全停止 —— 保持最后被接受的命令,零速度,不再求解/推进轨迹,
             # 不自动重锚/复位(需要人工重启才能恢复)。
             self._publish_joint_positions(self.q_last, np.zeros(JOINT_COUNT))
+            now_wall = self.get_clock().now().nanoseconds * 1e-9
+            base_t = (
+                max(0.0, now_wall - self.traj_origin_wall)
+                if self.traj_origin_wall is not None else 0.0)
+            frozen_path_t = (
+                self._fault_path_time
+                if math.isfinite(self._fault_path_time)
+                else self._path_time_at_offset(base_t, 0.0))
+            self._publish_base_tf(base_t, frozen_path_t)
+            self._publish_path_progress(
+                now_wall, base_t,
+                path_time=frozen_path_t,
+                path_scale=0.0)
             return
         if self.phase == 'reset':
             self._publish_base_tf(0.0)
