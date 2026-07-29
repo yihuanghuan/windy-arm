@@ -309,6 +309,22 @@ ros2 launch manipulator moving_base_uncertainty.launch.py \
 | `estimated` | 使用带延迟、噪声和低通的模拟状态估计 |
 | `model` | 使用同源测量驱动频谱辨识、保形校准和预测模型，为主要不确定性算法 |
 
+`model` 模式默认运行完整 B4。算法内部保留五个对照层级，但它们属于研究配置，
+不作为 launch 参数公开：
+
+| `uncertainty_control_mode` | 感知与控制作用 |
+|---|---|
+| `b0` | 不使用扰动预测前馈 |
+| `b1` | 仅使用谐波参数通道点预测，不做适用度或快速残差修正 |
+| `b2` | 使用原有 β 平滑门控谐波前馈，作为兼容回退 |
+| `b3` | 估计并记录参数适用度，使用完整的谐波与两工况快速残差融合均值，但保持固定调速和 NMPC 权重 |
+| `b4` | 使用完整融合预测、风险补偿、任务调速、NMPC 位置权重适配和安全过滤半径 |
+
+两工况快速残差模型使用统一三维状态。瞬态工况描述向零衰减的短时残差，持续工况
+描述随机游走偏差。工况概率只用于动力学模型融合，不等同于预测可靠性。β 只表示
+谐波参数通道的适用程度；融合协方差和多步保形半径共同描述最终预测风险。因此持续
+偏差出现时，即使谐波参数适用度下降，快速残差补偿也不会被同一个 β 门整体关闭。
+
 扰动幅值、随机种子、估计噪声和延迟都属于实验定义，不再作为启动命令参数。
 CSV、参数快照和退出时图片默认保存到
 `${ROS_HOME:-~/.ros}/moving_base_uncertainty`；这是 launch 自动选择的主机输出目录，
@@ -331,14 +347,35 @@ src/arm-platform/config/moving_base_uncertainty.yaml
 | 执行器与内部 plant | 速度前馈增益 `1.0`，最大速度 `3 rad/s`，最大加速度 `20 rad/s²` |
 | 二阶 OCP | 预测步数 `N=10`，最大速度 `2 rad/s`，最大加速度 `15 rad/s²` |
 | 应用时延补偿 | 开启；名义求解到发布延迟 `9 ms`，发布后执行器延迟 `5 ms` |
-| 在线自适应 | `online_time_scaling_enabled: true`，`trust_ladder_enabled: true` |
-| 安全与记录 | transport delay guard 开启，loop/control CSV 记录开启 |
+| 不确定性感知 | `uncertainty_control_mode: b4`，两工况快速残差与多步保形校准开启 |
+| 风险调控 | 风险预算 `0.012 m`，最小任务速度比例 `0.3`，最小位置权重比例 `0.35` |
+| 在线自适应 | `online_time_scaling_enabled: true`；旧 `trust_ladder_enabled: false`，只保留作 B2 消融 |
+| 安全与记录 | transport delay guard 开启；保形半径接入守卫并限幅到 `0.015 m`；loop/control/trust CSV 记录开启 |
 | 可视化 | `frame_id: world`，`path_clock_mode: required`，RViz 路径 5 Hz/最多 2500 点，实时 Matplotlib 关闭 |
 
 执行器实际限幅、控制器内部 plant 模型和 OCP 约束是三组不同语义。YAML 集中保存
 这三组值；调整时必须保持 plant 与执行器一致，并保证 OCP 约束不超过执行器限幅。
 不要只改其中一处，也不要通过命令行临时覆盖 plant 或 OCP 参数，否则参数快照与实验
 条件会失去一致性。
+
+B4 每拍在 `trust_shadow_<stamp>.csv` 中额外记录参数适用度、持续工况概率、快速残差
+均值、融合风险半径、补偿增益、任务速度上限、NMPC 位置权重比例和守卫不确定性半径。
+这些字段用于 B0--B4 配对对照及扰动后恢复时间分析。解析平台只有基座平移不确定性，
+所以基座预测误差到 world 系末端位置的传播雅可比为单位阵；进入含姿态与动力学耦合的
+Gazebo 平台后必须替换为完整的构型相关传播。
+
+不启动 ROS 时，可先运行纯 numpy 的 B0--B4 代理验收：
+
+```bash
+python3 src/arm-platform/demo/eval_uncertainty_b4.py \
+  --seeds 0,1,2 \
+  --duration 30 \
+  --out /tmp/uncertainty_b4_eval.json
+```
+
+该脚本检查持续工况是否激活、B3/B4 是否优于对应旧基线，以及估计与决策快路径的
+P99 是否低于 `5 ms`。它只评价扰动补偿代理误差，不得写成机械臂闭环实验结果；
+最终验收仍需运行 3.5.2 的 ROS 实验并比较末端 RMSE、峰值误差和恢复时间。
 
 修改 YAML 后停止当前 launch，重新构建并启动：
 
@@ -378,6 +415,19 @@ command-FK 仍在后台写入 CSV/PNG，用于区分控制命令与执行器反�
 按 `stroke_id` 分成多个 `LINE_STRIP`：同一落笔段内部连续，抬笔、换字和换面处一定
 断开。统一实验配置对每个笔画的 RViz 显示副本使用 7 点居中平滑，且保持各笔画首尾
 点不变；该平滑不修改原始采样、CSV、退出时 PNG 或误差指标。
+
+实验结束后可从最新一组完整数据生成四幅独立离线图：
+
+```bash
+cd ~/code/windylab_ws
+python3 src/arm-platform/demo/plot_moving_base_report.py
+```
+
+脚本默认从 `${ROS_HOME:-~/.ros}/moving_base_uncertainty` 选择最新主轨迹 CSV 及其
+控制器参数快照，输出三维轨迹、三轴期望/实际跟踪、误差变化和基座频谱四幅 PNG。
+它不会读取 command-FK；三轴图的扰动窗和箭头使用物理 `time_sec`，不使用可能被
+在线降速的 `path_time_sec`。基座频谱中的物理真值由参数快照和同源扰动模型重建，
+不会把 model belief 下的 `base_pos_*` 误标为真实基座。
 
 RViz 的 `Global Options -> Fixed Frame` 必须是 `world`。若固定在 `base_link`，
 网格和 world 目标会呈现反向运动，很容易被误判为末端漂移。这里的扰动直接施加到

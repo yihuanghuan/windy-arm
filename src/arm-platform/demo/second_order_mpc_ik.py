@@ -117,6 +117,7 @@ class SecondOrderMpcIK(MpcPinocchioIK):
         target_acceleration: Optional[np.ndarray] = None,
         contour_tangent: Optional[np.ndarray] = None,
         contour_active: Optional[np.ndarray] = None,
+        position_weight_scale: float = 1.0,
     ):
         q0 = np.asarray(q_current, dtype=float).reshape(-1)
         if q0.shape != (self.nq,) or not np.all(np.isfinite(q0)):
@@ -139,6 +140,11 @@ class SecondOrderMpcIK(MpcPinocchioIK):
             contour_tangent, "contour_tangent")
         contour_active_sequence = self._scalar_reference_sequence(
             contour_active, "contour_active")
+        position_weight_scale = float(position_weight_scale)
+        if (not np.isfinite(position_weight_scale)
+                or not 0.0 < position_weight_scale <= 1.0):
+            raise ValueError(
+                "position_weight_scale 必须是 (0,1] 内的有限标量")
         rotations, orientation_active = self._rotation_sequence(target_rotation, q0)
         source_plan = self._last_plan if warm_start is None else warm_start
         if source_plan is None:
@@ -161,7 +167,7 @@ class SecondOrderMpcIK(MpcPinocchioIK):
             q0, v0, targets, rotations,
             target_velocities, target_accelerations,
             contour_tangents, contour_active_sequence,
-            q_guess, q_ref)
+            q_guess, q_ref, position_weight_scale)
         q_plan = result["q"]
         v_plan = result["dq"]
         a_plan = result["ddq"]
@@ -225,6 +231,7 @@ class SecondOrderMpcIK(MpcPinocchioIK):
                 "projection_velocity_active_ratio"],
             "projection_acceleration_active_ratio": result[
                 "projection_acceleration_active_ratio"],
+            "position_weight_scale": result["position_weight_scale"],
             "nit": result["nit"],
             "trajectory": q_plan.copy(),
             "velocity_trajectory": v_plan.copy(),
@@ -697,6 +704,24 @@ class _AcadosSecondOrderBackend:
         for stage in range(cfg.horizon_steps):
             self.solver.cost_set(stage, "W", W)
         self.solver.cost_set(cfg.horizon_steps, "W", W_e)
+        self._W_base = W.copy()
+        self._W_e_base = W_e.copy()
+        self._position_weight_scale = 1.0
+
+    def _apply_position_weight_scale(self, scale: float):
+        """按末端预测风险缩放位置相关代价，不改变 OCP 结构或硬约束。"""
+        scale = float(scale)
+        if abs(scale - self._position_weight_scale) <= 1.0e-12:
+            return
+        W = self._W_base.copy()
+        W_e = self._W_e_base.copy()
+        # cost_y 的前 7 维依次是 3D 轮廓误差、1D 滞后误差和 3D 定时误差。
+        W[:7, :7] *= scale
+        W_e[:7, :7] *= scale
+        for stage in range(self.owner.config.horizon_steps):
+            self.solver.cost_set(stage, "W", W)
+        self.solver.cost_set(self.owner.config.horizon_steps, "W", W_e)
+        self._position_weight_scale = scale
 
     def _set_stage_parameters(
         self,
@@ -838,11 +863,12 @@ class _AcadosSecondOrderBackend:
         self, q0, v0, targets, rotations,
         target_velocities, target_accelerations,
         contour_tangents, contour_active,
-        q_guess, q_ref,
+        q_guess, q_ref, position_weight_scale,
     ):
         cfg = self.owner.config
         nq, horizon = self.owner.nq, cfg.horizon_steps
         dt = float(cfg.control_dt)
+        self._apply_position_weight_scale(position_weight_scale)
         v_guess = np.empty_like(q_guess)
         previous_q = q0
         for k in range(horizon):
@@ -940,4 +966,5 @@ class _AcadosSecondOrderBackend:
                 "velocity_active_ratio"],
             "projection_acceleration_active_ratio": parameter_diag[
                 "acceleration_active_ratio"],
+            "position_weight_scale": float(position_weight_scale),
         }

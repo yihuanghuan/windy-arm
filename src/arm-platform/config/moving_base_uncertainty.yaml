@@ -100,7 +100,10 @@ move_base_circle_mpc_ik_demo:
     base_estimator_lpf_hz: 10.0
     base_estimator_seed: 1
 
-    # Spectral model, conformal trust and beta-weighted feed-forward.
+    # B4 uncertainty-aware control. Set b0--b3 only for registered ablations.
+    uncertainty_control_mode: b4
+
+    # Slow parameter model and parameter-channel applicability.
     trust_n_freq: 6
     trust_fmin_hz: 0.15
     trust_fmax_hz: 2.5
@@ -123,6 +126,30 @@ move_base_circle_mpc_ik_demo:
     trust_beta_n_grid: 15
     trust_beta_degraded: 0.6
     trust_beta_healthy: 0.9
+
+    # Fast residual IMM: decaying transient versus persistent random walk.
+    trust_regime_enabled: true
+    trust_regime_stable_tau_sec: 0.12
+    trust_regime_stable_process_std: 0.0008
+    trust_regime_persistent_process_std: 0.0025
+    trust_regime_measurement_std: -1.0
+    trust_regime_stable_stay_probability: 0.985
+    trust_regime_persistent_stay_probability: 0.97
+    trust_regime_initial_persistent_probability: 0.02
+
+    # Risk-aware compensation, task speed and NMPC position-cost adaptation.
+    uncertainty_risk_weight: 0.25
+    uncertainty_applicability_risk_gain: 1.0
+    uncertainty_smoothing_weight: 0.000025
+    uncertainty_gain_fall_tau_sec: 0.15
+    uncertainty_gain_rise_tau_sec: 0.45
+    uncertainty_risk_budget_m: 0.012
+    uncertainty_min_speed_scale: 0.3
+    uncertainty_min_position_weight_scale: 0.35
+    uncertainty_guard_radius_gain: 1.0
+    uncertainty_guard_radius_max_m: 0.015
+
+    # Legacy B2 feed-forward gate retained for ablation and rollback only.
     trust_feedforward_gating_enabled: true
     trust_feedforward_gate_low: 0.2
     trust_feedforward_gate_high: 0.5
@@ -135,10 +162,10 @@ move_base_circle_mpc_ik_demo:
     trust_ident_budget_ms: 1.8
     trust_ident_units_pen_up: 8
     trust_ident_budget_pen_up_ms: 2.6
-    trust_shadow_csv: false
+    trust_shadow_csv: true
 
-    # Trust-driven path-speed ladder.
-    trust_ladder_enabled: true
+    # Legacy B2 trust ladder retained for ablation; B4 uses the risk budget.
+    trust_ladder_enabled: false
     ladder_b_degraded: 0.3
     ladder_b_recover: 0.7
     ladder_delta_degraded_ratio: 1.35
