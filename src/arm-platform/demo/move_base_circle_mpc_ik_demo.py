@@ -38,6 +38,7 @@ import moving_base_trajectory_config as traj
 from base_trust_estimator import (
     BaseTrustEstimator,
     TrustFeedforwardGate,
+    UncertaintyAwareFeedforwardDecision,
     trust_feedforward_gain,
 )
 from dart_noise import bounded_dart_command
@@ -226,6 +227,36 @@ class MoveBaseCircleMpcIkDemo(Node):
         # E[β] 在 degraded/healthy 两个物理精度锚点间连续标定为 b∈[0,1]。
         self.declare_parameter('trust_beta_degraded', 0.6)
         self.declare_parameter('trust_beta_healthy', 0.9)
+        # B0--B4 消融/部署模式:
+        # b0 无扰动前馈；b1 仅谐波点预测；b2 原 β 门控；b3 联合估计但
+        # 固定控制器；b4 联合估计 + 风险决策 + NMPC/调速/守卫接口。
+        self.declare_parameter('uncertainty_control_mode', 'b4')
+        # 统一三维状态的两工况快速残差 IMM：瞬态衰减/持续随机游走。
+        self.declare_parameter('trust_regime_enabled', True)
+        self.declare_parameter('trust_regime_stable_tau_sec', 0.12)
+        self.declare_parameter('trust_regime_stable_process_std', 8.0e-4)
+        self.declare_parameter(
+            'trust_regime_persistent_process_std', 2.5e-3)
+        self.declare_parameter('trust_regime_measurement_std', -1.0)
+        self.declare_parameter(
+            'trust_regime_stable_stay_probability', 0.985)
+        self.declare_parameter(
+            'trust_regime_persistent_stay_probability', 0.97)
+        self.declare_parameter(
+            'trust_regime_initial_persistent_probability', 0.02)
+        # B4 决策参数。β 表示参数模型适用程度，不直接压低预测均值；
+        # 适用度下降时通过风险膨胀使控制决策更保守。
+        self.declare_parameter('uncertainty_risk_weight', 0.25)
+        self.declare_parameter('uncertainty_applicability_risk_gain', 1.0)
+        self.declare_parameter('uncertainty_smoothing_weight', 2.5e-5)
+        self.declare_parameter('uncertainty_gain_fall_tau_sec', 0.15)
+        self.declare_parameter('uncertainty_gain_rise_tau_sec', 0.45)
+        self.declare_parameter('uncertainty_risk_budget_m', 0.012)
+        self.declare_parameter('uncertainty_min_speed_scale', 0.3)
+        self.declare_parameter(
+            'uncertainty_min_position_weight_scale', 0.35)
+        self.declare_parameter('uncertainty_guard_radius_gain', 1.0)
+        self.declare_parameter('uncertainty_guard_radius_max_m', 0.015)
         # β 加权模型前馈: b<=low 回到 nominal，b>=high 使用完整 Δ̂，
         # 中间 smoothstep 连续门控；b 先经非对称一阶滤波，过滤健康段的
         # 孤立低脉冲；关闭开关可生成严格的未门控消融对照。
@@ -547,6 +578,51 @@ class MoveBaseCircleMpcIkDemo(Node):
             self.get_parameter('trust_beta_degraded').value)
         self.trust_beta_healthy = float(
             self.get_parameter('trust_beta_healthy').value)
+        self.uncertainty_control_mode = str(
+            self.get_parameter('uncertainty_control_mode').value
+        ).strip().lower()
+        self.trust_regime_enabled = bool(
+            self.get_parameter('trust_regime_enabled').value)
+        self.trust_regime_stable_tau_sec = float(
+            self.get_parameter('trust_regime_stable_tau_sec').value)
+        self.trust_regime_stable_process_std = float(
+            self.get_parameter('trust_regime_stable_process_std').value)
+        self.trust_regime_persistent_process_std = float(
+            self.get_parameter(
+                'trust_regime_persistent_process_std').value)
+        self.trust_regime_measurement_std = float(
+            self.get_parameter('trust_regime_measurement_std').value)
+        self.trust_regime_stable_stay_probability = float(
+            self.get_parameter(
+                'trust_regime_stable_stay_probability').value)
+        self.trust_regime_persistent_stay_probability = float(
+            self.get_parameter(
+                'trust_regime_persistent_stay_probability').value)
+        self.trust_regime_initial_persistent_probability = float(
+            self.get_parameter(
+                'trust_regime_initial_persistent_probability').value)
+        self.uncertainty_risk_weight = float(
+            self.get_parameter('uncertainty_risk_weight').value)
+        self.uncertainty_applicability_risk_gain = float(
+            self.get_parameter(
+                'uncertainty_applicability_risk_gain').value)
+        self.uncertainty_smoothing_weight = float(
+            self.get_parameter('uncertainty_smoothing_weight').value)
+        self.uncertainty_gain_fall_tau_sec = float(
+            self.get_parameter('uncertainty_gain_fall_tau_sec').value)
+        self.uncertainty_gain_rise_tau_sec = float(
+            self.get_parameter('uncertainty_gain_rise_tau_sec').value)
+        self.uncertainty_risk_budget_m = float(
+            self.get_parameter('uncertainty_risk_budget_m').value)
+        self.uncertainty_min_speed_scale = float(
+            self.get_parameter('uncertainty_min_speed_scale').value)
+        self.uncertainty_min_position_weight_scale = float(
+            self.get_parameter(
+                'uncertainty_min_position_weight_scale').value)
+        self.uncertainty_guard_radius_gain = float(
+            self.get_parameter('uncertainty_guard_radius_gain').value)
+        self.uncertainty_guard_radius_max_m = float(
+            self.get_parameter('uncertainty_guard_radius_max_m').value)
         self.trust_feedforward_gating_enabled = bool(
             self.get_parameter('trust_feedforward_gating_enabled').value)
         self.trust_feedforward_gate_low = float(
@@ -602,6 +678,47 @@ class MoveBaseCircleMpcIkDemo(Node):
         if (self.trust_feedforward_gate_fall_tau_sec <= 0.0
                 or self.trust_feedforward_gate_rise_tau_sec <= 0.0):
             raise ValueError('trust feedforward gate 时间常数必须为正')
+        if self.uncertainty_control_mode not in (
+                'b0', 'b1', 'b2', 'b3', 'b4'):
+            raise ValueError(
+                "uncertainty_control_mode 必须是 b0/b1/b2/b3/b4")
+        # 构造一次以集中校验 B4 决策参数；运行态在 reset 时重建。
+        UncertaintyAwareFeedforwardDecision(
+            applicability_low=self.trust_feedforward_gate_low,
+            applicability_high=self.trust_feedforward_gate_high,
+            risk_weight=self.uncertainty_risk_weight,
+            applicability_risk_gain=(
+                self.uncertainty_applicability_risk_gain),
+            smoothing_weight=self.uncertainty_smoothing_weight,
+            fall_tau_sec=self.uncertainty_gain_fall_tau_sec,
+            rise_tau_sec=self.uncertainty_gain_rise_tau_sec,
+            risk_budget_m=self.uncertainty_risk_budget_m,
+            min_speed_scale=self.uncertainty_min_speed_scale,
+            min_position_weight_scale=(
+                self.uncertainty_min_position_weight_scale),
+        )
+        regime_positive = np.asarray([
+            self.trust_regime_stable_tau_sec,
+            self.trust_regime_stable_process_std,
+            self.trust_regime_persistent_process_std,
+            (self.trust_sigma0 if self.trust_regime_measurement_std <= 0.0
+             else self.trust_regime_measurement_std),
+            self.uncertainty_guard_radius_gain,
+            self.uncertainty_guard_radius_max_m,
+            self.uncertainty_applicability_risk_gain,
+        ], dtype=float)
+        regime_probabilities = np.asarray([
+            self.trust_regime_stable_stay_probability,
+            self.trust_regime_persistent_stay_probability,
+            self.trust_regime_initial_persistent_probability,
+        ], dtype=float)
+        if (not np.all(np.isfinite(regime_positive))
+                or np.any(regime_positive <= 0.0)
+                or not np.all(np.isfinite(regime_probabilities))
+                or not 0.0 < regime_probabilities[0] < 1.0
+                or not 0.0 < regime_probabilities[1] < 1.0
+                or not 0.0 <= regime_probabilities[2] <= 1.0):
+            raise ValueError('two-regime/B4 uncertainty parameters are invalid')
         TrustLadderConfig(
             b_degraded=self.ladder_b_degraded,
             b_recover=self.ladder_b_recover,
@@ -1577,6 +1694,21 @@ class MoveBaseCircleMpcIkDemo(Node):
             ident_units_pen_up=self.trust_ident_units_pen_up,
             ident_budget_pen_up_sec=1e-3 * self.trust_ident_budget_pen_up_ms,
             cal_horizon_steps=cal_horizon_steps,
+            regime_enabled=self.trust_regime_enabled,
+            regime_stable_tau_sec=self.trust_regime_stable_tau_sec,
+            regime_stable_process_std=(
+                self.trust_regime_stable_process_std),
+            regime_persistent_process_std=(
+                self.trust_regime_persistent_process_std),
+            regime_measurement_std=(
+                None if self.trust_regime_measurement_std <= 0.0
+                else self.trust_regime_measurement_std),
+            regime_stable_stay_probability=(
+                self.trust_regime_stable_stay_probability),
+            regime_persistent_stay_probability=(
+                self.trust_regime_persistent_stay_probability),
+            regime_initial_persistent_probability=(
+                self.trust_regime_initial_persistent_probability),
         )
 
     def _reset_trust_estimator(self):
@@ -1589,6 +1721,10 @@ class MoveBaseCircleMpcIkDemo(Node):
         self._trust_pred_times = None
         self._trust_pred_delta = None
         self._trust_pred_delta_raw = None
+        self._trust_pred_harmonic = None
+        self._trust_pred_fast = None
+        self._trust_pred_covariance = None
+        self._trust_pred_mode_probabilities = None
         self._trust_pred_delta_cal = float('nan')
         self._trust_feedforward_gain = 0.0
         self._trust_feedforward_gate = TrustFeedforwardGate(
@@ -1596,6 +1732,26 @@ class MoveBaseCircleMpcIkDemo(Node):
             high=self.trust_feedforward_gate_high,
             fall_tau_sec=self.trust_feedforward_gate_fall_tau_sec,
             rise_tau_sec=self.trust_feedforward_gate_rise_tau_sec)
+        self._uncertainty_decision = UncertaintyAwareFeedforwardDecision(
+            applicability_low=self.trust_feedforward_gate_low,
+            applicability_high=self.trust_feedforward_gate_high,
+            risk_weight=self.uncertainty_risk_weight,
+            applicability_risk_gain=(
+                self.uncertainty_applicability_risk_gain),
+            smoothing_weight=self.uncertainty_smoothing_weight,
+            fall_tau_sec=self.uncertainty_gain_fall_tau_sec,
+            rise_tau_sec=self.uncertainty_gain_rise_tau_sec,
+            risk_budget_m=self.uncertainty_risk_budget_m,
+            min_speed_scale=self.uncertainty_min_speed_scale,
+            min_position_weight_scale=(
+                self.uncertainty_min_position_weight_scale),
+        )
+        self._uncertainty_speed_cap = 1.0
+        self._uncertainty_position_weight_scale = 1.0
+        self._uncertainty_radius_m = 0.0
+        self._uncertainty_parameter_gain = 0.0
+        self._uncertainty_risk_power = 0.0
+        self._guard_uncertainty_m = 0.0
         # 估计器单拍开销实测(要求: 常规 step/predict O(K), 分摊辨识块 <3ms):
         # 15s 窗口打印 P50/P99/max, 生命周期累积在结束时打总账。总账通道为
         # 有界蓄水池子样(容量 TRUST_COST_RESERVOIR_CAP, 见 _trust_all_append),
@@ -1685,16 +1841,75 @@ class MoveBaseCircleMpcIkDemo(Node):
             # 缓存本拍预测网格: 之后所有 _base_pose(参考生成/守卫/TF/记录)
             # 共享同一 Δ̂(t) 网格插值, 拍内一致且不重复预测。
             times = t_solve + self._trust_grid_offsets
-            delta_hat_raw, delta_cal = self._trust_estimator.predict_horizon(
+            stats = self._trust_estimator.predict_horizon_stats(
                 times / scale)
-            gate = (self._trust_feedforward_gate.update(
-                        step_diag['trust'], self.dt)
-                    if self.trust_feedforward_gating_enabled else 1.0)
+            harmonic = stats['harmonic_mean']
+            fast = stats['fast_mean']
+            covariance = stats['covariance']
+            delta_hat_raw = stats['mean']
+            delta_cal = float(stats['delta'])
+            parameter_gain = trust_feedforward_gain(
+                step_diag['parameter_applicability'],
+                self.trust_feedforward_gate_low,
+                self.trust_feedforward_gate_high)
+            mode = self.uncertainty_control_mode
+            self._uncertainty_speed_cap = 1.0
+            self._uncertainty_position_weight_scale = 1.0
+            self._uncertainty_radius_m = math.sqrt(
+                max(float(np.mean(np.trace(
+                    covariance, axis1=1, axis2=2)))
+                    + 3.0 * delta_cal * delta_cal, 0.0))
+            self._uncertainty_parameter_gain = float(parameter_gain)
+            self._uncertainty_risk_power = (
+                self._uncertainty_radius_m ** 2)
+            if mode == 'b0':
+                prediction = np.zeros_like(delta_hat_raw)
+                gate = 0.0
+            elif mode == 'b1':
+                prediction = harmonic
+                gate = 1.0
+            elif mode == 'b2':
+                gate = (self._trust_feedforward_gate.update(
+                            step_diag['trust'], self.dt)
+                        if self.trust_feedforward_gating_enabled else 1.0)
+                prediction = gate * harmonic
+            elif mode == 'b3':
+                prediction = delta_hat_raw
+                gate = 1.0
+            else:
+                decision = self._uncertainty_decision.update(
+                    harmonic, fast, covariance, delta_cal,
+                    step_diag['parameter_applicability'], self.dt)
+                prediction = decision['compensated_prediction']
+                gate = float(decision['feedforward_gain'])
+                self._uncertainty_speed_cap = float(
+                    decision['speed_scale'])
+                self._uncertainty_position_weight_scale = float(
+                    decision['position_weight_scale'])
+                self._uncertainty_radius_m = float(
+                    decision['uncertainty_radius'])
+                self._uncertainty_parameter_gain = float(
+                    decision['parameter_applicability_gain'])
+                self._uncertainty_risk_power = float(
+                    decision['risk_power'])
             self._trust_pred_times = times
             self._trust_pred_delta_raw = delta_hat_raw
-            self._trust_pred_delta = gate * delta_hat_raw
-            self._trust_pred_delta_cal = float(delta_cal)
+            self._trust_pred_harmonic = harmonic
+            self._trust_pred_fast = fast
+            self._trust_pred_covariance = covariance
+            self._trust_pred_mode_probabilities = (
+                stats['mode_probabilities'])
+            self._trust_pred_delta = prediction
+            self._trust_pred_delta_cal = delta_cal
             self._trust_feedforward_gain = float(gate)
+            # 当前解析平台只有基座平移不确定性，world 末端位置对该平移的
+            # 雅可比为 I。L∞ 保形半径转换为 L2 后进入命令安全过滤。
+            self._guard_uncertainty_m = (
+                min(
+                    self.uncertainty_guard_radius_max_m,
+                    self.uncertainty_guard_radius_gain
+                    * math.sqrt(3.0) * delta_cal)
+                if mode in ('b3', 'b4') else 0.0)
         trust_cost_ms = 1e3 * (time.perf_counter() - trust_t0)
         ident_ms = float(step_diag.get('ident_ms', 0.0))
         self._trust_cost_ms_win.append(trust_cost_ms)
@@ -1832,7 +2047,15 @@ class MoveBaseCircleMpcIkDemo(Node):
                     'delta_hat_raw_1step_z', 'beta_mean',
                     'feedforward_gain', 'trust_b_filtered',
                     'ladder_delta_baseline',
-                    'ladder_state', 'ladder_cap'])
+                    'ladder_state', 'ladder_cap',
+                    'uncertainty_control_mode',
+                    'parameter_applicability_gain',
+                    'persistent_probability',
+                    'fast_residual_x', 'fast_residual_y', 'fast_residual_z',
+                    'uncertainty_radius_m', 'uncertainty_risk_power',
+                    'uncertainty_speed_cap',
+                    'uncertainty_position_weight_scale',
+                    'guard_uncertainty_m'])
                 self.get_logger().info(f'trust 影子 CSV 开始记录: {path}')
             theta_norm = math.sqrt(sum(
                 float(rls.mu @ rls.mu)
@@ -1852,6 +2075,19 @@ class MoveBaseCircleMpcIkDemo(Node):
                 float(self._trust_ladder.delta_baseline),
                 str(self._trust_ladder.state),
                 float(self._ladder_scale_cap),
+                str(self.uncertainty_control_mode),
+                float(self._uncertainty_parameter_gain),
+                float(step_diag.get(
+                    'persistent_probability', float('nan'))),
+                *[float(v) for v in np.asarray(
+                    step_diag.get(
+                        'fast_residual_mean', np.full(3, np.nan)),
+                    dtype=float)],
+                float(self._uncertainty_radius_m),
+                float(self._uncertainty_risk_power),
+                float(self._uncertainty_speed_cap),
+                float(self._uncertainty_position_weight_scale),
+                float(self._guard_uncertainty_m),
             ])
             self._trust_rows_since_flush += 1
             if self._trust_rows_since_flush >= 100:
@@ -2522,6 +2758,8 @@ class MoveBaseCircleMpcIkDemo(Node):
                 info.get('projection_velocity_active_ratio', float('nan'))),
             'projection_acceleration_active_ratio': float(
                 info.get('projection_acceleration_active_ratio', float('nan'))),
+            'position_weight_scale': float(
+                info.get('position_weight_scale', 1.0)),
         }
 
     def _solve_second_order(
@@ -2592,6 +2830,11 @@ class MoveBaseCircleMpcIkDemo(Node):
             target_acceleration=target_accelerations,
             contour_tangent=contour_tangents,
             contour_active=contour_active,
+            position_weight_scale=(
+                self._uncertainty_position_weight_scale
+                if (self.base_belief_mode == 'model'
+                    and self.uncertainty_control_mode == 'b4')
+                else 1.0),
             posture_reference=(
                 self.posture_reference
                 if self.posture_reference_mode == 'reset_nominal' else None),
@@ -3335,6 +3578,25 @@ class MoveBaseCircleMpcIkDemo(Node):
                         'trust_resid_lpf_hz', 'trust_beta_sigma0',
                         'trust_beta_gamma_f', 'trust_beta_n_grid',
                         'trust_beta_degraded', 'trust_beta_healthy',
+                        'uncertainty_control_mode',
+                        'trust_regime_enabled',
+                        'trust_regime_stable_tau_sec',
+                        'trust_regime_stable_process_std',
+                        'trust_regime_persistent_process_std',
+                        'trust_regime_measurement_std',
+                        'trust_regime_stable_stay_probability',
+                        'trust_regime_persistent_stay_probability',
+                        'trust_regime_initial_persistent_probability',
+                        'uncertainty_risk_weight',
+                        'uncertainty_applicability_risk_gain',
+                        'uncertainty_smoothing_weight',
+                        'uncertainty_gain_fall_tau_sec',
+                        'uncertainty_gain_rise_tau_sec',
+                        'uncertainty_risk_budget_m',
+                        'uncertainty_min_speed_scale',
+                        'uncertainty_min_position_weight_scale',
+                        'uncertainty_guard_radius_gain',
+                        'uncertainty_guard_radius_max_m',
                         'trust_feedforward_gating_enabled',
                         'trust_feedforward_gate_low',
                         'trust_feedforward_gate_high',
@@ -4450,16 +4712,25 @@ class MoveBaseCircleMpcIkDemo(Node):
                 max(0.0, solve_wall - self._last_path_update_wall)
                 if self._last_path_update_wall is not None else 0.0)
             self._last_path_update_wall = solve_wall
+            b4_risk_control = (
+                self.base_belief_mode == 'model'
+                and self.uncertainty_control_mode == 'b4')
             exclusive_ladder = (
                 self.trust_ladder_enabled
                 and self.ladder_exclusive_scale_control)
+            external_scale_cap = min(
+                self._ladder_scale_cap
+                if self.trust_ladder_enabled else 1.0,
+                self._uncertainty_speed_cap
+                if b4_risk_control else 1.0,
+            )
             self.time_scaler.update(
                 scale_dt,
-                (0.0 if exclusive_ladder
+                (0.0 if (exclusive_ladder or b4_risk_control)
                  else self._time_scaling_utilization),
-                (0.0 if exclusive_ladder
+                (0.0 if (exclusive_ladder or b4_risk_control)
                  else self._time_scaling_tracking_error),
-                external_scale_cap=self._ladder_scale_cap,
+                external_scale_cap=external_scale_cap,
             )
         # scaler 更新后再统一派生 guard/TF 的双时钟。物理基座继续按
         # wall/base clock 运动，路径目标与 whole 工作面朝向按 path clock。

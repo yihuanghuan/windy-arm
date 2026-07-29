@@ -256,6 +256,8 @@ install(PROGRAMS
   demo/moving_base_trajectory_config.py
   demo/move_base_circle_visual_demo.py
   demo/move_base_circle_mpc_ik_demo.py
+  demo/plot_moving_base_report.py
+  demo/eval_uncertainty_b4.py
   demo/ll100_lh420_zero_joint_state_publisher.py
   demo/ll100_lh420_rotor_joint_state_publisher.py
   demo/tune_unified_mpc_params.py

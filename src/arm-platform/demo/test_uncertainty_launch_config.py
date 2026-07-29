@@ -135,6 +135,19 @@ class UncertaintyLaunchConfigTest(unittest.TestCase):
         self.assertEqual(
             disturbance['Class'], 'rviz_default_plugins/MarkerArray')
 
+    def test_b4_is_the_reproducible_default_and_legacy_ladder_is_off(self):
+        controller = self.parameters[
+            'move_base_circle_mpc_ik_demo']['ros__parameters']
+        self.assertEqual(controller['uncertainty_control_mode'], 'b4')
+        self.assertTrue(controller['trust_regime_enabled'])
+        self.assertTrue(controller['trust_shadow_csv'])
+        self.assertFalse(controller['trust_ladder_enabled'])
+        self.assertGreater(controller['uncertainty_risk_budget_m'], 0.0)
+        self.assertGreater(
+            controller['uncertainty_guard_radius_max_m'], 0.0)
+        self.assertLessEqual(
+            controller['uncertainty_guard_radius_max_m'], 0.02)
+
 
 if __name__ == '__main__':
     unittest.main()

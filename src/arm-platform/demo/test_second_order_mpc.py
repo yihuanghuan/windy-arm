@@ -37,7 +37,8 @@ def main():
         target_acceleration=np.zeros((cfg.horizon_steps, 3)),
         contour_tangent=np.repeat(
             np.array([[0.0, 1.0, 0.0]]), cfg.horizon_steps, axis=0),
-        contour_active=np.ones(cfg.horizon_steps))
+        contour_active=np.ones(cfg.horizon_steps),
+        position_weight_scale=0.5)
     assert info["status"] == 0
     assert info["command_usable"]
     assert info["trajectory"].shape == (cfg.horizon_steps, 7)
@@ -52,6 +53,7 @@ def main():
     assert info["projection_time"] == 0.0
     assert info["linearization_time"] == 0.0
     assert info["projection_velocity_residual_rms"] >= 0.0
+    assert info["position_weight_scale"] == 0.5
 
     # 精确离散动力学一致性。
     xs_q = np.vstack([q0, info["trajectory"]])

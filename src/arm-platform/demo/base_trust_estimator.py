@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""三层信任估计器(论文《不确定性感知末端控制》§3), 纯 numpy 实现, 无 ROS 依赖.
+"""不确定性感知基座误差估计器，纯 numpy 实现，无 ROS 依赖。
 
-层次结构:
-  L1 SpectralHarmonicRLS  -- 基座实现误差 Δp 的谐波回归均值模型 θ̂:
+组成:
+  参数通道 SpectralHarmonicRLS -- 基座实现误差 Δp 的谐波回归均值模型 θ̂:
                              谐波频率不再用固定对数网格(对 seed 抽取的随机
                              对数均匀频率线存在结构性失配), 而是数据驱动辨识:
                              维护 ≥20s 的 (t_meas, y) 环形缓冲, 慢速率(每
@@ -11,11 +11,12 @@
                              重拟合 -> 减去再找下一条), 取前 n_peaks 条谱线
                              重建谐波库, 并用指数遗忘加权岭回归温启动 RLS;
                              新库须在末段 holdout(纯外推)上打败现役库才换入.
-  L1b 残差慢通道(可选)     -- 谐波先验残差的低通 EMA(resid_lpf_hz>0 启用),
-                             预测时作为常值保持项叠加; A/B 实测对本扰动谱
-                             (快变失配主导)无收益且引入噪声穿透, 默认关闭.
-  L2 BetaConfidenceFilter -- 残差精度系数 β 的贝叶斯滤波, 输出信任标量 b;
-  L3 ConformalCalibrator  -- 滑窗保形分位数 δ + ACI 在线调 α, Mondrian 分组
+  快速残差 TwoRegimeResidualEstimator -- 统一三维状态的两工况 IMM:
+                             瞬态衰减模型 + 持续偏差随机游走模型；输出融合均值、
+                             含工况分歧项的协方差和工况概率。
+  参数适用度 BetaConfidenceFilter -- 残差精度系数 β 的贝叶斯滤波，只评价
+                             参数通道适用程度，不直接解释为整体预测可靠性。
+  误差校准 ConformalCalibrator -- 滑窗保形分位数 δ + ACI 在线调 α, Mondrian 分组
                              (pen_down × 前瞻步数): h 步先验分数与一步分数
                              不可交换(非平稳失配下随 h 系统性增大), 故按
                              对数层级 L∈{1,2,4,...,H} 独立校准窗喂 θ̂ 冻结
@@ -24,9 +25,10 @@
                              修多重性, 边缘覆盖由各组自身校准 + ACI 闭环
                              保证). 快照打分与谱辨识共享分摊预算.
 
-组合体 BaseTrustEstimator.step(t, e_meas, pen_down) 每拍喂入"基座实现误差测量"
+组合体 BaseTrustEstimator.step(t, e_meas, pen_down) 每拍喂入“基座实现误差测量”
 (带噪声/延迟的 Δp 测量, 与 demo 的 estimated 通道同源);
-predict_horizon(times) 返回 (Δ̂ 数组, 保形半径 δ), Δ̂ = Φ(t)θ̂ 逐轴求值.
+predict_horizon_stats(times) 返回参数均值、快速残差均值、混合协方差、工况概率和
+保形半径；predict_horizon(times) 保留兼容的 (Δ̂, δ) 接口。
 
 时间约定(测量延迟的相位处理): 测量 y_k = Δ(t_k - τ_d) + ν, τ_d=meas_delay_sec
 为名义已知量. 谐波基是全局时间函数, 所有回归特征一律构建在测量时刻
@@ -383,6 +385,339 @@ class BetaConfidenceFilter:
         return float(np.exp(self.log_w) @ self.betas)
 
 
+class TwoRegimeResidualEstimator:
+    """统一三维状态的两工况快速残差 IMM。
+
+    工况 0 为向零衰减的瞬态残差，工况 1 为随机游走的持续偏差。两者共享
+    ``x_r∈R³`` 的状态维数，因而可以执行标准 IMM 混合。观测是参数通道未解释
+    的三轴残差 ``r = e - Φθ``。模式概率只表示哪一种残差动力学更符合数据，
+    不解释为预测可靠性；可靠性由混合协方差和外层保形误差共同表示。
+    """
+
+    N_AXES = 3
+
+    def __init__(
+            self, dt: float = 0.02, stable_tau_sec: float = 0.12,
+            stable_process_std: float = 8.0e-4,
+            persistent_process_std: float = 2.5e-3,
+            measurement_std: float = 2.0e-3,
+            stable_stay_probability: float = 0.985,
+            persistent_stay_probability: float = 0.97,
+            initial_persistent_probability: float = 0.02,
+            initial_std: float = 5.0e-3,
+            covariance_floor: float = 1.0e-10):
+        values = (
+            dt, stable_tau_sec, stable_process_std,
+            persistent_process_std, measurement_std, initial_std,
+            covariance_floor,
+        )
+        if not np.all(np.isfinite(values)) or min(values) <= 0.0:
+            raise ValueError('two-regime positive parameters must be finite')
+        probabilities = (
+            stable_stay_probability, persistent_stay_probability,
+            initial_persistent_probability,
+        )
+        if (not np.all(np.isfinite(probabilities))
+                or not 0.0 < stable_stay_probability < 1.0
+                or not 0.0 < persistent_stay_probability < 1.0
+                or not 0.0 <= initial_persistent_probability <= 1.0):
+            raise ValueError('two-regime probabilities are outside [0,1]')
+        self.dt = float(dt)
+        self.a = np.array([
+            math.exp(-self.dt / float(stable_tau_sec)),
+            1.0,
+        ])
+        # 连续噪声强度按 sqrt(dt) 离散，避免改变控制频率后随机游走尺度失真。
+        self.q = self.dt * np.square(np.array([
+            stable_process_std, persistent_process_std], dtype=float))
+        self.R = (float(measurement_std) ** 2) * np.eye(self.N_AXES)
+        self.transition = np.array([
+            [stable_stay_probability, 1.0 - stable_stay_probability],
+            [1.0 - persistent_stay_probability,
+             persistent_stay_probability],
+        ], dtype=float)
+        self.covariance_floor = float(covariance_floor)
+        p1 = float(initial_persistent_probability)
+        self.mode_probabilities = np.array([1.0 - p1, p1])
+        self.states = np.zeros((2, self.N_AXES))
+        self.covariances = np.repeat(
+            ((float(initial_std) ** 2) * np.eye(self.N_AXES))[None, :, :],
+            2, axis=0)
+        self.prior_mean = np.zeros(self.N_AXES)
+        self.prior_covariance = (
+            float(initial_std) ** 2) * np.eye(self.N_AXES)
+        self.mean = np.zeros(self.N_AXES)
+        self.covariance = self.prior_covariance.copy()
+
+    def _guard_covariance(self, covariance: np.ndarray) -> np.ndarray:
+        covariance = 0.5 * (covariance + covariance.T)
+        eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+        eigenvalues = np.maximum(eigenvalues, self.covariance_floor)
+        return (eigenvectors * eigenvalues[None, :]) @ eigenvectors.T
+
+    @staticmethod
+    def _mixture_moments(weights, means, covariances):
+        weights = np.asarray(weights, dtype=float)
+        means = np.asarray(means, dtype=float)
+        mean = weights @ means
+        covariance = np.zeros((means.shape[1], means.shape[1]))
+        for weight, component_mean, component_covariance in zip(
+                weights, means, covariances):
+            difference = component_mean - mean
+            covariance += weight * (
+                component_covariance + np.outer(difference, difference))
+        return mean, covariance
+
+    def step(self, residual) -> dict:
+        """用当拍三轴谐波残差更新 IMM，并返回更新前后混合统计量。"""
+        observation = np.asarray(residual, dtype=float).reshape(self.N_AXES)
+        if not np.all(np.isfinite(observation)):
+            raise ValueError('two-regime residual must be finite')
+        identity = np.eye(self.N_AXES)
+        destination_probabilities = (
+            self.mode_probabilities @ self.transition)
+        destination_probabilities = np.maximum(
+            destination_probabilities, np.finfo(float).tiny)
+        mixed_states = np.zeros_like(self.states)
+        mixed_covariances = np.zeros_like(self.covariances)
+        predicted_states = np.zeros_like(self.states)
+        predicted_covariances = np.zeros_like(self.covariances)
+        for destination in range(2):
+            weights = (
+                self.mode_probabilities
+                * self.transition[:, destination]
+                / destination_probabilities[destination])
+            mixed_state, mixed_covariance = self._mixture_moments(
+                weights, self.states, self.covariances)
+            mixed_states[destination] = mixed_state
+            mixed_covariances[destination] = self._guard_covariance(
+                mixed_covariance)
+            predicted_states[destination] = (
+                self.a[destination] * mixed_state)
+            predicted_covariances[destination] = self._guard_covariance(
+                (self.a[destination] ** 2) * mixed_covariance
+                + self.q[destination] * identity)
+
+        prior_mean, prior_covariance = self._mixture_moments(
+            destination_probabilities,
+            predicted_states, predicted_covariances)
+        self.prior_mean = prior_mean
+        self.prior_covariance = self._guard_covariance(prior_covariance)
+
+        updated_states = np.zeros_like(self.states)
+        updated_covariances = np.zeros_like(self.covariances)
+        log_weights = np.empty(2)
+        for mode in range(2):
+            innovation = observation - predicted_states[mode]
+            innovation_covariance = self._guard_covariance(
+                predicted_covariances[mode] + self.R)
+            sign, logdet = np.linalg.slogdet(innovation_covariance)
+            if sign <= 0.0:
+                raise RuntimeError('two-regime innovation covariance not PD')
+            solved = np.linalg.solve(innovation_covariance, innovation)
+            log_likelihood = -0.5 * (
+                self.N_AXES * math.log(2.0 * math.pi)
+                + logdet + float(innovation @ solved))
+            log_weights[mode] = (
+                math.log(destination_probabilities[mode]) + log_likelihood)
+            gain = np.linalg.solve(
+                innovation_covariance, predicted_covariances[mode].T).T
+            updated_states[mode] = (
+                predicted_states[mode] + gain @ innovation)
+            # Joseph 形式在长期在线运行中比 (I-K)P 更稳定。
+            left = identity - gain
+            updated_covariances[mode] = self._guard_covariance(
+                left @ predicted_covariances[mode] @ left.T
+                + gain @ self.R @ gain.T)
+
+        log_weights -= float(np.max(log_weights))
+        mode_probabilities = np.exp(log_weights)
+        mode_probabilities /= float(np.sum(mode_probabilities))
+        self.mode_probabilities = mode_probabilities
+        self.states = updated_states
+        self.covariances = updated_covariances
+        self.mean, covariance = self._mixture_moments(
+            mode_probabilities, updated_states, updated_covariances)
+        self.covariance = self._guard_covariance(covariance)
+        return {
+            'prior_mean': self.prior_mean.copy(),
+            'prior_covariance': self.prior_covariance.copy(),
+            'posterior_mean': self.mean.copy(),
+            'posterior_covariance': self.covariance.copy(),
+            'mode_probabilities': self.mode_probabilities.copy(),
+            'persistent_probability': float(self.mode_probabilities[1]),
+        }
+
+    def predict_horizon(self, steps) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """无测量外推到给定非负拍数，返回均值、协方差和工况概率。"""
+        steps = np.asarray(steps, dtype=int).ravel()
+        if np.any(steps < 0):
+            raise ValueError('two-regime horizon steps must be non-negative')
+        means = np.zeros((steps.size, self.N_AXES))
+        covariances = np.zeros((steps.size, self.N_AXES, self.N_AXES))
+        probabilities = np.zeros((steps.size, 2))
+        identity = np.eye(self.N_AXES)
+        # 预测网格通常是连续拍数。按最大拍数只推进一次，避免对每个目标拍
+        # 从 0 重算而形成 O(H²) 开销。
+        requested = {}
+        for output_index, target_step in enumerate(steps.tolist()):
+            requested.setdefault(target_step, []).append(output_index)
+        mode_probabilities = self.mode_probabilities.copy()
+        states = self.states.copy()
+        mode_covariances = self.covariances.copy()
+        for current_step in range(max(requested, default=0) + 1):
+            if current_step in requested:
+                mean, covariance = self._mixture_moments(
+                    mode_probabilities, states, mode_covariances)
+                covariance = self._guard_covariance(covariance)
+                for output_index in requested[current_step]:
+                    means[output_index] = mean
+                    covariances[output_index] = covariance
+                    probabilities[output_index] = mode_probabilities
+            if current_step == max(requested, default=0):
+                break
+            destination_probabilities = mode_probabilities @ self.transition
+            destination_probabilities = np.maximum(
+                destination_probabilities, np.finfo(float).tiny)
+            next_states = np.zeros_like(states)
+            next_covariances = np.zeros_like(mode_covariances)
+            for destination in range(2):
+                weights = (
+                    mode_probabilities
+                    * self.transition[:, destination]
+                    / destination_probabilities[destination])
+                mixed_state, mixed_covariance = self._mixture_moments(
+                    weights, states, mode_covariances)
+                next_states[destination] = (
+                    self.a[destination] * mixed_state)
+                next_covariances[destination] = self._guard_covariance(
+                    (self.a[destination] ** 2) * mixed_covariance
+                    + self.q[destination] * identity)
+            mode_probabilities = (
+                destination_probabilities
+                / float(np.sum(destination_probabilities)))
+            states = next_states
+            mode_covariances = next_covariances
+        return means, covariances, probabilities
+
+
+class UncertaintyAwareFeedforwardDecision:
+    """由预测收益与风险预算共同决定补偿、权重和任务速度。
+
+    参数适用度不直接缩放任何预测均值，而是放大参数失配对应的风险项。补偿增益是
+    二次风险代理
+    ``(1-g)^2 ||d||² + λ_r g² R + λ_s(g-g_prev)^2``
+    的闭式极小值；其中 ``R`` 同时包含混合协方差与保形半径。这样持续偏差被
+    快速模型稳定解释后，即使参数适用度降低，仍可以维持有收益的补偿。
+    """
+
+    def __init__(
+            self, applicability_low: float = 0.2,
+            applicability_high: float = 0.5,
+            risk_weight: float = 0.25,
+            applicability_risk_gain: float = 1.0,
+            smoothing_weight: float = 2.5e-5,
+            fall_tau_sec: float = 0.15,
+            rise_tau_sec: float = 0.45,
+            risk_budget_m: float = 0.012,
+            min_speed_scale: float = 0.3,
+            min_position_weight_scale: float = 0.35):
+        trust_feedforward_gain(
+            0.5, applicability_low, applicability_high)
+        positive = (
+            risk_weight, applicability_risk_gain, smoothing_weight, fall_tau_sec,
+            rise_tau_sec, risk_budget_m,
+        )
+        if not np.all(np.isfinite(positive)) or min(positive) <= 0.0:
+            raise ValueError('risk decision positive parameters must be finite')
+        if (not 0.0 < min_speed_scale <= 1.0
+                or not 0.0 < min_position_weight_scale <= 1.0):
+            raise ValueError('risk decision minimum scales must be in (0,1]')
+        self.applicability_low = float(applicability_low)
+        self.applicability_high = float(applicability_high)
+        self.risk_weight = float(risk_weight)
+        self.applicability_risk_gain = float(applicability_risk_gain)
+        self.smoothing_weight = float(smoothing_weight)
+        self.fall_tau_sec = float(fall_tau_sec)
+        self.rise_tau_sec = float(rise_tau_sec)
+        self.risk_budget_m = float(risk_budget_m)
+        self.min_speed_scale = float(min_speed_scale)
+        self.min_position_weight_scale = float(min_position_weight_scale)
+        self.gain = 0.0
+
+    def reset(self):
+        self.gain = 0.0
+
+    def update(
+            self, harmonic_prediction, fast_prediction, covariance,
+            conformal_delta: float, parameter_applicability: float,
+            dt: float) -> dict:
+        harmonic = np.asarray(harmonic_prediction, dtype=float)
+        fast = np.asarray(fast_prediction, dtype=float)
+        covariance = np.asarray(covariance, dtype=float)
+        if (harmonic.ndim != 2 or harmonic.shape[1] != 3
+                or fast.shape != harmonic.shape
+                or covariance.shape != (harmonic.shape[0], 3, 3)
+                or not np.all(np.isfinite(harmonic))
+                or not np.all(np.isfinite(fast))
+                or not np.all(np.isfinite(covariance))):
+            raise ValueError('risk decision horizon arrays have invalid shape')
+        delta = float(conformal_delta)
+        dt = float(dt)
+        if not math.isfinite(delta) or delta < 0.0:
+            raise ValueError('conformal_delta must be finite and non-negative')
+        if not math.isfinite(dt) or dt < 0.0:
+            raise ValueError('risk decision dt must be finite and non-negative')
+        applicability_gain = trust_feedforward_gain(
+            parameter_applicability,
+            self.applicability_low, self.applicability_high)
+        # 均值始终使用完整融合结果。参数通道不适用时，由风险项而不是硬门控
+        # 处理；持续偏差的快速补偿不会因同一个 β 被连带删除。
+        candidate = harmonic + fast
+        signal_power = float(np.mean(np.sum(np.square(candidate), axis=1)))
+        covariance_power = float(np.mean(
+            np.trace(covariance, axis1=1, axis2=2)))
+        applicability_multiplier = (
+            1.0 + self.applicability_risk_gain
+            * (1.0 - applicability_gain))
+        risk_power = (
+            applicability_multiplier * covariance_power
+            + 3.0 * delta * delta)
+        numerator = signal_power + self.smoothing_weight * self.gain
+        denominator = (
+            signal_power + self.risk_weight * risk_power
+            + self.smoothing_weight + np.finfo(float).eps)
+        raw_gain = float(np.clip(numerator / denominator, 0.0, 1.0))
+        tau = (
+            self.fall_tau_sec if raw_gain < self.gain else self.rise_tau_sec)
+        alpha = 1.0 - math.exp(-dt / tau) if dt > 0.0 else 0.0
+        self.gain += alpha * (raw_gain - self.gain)
+        uncertainty_radius = math.sqrt(max(risk_power, 0.0))
+        if uncertainty_radius <= self.risk_budget_m:
+            speed_scale = 1.0
+        else:
+            speed_scale = math.sqrt(
+                self.risk_budget_m / uncertainty_radius)
+        speed_scale = float(np.clip(
+            speed_scale, self.min_speed_scale, 1.0))
+        position_weight_scale = float(np.clip(
+            speed_scale * speed_scale,
+            self.min_position_weight_scale, 1.0))
+        return {
+            'candidate_prediction': candidate,
+            'compensated_prediction': self.gain * candidate,
+            'parameter_applicability_gain': applicability_gain,
+            'parameter_risk_multiplier': applicability_multiplier,
+            'feedforward_gain': float(self.gain),
+            'feedforward_gain_raw': raw_gain,
+            'signal_power': signal_power,
+            'risk_power': risk_power,
+            'uncertainty_radius': uncertainty_radius,
+            'speed_scale': speed_scale,
+            'position_weight_scale': position_weight_scale,
+        }
+
+
 class ConformalCalibrator:
     """滑窗保形分位数 + ACI 在线调 α, Mondrian 分组 (pen_down, 前瞻步数 h).
 
@@ -499,13 +834,12 @@ class ConformalCalibrator:
 
 
 class BaseTrustEstimator:
-    """组合体: 谱辨识谐波库(每轴) + AxisRLS + BetaConfidenceFilter
-    + ConformalCalibrator.
+    """组合体: 谱辨识谐波库 + 两工况快速残差 + 参数适用度 + 保形校准。
 
     step(t, e_meas, pen_down): 每拍喂"基座实现误差测量"(带噪声/延迟的 Δp 测量,
     与 demo 的 estimated 通道同源). 名义测量延迟 meas_delay_sec 为已知量,
     一切回归特征取 Φ(t - meas_delay_sec)(测量时间戳), 不使用任何真值信息.
-    信任层(β 滤波/保形)作用于一步先验残差.
+    β 作用于谐波参数通道先验残差；保形分数作用于最终融合预测先验误差。
 
     谱辨识(慢速率, 每 ident_period_sec **触发**, 分摊执行): 对环形缓冲
     (容量 buffer_sec ≥ 20s, span ≥ min_ident_sec 才启动)每轴匹配追踪找
@@ -523,7 +857,8 @@ class BaseTrustEstimator:
     L∈{1,2,4,...,H}, 每层级用自己的校准窗(由每拍推入的 θ̂ 冻结前瞻快照
     在到期时打分喂入, 见 _push/_score_horizon_snapshot*)取边缘 1-α_L/n
     分位数, δ = max_h δ_{L(h)}.
-    Δ̂ 逐轴 Φ_axis(times) θ̂_axis, 谐波是全局时间函数, 任意前瞻均相位一致.
+    Δ̂ 为谐波参数均值与快速残差工况混合均值之和；混合协方差显式包含
+    工况内协方差和工况均值分歧项。
     """
 
     N_AXES = 3
@@ -547,7 +882,15 @@ class BaseTrustEstimator:
                  ident_units_pen_up: int = 8,
                  ident_budget_pen_up_sec: float = 2.6e-3,
                  ident_decim: int = 1,
-                 cal_horizon_steps: int = 40):
+                 cal_horizon_steps: int = 40,
+                 regime_enabled: bool = False,
+                 regime_stable_tau_sec: float = 0.12,
+                 regime_stable_process_std: float = 8.0e-4,
+                 regime_persistent_process_std: float = 2.5e-3,
+                 regime_measurement_std: float = None,
+                 regime_stable_stay_probability: float = 0.985,
+                 regime_persistent_stay_probability: float = 0.97,
+                 regime_initial_persistent_probability: float = 0.02):
         if buffer_sec < 20.0:
             raise ValueError(
                 f"buffer_sec must be >= 20 s for spectral ident, "
@@ -578,6 +921,23 @@ class BaseTrustEstimator:
             sigma0=(sigma0 if beta_sigma0 is None else beta_sigma0),
             n_grid=beta_n_grid, gamma_f=beta_gamma_f,
             degraded_beta=beta_degraded, healthy_beta=beta_healthy)
+        self.regime_enabled = bool(regime_enabled)
+        self.regime = (
+            TwoRegimeResidualEstimator(
+                dt=self.dt_nominal,
+                stable_tau_sec=regime_stable_tau_sec,
+                stable_process_std=regime_stable_process_std,
+                persistent_process_std=regime_persistent_process_std,
+                measurement_std=(
+                    sigma0 if regime_measurement_std is None
+                    else regime_measurement_std),
+                stable_stay_probability=regime_stable_stay_probability,
+                persistent_stay_probability=(
+                    regime_persistent_stay_probability),
+                initial_persistent_probability=(
+                    regime_initial_persistent_probability),
+            )
+            if self.regime_enabled else None)
         self.conformal = ConformalCalibrator(
             n_cal=n_cal, alpha=alpha, gamma_aci=gamma_aci)
         # 保形校准按前瞻步数 h Mondrian 分组(h=1..cal_horizon_steps):
@@ -812,10 +1172,48 @@ class BaseTrustEstimator:
     # ---------- 在线接口 ----------
 
     def _predict_mean(self, times: np.ndarray) -> np.ndarray:
+        """参数通道的谐波均值，不含快速残差。"""
         out = np.empty((times.size, self.N_AXES))
         for a in range(self.N_AXES):
             out[:, a] = self.banks[a].features(times) @ self.rls[a].mu
         return out
+
+    def _predict_harmonic_covariance(self, times: np.ndarray) -> np.ndarray:
+        covariance = np.zeros((times.size, self.N_AXES, self.N_AXES))
+        for axis in range(self.N_AXES):
+            features = self.banks[axis].features(times)
+            variance = np.einsum(
+                'ni,ij,nj->n',
+                features, self.rls[axis].Sigma, features)
+            covariance[:, axis, axis] = np.maximum(
+                variance + self._sigma0 ** 2, 0.0)
+        return covariance
+
+    def _predict_total_components(self, times: np.ndarray):
+        harmonic = self._predict_mean(times)
+        harmonic_covariance = self._predict_harmonic_covariance(times)
+        if self.regime is None:
+            fast = np.repeat(
+                self._resid_lpf.reshape(1, self.N_AXES),
+                times.size, axis=0)
+            fast_covariance = np.zeros_like(harmonic_covariance)
+            probabilities = np.repeat(
+                np.array([[1.0, 0.0]]), times.size, axis=0)
+        else:
+            if self._t_meas_last is None:
+                steps = np.zeros(times.size, dtype=int)
+            else:
+                steps = np.maximum(
+                    np.rint(
+                        (times - self._t_meas_last)
+                        / self.dt_nominal).astype(int),
+                    0)
+            fast, fast_covariance, probabilities = (
+                self.regime.predict_horizon(steps))
+        return (
+            harmonic, fast,
+            harmonic_covariance + fast_covariance,
+            probabilities)
 
     def _score_horizon_snapshots(self, t_meas: float, e: np.ndarray):
         """到期快照打分: 对层级组 L∈{2,4,...,H} 喂入 θ̂ 冻结的 L 步先验分数.
@@ -855,9 +1253,9 @@ class BaseTrustEstimator:
         head = self._snap_head
         self._snap_t0[head] = t_meas
         self._snap_pen[head] = bool(pen_down)
-        self._snap_pred[head] = (
-            self._predict_mean(t_meas + self._snap_offsets)
-            + self._resid_lpf[None, :])
+        snapshot_times = t_meas + self._snap_offsets
+        harmonic, fast, _, _ = self._predict_total_components(snapshot_times)
+        self._snap_pred[head] = harmonic + fast
         self._snap_head = (head + 1) % self._snap_cap
 
     def step(self, t: float, e_meas, pen_down: bool = True,
@@ -872,19 +1270,29 @@ class BaseTrustEstimator:
         """
         t_meas = float(t) - self.meas_delay_sec  # 测量时间戳(名义已知延迟)
         e = np.asarray(e_meas, dtype=float).reshape(self.N_AXES)
-        resid = e - self._predict_mean(np.array([t_meas]))[0]  # 谐波一步先验残差
-        # 信任层锚定在谐波新息通道: 残差慢通道(EMA)会在 ~0.3s 内吸收直流故障,
-        # 而谐波层偏置项的吸收时标(由 λ 决定)才是"基座信任"的物理锚,
-        # 故 β 滤波与保形分数均取谐波先验残差(δ 为保守界).
-        trust = self.beta_filter.update(resid)
-        score = float(np.max(np.abs(resid)))
+        harmonic_prior = self._predict_mean(np.array([t_meas]))[0]
+        residual_harmonic = e - harmonic_prior
+        # β 只评价参数通道的适用程度，不再解释为整体预测可靠性。
+        trust = self.beta_filter.update(residual_harmonic)
+        if self.regime is None:
+            regime_diag = None
+            residual_final_prior = (
+                residual_harmonic - self._resid_lpf)
+        else:
+            regime_diag = self.regime.step(residual_harmonic)
+            residual_final_prior = (
+                residual_harmonic - regime_diag['prior_mean'])
+        # 保形分数作用于最终融合预测的先验误差，覆盖快速模型的估计误差。
+        score = float(np.max(np.abs(residual_final_prior)))
         covered, delta_1 = self.conformal.update(score, pen_down, h=1)
         # h>=2 组的多步快照打分/推入与分摊辨识共享同一预算(见 _advance_
         # ident): 单拍最坏增量不因新增校准工作变大, 只软性推迟流水线完成.
         cal_t0 = time.perf_counter()
         self._score_horizon_snapshots(t_meas, e)
         cal_spent = time.perf_counter() - cal_t0
-        self._resid_lpf += self._resid_alpha * (resid - self._resid_lpf)
+        if self.regime is None:
+            self._resid_lpf += self._resid_alpha * (
+                residual_harmonic - self._resid_lpf)
         for a in range(self.N_AXES):
             self.rls[a].update(self.banks[a].feature(t_meas), e[a])
         self._buffer_append(t_meas, e)
@@ -898,15 +1306,27 @@ class BaseTrustEstimator:
             spent_sec=cal_spent)
         return {
             'trust': trust,
+            'parameter_applicability': trust,
             'beta_mean': self.beta_filter.beta_mean,
-            'residual': resid,
-            'residual_harmonic': resid,
+            'residual': residual_final_prior,
+            'residual_harmonic': residual_harmonic,
             'score': score,
             'covered': covered,
             'delta_1step': delta_1,
             'alpha': self.conformal.alpha(pen_down),
             'ident_ms': ident_ms,
             'ident_active': self._ident_task is not None,
+            'regime_enabled': self.regime is not None,
+            'persistent_probability': (
+                float(regime_diag['persistent_probability'])
+                if regime_diag is not None else 0.0),
+            'fast_residual_mean': (
+                regime_diag['posterior_mean'].copy()
+                if regime_diag is not None else self._resid_lpf.copy()),
+            'fast_residual_covariance': (
+                regime_diag['posterior_covariance'].copy()
+                if regime_diag is not None
+                else np.zeros((self.N_AXES, self.N_AXES))),
         }
 
     def predict_horizon(self, times, pen_down: bool = True):
@@ -919,8 +1339,14 @@ class BaseTrustEstimator:
         过去/当前时刻(插值域)归入 h=1; 超出 cal_horizon_steps 的前瞻
         钳到最大组(该组分数最保守).
         """
+        stats = self.predict_horizon_stats(times, pen_down)
+        return stats['mean'], stats['delta']
+
+    def predict_horizon_stats(self, times, pen_down: bool = True):
+        """返回控制决策所需的分通道均值、混合协方差、工况概率和保形半径。"""
         times = np.atleast_1d(np.asarray(times, dtype=float))
-        delta_hat = self._predict_mean(times) + self._resid_lpf[None, :]
+        harmonic, fast, covariance, probabilities = (
+            self._predict_total_components(times))
         if self._t_meas_last is None:
             delta = self.conformal.quantile(pen_down, n_joint=times.size)
         else:
@@ -930,4 +1356,11 @@ class BaseTrustEstimator:
                 1, self.cal_horizon_steps)
             delta = self.conformal.quantile_joint(
                 pen_down, hs, n_joint=times.size)
-        return delta_hat, delta
+        return {
+            'mean': harmonic + fast,
+            'harmonic_mean': harmonic,
+            'fast_mean': fast,
+            'covariance': covariance,
+            'mode_probabilities': probabilities,
+            'delta': float(delta),
+        }
