@@ -94,6 +94,41 @@ bool ArmPlatform::ExecuteControlCycle(double dt) {
   return false;
 }
 
+bool ArmPlatform::ExecuteDirectMotorCommand(
+    const dummy_interface::msg::MotorControl& cmd, double dt) {
+  if (!arm_) {
+    throw std::runtime_error("Arm not set");
+  }
+
+  cmd_ = cmd;
+  if (!arm_->SetMotorCommand(cmd_)) {
+    return false;
+  }
+  arm_->Step(dt);
+
+  arm_state_ = arm_->GetJointStates();
+  joint_names_ = arm_->GetJointNames();
+  NotifyJointState();
+  NotifyMotorFeedback();
+  return true;
+}
+
+void ArmPlatform::PublishCurrentState() {
+  if (!arm_) {
+    throw std::runtime_error("Arm not set");
+  }
+  arm_state_ = arm_->GetJointStates();
+  joint_names_ = arm_->GetJointNames();
+  NotifyJointState();
+  NotifyMotorFeedback();
+}
+
+void ArmPlatform::SetBaseState(const arm::FloatingBaseState& state) {
+  if (arm_) {
+    arm_->SetBaseState(state);
+  }
+}
+
 void ArmPlatform::NotifyJointState() {
   sensor_msgs::msg::JointState joint_state_msg;
   // joint_state_msg.header.stamp = rclcpp::Clock().now();

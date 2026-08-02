@@ -28,9 +28,9 @@ class AbsArm : public IArm {
   
   ~AbsArm() = default;
 
-  bool SetMotorCommand(const dummy_interface::msg::MotorControl& cmd);
+  bool SetMotorCommand(const dummy_interface::msg::MotorControl& cmd) override;
 
-  JointState& GetJointStates();
+  virtual JointState& GetJointStates();
 
   virtual void Init(const std::string& port, uint32_t baud) = 0;
   
@@ -39,7 +39,13 @@ class AbsArm : public IArm {
                               const std::string& arm_config_path,
                               const std::string& arm_name) {}
   
-  std::vector<std::string> GetJointNames() const;
+  virtual std::vector<std::string> GetJointNames() const;
+
+  virtual void Step(double /*dt*/) {}
+  virtual void SetBaseState(const FloatingBaseState& /*state*/) {}
+  virtual void SetModelPath(const std::string& /*model_path*/) {}
+  virtual void SetInitialJointPositions(
+      const std::vector<double>& /*positions*/) {}
 
 protected:
   void AddMotor(const std::string& name, motor::IMotor::SharedPtr motor);

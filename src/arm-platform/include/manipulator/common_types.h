@@ -14,6 +14,15 @@ struct JointState {
   std::vector<double> temperature;
   std::vector<std::string> name;
 };
+
+struct FloatingBaseState {
+  Eigen::Vector3d position = Eigen::Vector3d::Zero();
+  Eigen::Quaterniond orientation = Eigen::Quaterniond::Identity();
+  Eigen::Matrix<double, 6, 1> velocity =
+      Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 6, 1> acceleration =
+      Eigen::Matrix<double, 6, 1>::Zero();
+};
 }
 namespace planning {
 

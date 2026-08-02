@@ -12,6 +12,7 @@ find_package(ament_cmake REQUIRED)
 # find_package(<dependency> REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 
 if(BUILD_TESTING)
@@ -27,9 +28,10 @@ if(BUILD_TESTING)
 endif()
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/FloatingBaseState.msg"
   "msg/MotorControl.msg"
   "msg/MotorState.msg"
-  DEPENDENCIES std_msgs)
+  DEPENDENCIES geometry_msgs std_msgs)
 
 ament_export_dependencies(rosidl_default_runtime)
 

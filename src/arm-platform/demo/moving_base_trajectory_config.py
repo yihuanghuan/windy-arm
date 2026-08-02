@@ -771,7 +771,12 @@ def base_disturbance_sample(
         # 峰值 amplitude_m, 方向按 seed 抽定的单位向量表轮换(k mod N)。
         k = math.floor(float(t) / float(gust_period_sec))
         tau = float(t) - k * float(gust_period_sec)
-        active = 0.0 <= tau < float(gust_width_sec)
+        # Task disturbances start at t=0. Negative time is reserved for a
+        # controller's pre-task observation window and contains background
+        # motion only, so an online warm-up cannot see a future gust pulse.
+        active = (
+            float(t) >= 0.0
+            and 0.0 <= tau < float(gust_width_sec))
         envelope = 0.0
         event = zeros
         if active:

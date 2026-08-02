@@ -34,6 +34,10 @@ class ArmPlatform {
   void EnableCollisionAvoidance(bool enable);
 
   bool ExecuteControlCycle(double dt);
+  bool ExecuteDirectMotorCommand(
+      const dummy_interface::msg::MotorControl& cmd, double dt);
+  void PublishCurrentState();
+  void SetBaseState(const arm::FloatingBaseState& state);
   void AddSubscribe(IArmDataSubscriber::SharedPtr subscriber);
   void PrintDebugInfo();
 

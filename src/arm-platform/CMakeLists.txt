@@ -29,6 +29,7 @@ add_library(manipulator_core
   src/robotics/arm/a_l1.cc
   src/robotics/arm/a_l1_gamma.cc
   src/robotics/arm/sim_arm.cc
+  src/robotics/arm/torque_sim_arm.cc
   src/robotics/arm/arm_factory.cc
   src/robotics/bus/abs_bus.cc
   src/robotics/bus/serial_bus.cc
@@ -87,6 +88,7 @@ target_include_directories(collision_lib PUBLIC
 
 target_link_libraries(manipulator_core
   Eigen3::Eigen
+  pinocchio::pinocchio
   yaml-cpp
   collision_lib
 )
@@ -263,7 +265,21 @@ install(PROGRAMS
   demo/tune_unified_mpc_params.py
   demo/tune_ll100_nmpc.py
   demo/trajectory_visualizer_demo.py
+  task_space_smc/offline_simulation.py
+  task_space_smc/torque_controller_node.py
+  task_space_smc/torque_interface_probe.py
+  task_space_smc/whole_task_smc_ros_runner.py
+  task_space_smc/plot_whole_task_smc.py
+  task_space_smc/tune_whole_task_smc.py
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY task_space_smc/
+  DESTINATION lib/${PROJECT_NAME}/task_space_smc
+  FILES_MATCHING
+    PATTERN "*.py"
+    PATTERN "*.yaml"
+    PATTERN "*.md"
 )
 
 install(PROGRAMS
@@ -277,6 +293,7 @@ install(PROGRAMS
   scripts/install_acados.sh
   scripts/setup_acados_env.sh
   scripts/check_nmpc_env.sh
+  scripts/run_task_space_smc_whole.sh
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -314,9 +331,20 @@ ament_export_dependencies(rclcpp sensor_msgs std_msgs mavros_msgs dummy_interfac
 # ==============================
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
   set(ament_cmake_cpplint_FOUND TRUE)
   set(ament_cmake_copyright_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  ament_add_gtest(test_torque_sim_arm
+    test/test_torque_sim_arm.cc
+  )
+  if(TARGET test_torque_sim_arm)
+    target_link_libraries(test_torque_sim_arm manipulator_core)
+    target_compile_definitions(test_torque_sim_arm PRIVATE
+      MANIPULATOR_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+  endif()
 endif()
 
 ament_package()
