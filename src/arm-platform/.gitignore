@@ -10,6 +10,10 @@ demo/__pycache__/
 launch/__pycache__/
 demo/data/
 
+# Task-space SMC experiment outputs and local archive
+task_space_smc/data/
+task_space_smc.zip
+
 # ACADOS generated solvers and local caches
 acados_ocp*.json
 c_generated_code/
