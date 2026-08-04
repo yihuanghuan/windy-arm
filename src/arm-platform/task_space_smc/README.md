@@ -47,6 +47,7 @@ task_space_smc/
 | `base_state.py` | 基座状态源（仿真注入 / ROS 反馈） |
 | `config_loader.py` | yaml → `SMCGains` → `TaskSpaceSMC` 的装配 |
 | `actuator_adapter.py` | 力矩 → 电机指令，含 NaN/Inf 归零与饱和保护 |
+| `approach_reference.py` | 就位段的末端直线 + SO(3) 测地线参考轨迹 |
 | `handover_blend.py` | 交接瞬间的参考量偏置衰减（接管时不让机械臂猛跳） |
 | `friction_feedforward.py` | 静摩擦前馈，把"增益下界"从摩擦约束里解耦出来 |
 | `velocity_filter.py` | 关节速度反馈一阶低通（缺省关闭） |
@@ -101,12 +102,12 @@ task_space_smc/
 
 ### 1.5 测试
 
-`test/core/`（18）、`test/sim/`（2）、`test/hw/`（4），与源码同构。
+`test/core/`（19）、`test/sim/`（2）、`test/hw/`（5），与源码同构。
 `test/` 根只留 `conftest.py` 和 C++ 包自己的 `.cc`。
 
 ```bash
 cd /home/windylab/code/windylab_ws
-python3 -m pytest src/arm-platform/test -q      # 应为 518 passed
+python3 -m pytest src/arm-platform/test -q      # 应为 549 passed
 ```
 
 `conftest.py` 做两件事：把包父目录插进 `sys.path`；在任何测试模块导入前设好
@@ -268,8 +269,7 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
 
 | 模式 | 说明 |
 |---|---|
-| `simulation` | **主模式**。SMC 与被控对象通过 ROS 消息连接，`student_arm_node` + `TorqueSimArm` |
-| `internal_simulation` | 旧回归模式，runner 内部 Python plant 自己积分。**只有它实现了完整扰动注入** |
+| `simulation` | 主模式。SMC 与被控对象通过 ROS 消息连接，`student_arm_node` + `TorqueSimArm` |
 | `hardware` | 不自动起硬件节点（防止误开串口），需要外部先起好驱动。见 [第 4 节](#4-实物启动) |
 
 ### 3.4 环境变量
@@ -299,9 +299,6 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
 固定坐标系 `world`。绿线是期望路径，红线（较粗）是实际路径，绿 / 红球是当前目标与末端。
 基座通过 `world → base_link` TF 运动。
 
-> **红球后面接着机械臂、整条臂躺在书写平面里是正常的**，不是解错了。笔轴垂直纸面时
-> `link6 → link7` 那一节必然平行于纸面 —— 两者互相垂直，是同一件事的两面。
-
 实时话题：`/task_space_smc/tracking`、`/task_space_smc/joint_torque`。
 每次运行在 `data_dir` 下写带时间戳的 CSV、JSON summary 和 PNG 报告。
 
@@ -317,7 +314,8 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
 
 1. **协议里没有使能 / 失能帧。软件层没有急停通道，急停只能物理断电。**
 2. **驱动进程一停，电机立刻失去保持力矩，机械臂会软掉。** 起了就不要关。
-3. **上电即锁当前位姿，掰不动。** 换起步位形只能用位置模式程序（[4.3](#43-就位)）。
+3. **上电即锁当前位姿，掰不动。** 起步位形离实验起点多远都不用管，
+   SMC 运行的前几秒会自己把它开过去（[4.3](#43-起-smc就位与跟踪是同一次运行)）。
 
 工作台约束（本台）：桌面在 `z = 0`，与基座安装面同平面；**+x 方向无桌面**，−x 有；
 桌上围栏沿 −x 延伸、+y 到约 `y = 350 mm`、高度约"基座到 joint3"。
@@ -376,49 +374,12 @@ ros2 launch manipulator student_arm6.launch.py arm_type:=a_l1 \
 > 力矩模式 ≤ 200 Hz   板子实测上报 200.6 Hz，再快就有周期拿不到新反馈
 > ```
 
-先做**仿真干跑**确认关节数对（不碰串口，零风险）：
+### 4.3 起 SMC（就位与跟踪是同一次运行）
 
-```bash
-ros2 launch manipulator student_arm6.launch.py arm_type:=sim
-ros2 topic echo /joint_states --once      # name 应为 [joint1..joint6]，长度 6
-```
-
-出现 `joint7` 说明 `arm_version` 没生效。
-
-### 4.3 就位
-
-上电后机械臂锁在断电时所在的位形，通常和实验起点差很远
-（实测断电重启后 j2 差 +66.7°、j4 +76.7°、j6 −88.1°，末端离轨迹起点 200 mm）。
-**必须用位置模式程序挪过去，不能靠人工摆。**
-
-```bash
-# 整臂就位（6 轴一起）
-python3 task_space_smc/hw/full_prepose.py \
-  --target-rad="-0.1081,0.2375,-0.7410,-1.3375,0.6976,1.5400" \
-  --duration 20 --settle 3 --kp="30,30,80,30,30,30"
-
-# 只把 joint5 挪离腕部奇异（j5=0 时 j4 与 j6 转轴共线，6D 雅可比掉秩）
-python3 task_space_smc/hw/wrist_prepose.py --target-deg 40 --duration 20 --settle 3
-```
-
-| `full_prepose.py` 参数 | 默认 | 说明 |
-|---|---|---|
-| `--target-rad` | 必填 | 6 个目标角度，弧度，逗号分隔 |
-| `--duration` | `25` | 五次 smoothstep 移动时长 s。峰值速度 `1.875·Δ/T`，超 0.5 rad/s 直接拒绝 |
-| `--settle` | `3` | 到位后保持时长 s |
-| `--kp` | `30`×6 | 位置增益。行程小、顶不动时才加大 |
-
-内置校验：目标越限拒绝、单轴行程 > 2 rad 拒绝、峰值速度 > 0.5 rad/s 拒绝、
-到位后读回残差 > 3° 报错。
-
-> ⚠️ **j3 在重力 + 静摩擦下即使 kp=80 也只能收到约 2° 残差**（重复出现）。这不是 bug，
-> 是位置模式的能力边界：`kp·err` 要同时顶住重力矩和静摩擦。每轮都一样所以轮次间可比，
-> 但跨天对比时要记住这 2°（末端低约 10 mm）。
-> 同理 **j2 位置模式有约 10° 不可消除误差**：它静摩擦 1.775 Nm，是其余关节的 2.4~18 倍，
-> 同时承载最重（重力约 3 Nm）。要精确定位只能用力矩模式 + 重力前馈 —— 那正是
-> [标定体系](docs/REFERENCE.md#9-实机标定体系)存在的意义。
-
-### 4.4 起 SMC
+**没有独立的就位步骤，也不用位置模式。** 上电后机械臂锁在固定的初始位形，
+通常离实验起点很远（实测断电重启后 j2 差 +66.7°、j4 +76.7°、j6 −88.1°，
+末端离轨迹起点 200 mm）。这段距离由 SMC 运行的**前 `start_delay_sec` 秒**走完
+—— 就位段与跟踪段是**同一个控制器、同一套增益、同一条代码路径**。
 
 另开一个终端，**同一个 `ROS_DOMAIN_ID`**：
 
@@ -431,21 +392,82 @@ cd /home/windylab/code/windylab_ws/src/arm-platform
 
 ros2 launch manipulator task_space_smc_whole6.launch.py \
   mode:=hardware hardware_enabled:=true rviz:=false \
-  trajectory_shape:=hwtest duration_sec:=60 start_delay_sec:=0 \
+  trajectory_shape:=hwtest duration_sec:=60 start_delay_sec:=8 \
   data_dir:=/path/to/run
 ```
 
-**与仿真的差别只有三个参数**，其余含义见 [3.2](#32-6-关节)：
+**与仿真的差别只有两个参数**，其余含义见 [3.2](#32-6-关节)：
 
 | 参数 | 实物取值 | 为什么 |
 |---|---|---|
 | `mode` | `hardware` | 不自动起硬件节点，接你在 [4.2](#42-起驱动) 起好的那个 |
 | `hardware_enabled` | `true` | **不设的话适配器输出恒为零，机械臂不动** |
-| `start_delay_sec` | `0` | 本架构不走 approach 段，直接进跟踪，交接由 `handover_blend` 处理 |
+| `start_delay_sec` | `8`（按距离调） | 就位段时长。**不能是 0** —— 0 等于跳过就位直接跟踪 |
 
-### 4.5 安全看门狗
+#### 就位段做什么
 
-跟踪期间持续检查，任一条触发就**停止跟踪并原地保持位置**：
+`smc_params_hwtest.yaml` 里 `approach.mode: task_space`：
+
+1. **第一个控制拍**读实物当前位形，正运动学得到末端当前位姿
+2. 规划一条到轨迹起点的**末端直线**（位置）+ **SO(3) 测地线**（姿态），
+   时间用五次 smoothstep，两端速度与加速度都为零
+3. 这条参考量喂给**跟踪段那个同一个 Lagrange-SMC**，力矩模式执行
+
+参考量从**当前位姿**起步，所以 SMC 看到的初始误差是 0；直接把参考量设成轨迹起点
+的话第一拍就有 245 mm 误差乘 c₀=216 → 53 m/s² 的需求，实机上就是一次猛冲。
+
+启动日志会打出规划量，**跑之前先看这一行**：
+
+```
+就位（任务空间 SMC）: 末端直线 245.2 mm、姿态 64.89°，8.0 s 走完；
+峰值速度 0.0575 m/s、峰值加速度 0.022 m/s²
+```
+
+**为什么不用位置模式**（`full_prepose.py`）：它不经过 SMC，是另一套控制器，而且
+顶不过静摩擦 —— 实测 j3 在 kp=80 下仍差约 **2°**、j2 差约 **10°**（j2 静摩擦
+1.775 Nm 是其余关节的 2.4~18 倍，同时承载最重）。于是每次实验的**起步位形都不是
+设定的那个**，末端差约 10 mm，跨天对比失真。力矩模式没有这个问题：仿真同参对照下
+就位末端残差 **0.052 mm**。
+
+**为什么在末端空间规划而不是关节空间**：关节空间插值时末端走的是一条没人算过的
+曲线，可能扫过桌面或围栏。末端直线是显式的，可以事先检查。
+
+#### 工作台护栏
+
+规划完成后自动检查，任一条不过就**一条力矩都不发**（电机由驱动的指令超时保位接管，
+那是协议里唯一设计过的安全兜底），并在日志里打 ERROR：
+
+| 判据 | 缺省阈值 |
+|---|---|
+| 末端直线在 −x 侧离台面的间隙 | ≥ 80 mm |
+| 撞围栏（x<20 mm 且 y>370 mm 且 z<331 mm） | 禁止 |
+| 峰值线速度 | ≤ 0.15 m/s |
+| 峰值线加速度 | ≤ 0.60 m/s² |
+
+阈值在 `approach.workspace_guard` 里改。超速 / 超加速度时提示**加大
+`start_delay_sec`**，不要去放宽阈值。
+
+> ⚠️ 护栏**只查末端点**。连杆本体的扫掠体积没查 —— 末端空间规划沿途没有关节解，
+> 算不出连杆在哪。这是必要条件不是充分条件，**第一次用新起点时人要在旁边看着**。
+
+#### 手动就位工具（不在正常流程里）
+
+`hw/full_prepose.py`（整臂位置模式）与 `hw/wrist_prepose.py`（只动 j5）保留，
+用于 SMC 起不来时把机械臂挪到安全位形，或者做位置模式的对照实验。
+
+```bash
+python3 task_space_smc/hw/full_prepose.py \
+  --target-rad="-0.1081,0.2375,-0.7410,-1.3375,0.6976,1.5400" \
+  --duration 20 --settle 3 --kp="30,30,80,30,30,30"
+```
+
+内置校验：目标越限拒绝、单轴行程 > 2 rad 拒绝、峰值速度 > 0.5 rad/s 拒绝、
+到位后读回残差 > 3° 报错。**它有上面说的 2°/10° 到不了位的问题**，
+不要拿它的落点当实验起点。
+
+### 4.4 安全看门狗
+
+**就位段与跟踪段都在跑**，任一条触发就**停止跟踪并原地保持位置**：
 
 | 判据 | 阈值 |
 |---|---|
@@ -455,7 +477,7 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
 判据吃的是**测量值**，不是估计器输出 —— 估计器在这条路上是被测对象，
 兜底不能有第二个失效点。日志里搜 `安全看门狗触发`。
 
-### 4.6 收工
+### 4.5 收工
 
 ```bash
 # 1) 先把机械臂挪到安全位形（位置模式）

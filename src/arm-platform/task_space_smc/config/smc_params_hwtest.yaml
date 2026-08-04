@@ -196,6 +196,34 @@ safety:
   base_state_timeout_sec: 0.1
 
 approach:
+  # 【2026-08-04 改为任务空间 SMC 就位】。此前实物就位有两条路，都不理想：
+  #   * hw/full_prepose.py 位置模式：不经过 SMC，是另一套控制器；顶不过静摩擦，
+  #     实测 j3 在 kp=80 下仍差约 2°、j2 差约 10°，每次实验的起步位形都不是设定
+  #     的那个（末端差约 10 mm），跨天对比失真。
+  #   * joint_space（本文件此前的缺省）：力矩模式压得住摩擦，但规划在关节空间，
+  #     末端走的是没人算过的曲线，可能扫过桌面或围栏；而且用的是 approach_kp/kd
+  #     另一套增益，与跟踪段的 SMC 在交接处换手。
+  # task_space：末端直线 + SO(3) 测地线，用与跟踪段【完全相同】的 Lagrange-SMC
+  # 执行。路径显式可查、全程一个控制器、力矩模式压得住静摩擦。
+  # 仿真实测（duration 12 s / start_delay 8 s，与 joint_space 同参对照）：
+  #   就位末端残差 task_space 0.052 mm vs joint_space 0.086 mm。
+  # ⚠️ 改回 joint_space 只需把下面这一行删掉（缺省就是 joint_space）。
+  mode: task_space
+
+  # 末端直线的工作台护栏。缺省值就是本台实测，写在这里是为了换台时能改。
+  # ⚠️ 只查【末端点】—— 连杆本体的扫掠体积没查（末端空间规划沿途没有关节解）。
+  # 这是必要条件不是充分条件，第一次用新起点时仍要人在旁边看着。
+  workspace_guard:
+    enabled: true
+    desk_plane_z: 0.0         # m，桌面高度（= 基座安装平面）
+    desk_edge_x: 0.02         # m，x 小于此值的一侧有桌面；+x 侧无桌面
+    desk_clearance: 0.08      # m，末端离台面的最小间隙
+    fence_y: 0.40             # m，围栏所在的 +y 位置
+    fence_height: 0.331       # m，围栏高度，自桌面起算
+    fence_clearance: 0.03     # m
+    max_linear_speed: 0.15    # m/s，超了就拒绝（提示加大 start_delay_sec）
+    max_linear_accel: 0.60    # m/s²
+
   initial_joint_offset_rad: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
   # 【腕部提刚度】。kp 是加速度增益，力矩刚度是 M_ii(q)·kp；腕部连杆惯量只有

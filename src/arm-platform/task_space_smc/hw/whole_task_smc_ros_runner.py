@@ -29,6 +29,7 @@ if __package__ in (None, ""):
 
 from task_space_smc.core.actuator_adapter import (
     ActuatorAdapter, ActuatorLimits, uniform_acceleration_torque_scale)
+from task_space_smc.core.approach_reference import TaskSpaceApproach
 from task_space_smc.core.handover_blend import HandoverBlend, trajectory_clock
 from task_space_smc.core.loop_delay import (
     CommandDelayBuffer, FeedbackDelayModel, resolve_simulation_delay)
@@ -356,6 +357,36 @@ class WholeTaskSmcRosRunner(Node):
             approach.get("kd", [16.0, 16.0, 16.0, 14.0, 14.0, 12.0, 12.0]),
             dtype=float,
         ).reshape(self.n_arm)
+        # 就位段用哪套控制器。2026-08-04 新增 task_space：
+        #   joint_space（缺省）关节空间五次插值 + 关节 PD + RNEA。已验证基线，
+        #                     不写这一项时行为逐位不变。
+        #   task_space        末端空间直线+测地线插值，用与跟踪段【完全相同】的
+        #                     Lagrange-SMC 执行。实物默认应当用它，理由见
+        #                     core/approach_reference.py 模块头。
+        self.approach_mode = str(approach.get("mode", "joint_space")).strip().lower()
+        if self.approach_mode not in ("joint_space", "task_space"):
+            raise ValueError(
+                f"approach.mode = {self.approach_mode!r} 不合法，"
+                "可选 ['joint_space', 'task_space']")
+        # 末端直线的工作台护栏。缺省值是本台实测：桌面 z=0 与基座安装面同平面，
+        # x < DESK_EDGE_X 的一侧有桌面，围栏沿 −x 延伸到 y≈0.40 m、高 0.331 m。
+        _guard = approach.get("workspace_guard") or {}
+        self.approach_guard = dict(
+            enabled=bool(_guard.get("enabled", True)),
+            desk_plane_z=float(_guard.get("desk_plane_z", 0.0)),
+            desk_edge_x=float(_guard.get("desk_edge_x", 0.02)),
+            desk_clearance=float(_guard.get("desk_clearance", 0.08)),
+            fence_y=float(_guard.get("fence_y", 0.40)),
+            fence_height=float(_guard.get("fence_height", 0.331)),
+            fence_clearance=float(_guard.get("fence_clearance", 0.03)),
+            max_linear_speed=float(_guard.get("max_linear_speed", 0.15)),
+            max_linear_accel=float(_guard.get("max_linear_accel", 0.60)),
+        )
+        # 就位轨迹在【第一个 approach 拍】才建 —— 硬件模式下 __init__ 里 self.q
+        # 还是配置的 initial_pose_rad，不是实物反馈（回调不可能在 __init__ 返回
+        # 前触发）。用那个假位形规划出来的直线是错的。
+        self.task_approach = None
+        self.task_approach_rejected = False
         self.approach_friction = self._build_approach_friction(approach)
         # 跟踪段静摩擦前馈。复用 approach 的同一组实测静摩擦（标定文件是同一份），
         # 只有 enabled/scale/torque_epsilon 独立配置 —— 两段的驱动信号不同，
@@ -1570,7 +1601,117 @@ class WholeTaskSmcRosRunner(Node):
         if self.approach_rows_written % METRICS_FLUSH_INTERVAL == 0:
             self.metrics_file.flush()
 
+    def _plan_task_space_approach(self, kin_ctrl) -> bool:
+        """规划末端直线 + 测地线，并过一遍工作台护栏。返回是否放行。
+
+        必须在【第一个 approach 拍】调用，不能在 __init__ 里 —— 硬件模式下
+        __init__ 时 self.q 还是配置的 initial_pose_rad，用它规划出来的直线
+        和实物实际所在的位置无关。
+        """
+        ref0 = reference_sample(0.0, self.shape, self.derivative_dt)
+        self.task_approach = TaskSpaceApproach(
+            kin_ctrl.ee_position, kin_ctrl.ee_rotation,
+            ref0.position_w, ref0.rotation_w, self.start_delay_sec)
+        plan = self.task_approach.plan()
+        self.get_logger().info(
+            "就位（任务空间 SMC）: 末端直线 %.1f mm、姿态 %.2f°，%.1f s 走完；"
+            "峰值速度 %.4f m/s、峰值加速度 %.3f m/s²"
+            % (1000.0 * plan.distance_m, plan.rotation_deg, plan.duration_sec,
+               plan.peak_linear_speed, plan.peak_linear_accel))
+        g = self.approach_guard
+        if not g["enabled"]:
+            self.get_logger().warning("就位护栏已关闭（approach.workspace_guard.enabled=false）")
+            return True
+        bad = []
+        if plan.peak_linear_speed > g["max_linear_speed"]:
+            bad.append("峰值速度 %.4f > %.4f m/s（加大 start_delay_sec）"
+                       % (plan.peak_linear_speed, g["max_linear_speed"]))
+        if plan.peak_linear_accel > g["max_linear_accel"]:
+            bad.append("峰值加速度 %.3f > %.3f m/s²（加大 start_delay_sec）"
+                       % (plan.peak_linear_accel, g["max_linear_accel"]))
+        # 末端直线 vs 桌面 / 围栏。⚠️ 只查【末端点】—— 连杆本体的扫掠体积没有
+        # 查，因为沿途的关节解并不存在（这条轨迹是末端空间规划的，逐点 IK 才
+        # 有关节角）。所以这道护栏是必要条件不是充分条件。
+        for p in self.task_approach.sample_positions(101):
+            on_desk_side = p[0] < g["desk_edge_x"]
+            if on_desk_side and p[2] < g["desk_plane_z"] + g["desk_clearance"]:
+                bad.append("直线经过 (%.0f, %.0f, %.0f) mm：−x 侧有桌面，"
+                           "离台面不足 %.0f mm"
+                           % (1000*p[0], 1000*p[1], 1000*p[2],
+                              1000*g["desk_clearance"]))
+                break
+            if (on_desk_side and p[1] > g["fence_y"] - g["fence_clearance"]
+                    and p[2] < g["fence_height"]):
+                bad.append("直线经过 (%.0f, %.0f, %.0f) mm：撞围栏"
+                           "（y>%.0f mm 且 z<%.0f mm）"
+                           % (1000*p[0], 1000*p[1], 1000*p[2],
+                              1000*(g["fence_y"] - g["fence_clearance"]),
+                              1000*g["fence_height"]))
+                break
+        if bad:
+            self.get_logger().error(
+                "就位轨迹被护栏拒绝，不发任何力矩（电机将由驱动的指令超时保位）：\n  "
+                + "\n  ".join(bad))
+            self.task_approach_rejected = True
+            return False
+        return True
+
+    def _run_task_space_approach(self, elapsed, now):
+        """就位段：末端空间直线 + 测地线，用与跟踪段【同一个】SMC 执行。
+
+        与 joint_space 模式的区别只在"力矩怎么算出来"：
+          * 规划在末端空间 -> 走的是可以事先检查的直线，不是关节插值扫出来的
+            未知曲线；
+          * 执行用 self.controller（Lagrange-SMC）+ resolve_acceleration，与跟踪
+            段逐字相同 -> 交接处不换控制器；
+          * 力矩模式 -> 压得住静摩擦，没有位置模式那 2°(j3)/10°(j2) 的到不了位。
+        """
+        if getattr(self, "task_approach_rejected", False):
+            return                      # 护栏已拒绝：不发力矩，驱动超时保位
+        bs = self._simulation_base_sample(0.0)
+        bs.velocity_lwa = np.zeros(6)
+        bs.acceleration_lwa = np.zeros(6)
+        self._publish_base_tf(bs)
+        self._publish_base_truth(bs)
+        q_full = self.model.make_q_full(
+            bs.position_w, bs.quaternion_wxyz, self.q)
+        v_full = self.model.make_v_full(bs.velocity_lwa, self.qd)
+        q_full_ctrl = self.model.make_q_full(
+            bs.position_w, bs.quaternion_wxyz, self.q_ctrl)
+        v_full_ctrl = self.model.make_v_full(bs.velocity_lwa, self.qd_ctrl)
+        kin_ctrl = self.model.compute_kinematics(q_full_ctrl, v_full_ctrl)
+        if self.task_approach is None and not self._plan_task_space_approach(kin_ctrl):
+            return
+        desired = self.task_approach.sample(elapsed)
+        actual = PoseState(
+            position=kin_ctrl.ee_position,
+            quaternion_wxyz=kin_ctrl.ee_quaternion_wxyz,
+            linear_velocity=kin_ctrl.ee_velocity_lwa[:3],
+            angular_velocity=kin_ctrl.ee_velocity_lwa[3:],
+        )
+        (tau, tau_bias, smc, rr, torque_scale,
+         tau_friction) = self._task_space_torque(
+            desired, actual, kin_ctrl, q_full_ctrl, v_full_ctrl, bs)
+        # ⚠️ 就位段【也要】看门狗。joint_space 模式当年没有，是因为它的关节 PD
+        # 增益远低于跟踪段；现在就位用的是跟踪段那一套 SMC 增益，同样能索要
+        # 饱和力矩，兜底不能只在跟踪段有。
+        # 位置判据喂任务空间误差 —— 参考量从当前位姿起步，正常情况下这个量
+        # 始终是跟踪误差量级（mm），一旦跑飞立刻超 50 mm。
+        self.last_position_error = float(np.linalg.norm(smc.position_error))
+        if self._watchdog_hold_q is None:
+            self._watchdog_hold_q = np.asarray(self._q_meas, dtype=float).copy()
+        if not self._watchdog_trip(now):
+            self._watchdog_hold_q = np.asarray(self._q_meas, dtype=float).copy()
+        # CSV 的 approach_q_des_* 是关节空间插值的目标，任务空间模式下不存在
+        # 对应量（沿途没有关节解）。写 NaN 而不是拿 q_ctrl 冒充 —— 后者会让
+        # approach_q_err_* 恒为 0，看上去"完美跟踪"，是假信号。
+        self._finish_approach_tick(
+            elapsed, now, bs, q_full, v_full, q_full_ctrl, v_full_ctrl,
+            tau, np.full(self.n_arm, np.nan), tau_friction)
+
     def _run_approach(self, elapsed, now):
+        if self.approach_mode == "task_space":
+            return self._run_task_space_approach(elapsed, now)
         duration = max(self.start_delay_sec, self.control_period)
         phase = float(np.clip(elapsed / duration, 0.0, 1.0))
         blend = 10.0 * phase**3 - 15.0 * phase**4 + 6.0 * phase**5
@@ -1610,6 +1751,19 @@ class WholeTaskSmcRosRunner(Node):
         tau_friction = stiction_feedforward(
             self.approach_friction, qd_des, q_des - self.q_ctrl)
         tau = tau + tau_friction
+        self._finish_approach_tick(
+            elapsed, now, bs, q_full, v_full, q_full_ctrl, v_full_ctrl,
+            tau, q_des, tau_friction)
+    def _finish_approach_tick(self, elapsed, now, bs, q_full, v_full,
+                              q_full_ctrl, v_full_ctrl, tau, q_des,
+                              tau_friction):
+        """approach 段的收尾：下发指令、喂估计器、记 CSV、推进内部 plant、
+        发可视化。
+
+        2026-08-04 从 ``_run_approach`` 里抽出来，让关节空间与任务空间两种
+        就位模式共用同一套收尾动作 —— 两者只在"力矩怎么算出来"上不同，
+        记录口径必须完全一致，否则两种模式的 CSV 没法互相对照。
+        """
         motor = self.adapter.torque_to_motor_command(
             tau,
             now,
@@ -1708,6 +1862,87 @@ class WholeTaskSmcRosRunner(Node):
                     if self.feasibility_brake_safety > 0.0 else None),
             brake_safety=self.feasibility_brake_safety,
         )
+
+    def _task_space_torque(self, desired, actual, kin_ctrl,
+                           q_full_ctrl, v_full_ctrl, bs_est):
+        """任务空间参考量 -> 关节力矩。**就位段与跟踪段共用这一条路径。**
+
+        2026-08-04 抽出来的。此前就位段走的是另一套控制器（关节空间五次插值
+        + 关节 PD + RNEA，用 approach_kp/kd 那组增益），跟踪段才是 Lagrange-SMC
+        —— 交接处等于两套控制器换手，``handover_blend`` 要吸收的不只是跟踪
+        残差，还有两套控制器稳态点的差。现在两段共用同一个控制器、同一组增益，
+        交接处只剩跟踪误差量级的残差。
+
+        返回 ``(tau, tau_bias, smc, rr, torque_scale, tau_track_friction)``。
+        看门狗、饱和记录、指令下发留在各自的调用方 —— 两段的收尾动作不同。
+        """
+        smc = self.controller.compute(desired, actual)
+        b6 = self.model.compute_task_bias_acceleration(q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa)
+        # 5D 任务（位置 + 笔轴方向）把零空间秩从 0 提到 1，那个自由度用于
+        # 限位规避。6D 任务下本轨迹只有 35% 可达，5D 下 98%/100%。
+        J_task = kin_ctrl.J_arm_lwa
+        rhs_task = smc.nu - b6
+        if self.orientation_mode == "pen_axis":
+            J_task, rhs_task, _ = pen_axis_task(
+                J_task, rhs_task, kin_ctrl.ee_rotation, self.pen_axis_local)
+        rr = resolve_acceleration(
+            J_task,
+            self.model.compute_arm_mass_block(q_full_ctrl),
+            rhs_task,
+            self.q_ctrl,                      # 零空间/限位规避也只有测量值可用
+            self.qd_ctrl,
+            self.ns_q_nominal,
+            self.ns_kp,
+            self.ns_kd,
+            float(self.config["task"]["characteristic_length"]),
+            float(self.config["singularity"]["sigma_warn"]),
+            float(self.config["singularity"]["sigma_critical"]),
+            float(self.config["singularity"]["damping_min"]),
+            float(self.config["singularity"]["damping_max"]),
+            self.ns_accel_weight,
+            limit_avoidance=self.limit_avoidance,
+            # ⚠️【已停用】饱和感知解算。161 个单元测试全绿，但真实 ROS
+            # 8 次重复 RMS 245.7mm（对照：不用它是 2.43mm），坏 100 倍。
+            # 单元测试只验了孤立时刻的盒约束，验不出闭环稳定性 ——
+            # 这正是"调参与验证必须跑真实 ROS"那条规则要防的情况。
+            # 实现保留在 redundancy_resolution.py 里待查，不要直接删。
+            feasibility=None,
+        )
+        tau = self.model.compute_rnea_arm_torque(q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa, rr.qdd_cmd)
+        # 零加速度力矩（重力+科氏）。既是统一缩放的基准，也是静摩擦前馈的驱动量。
+        tau_bias = self.model.compute_rnea_arm_torque(
+            q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa,
+            np.zeros(self.n_arm))
+        # 力矩饱和的处理方式：逐轴限幅（旧）还是保方向的统一缩放（新）。
+        # 逐轴限幅在多轴同时饱和时会把解出的加速度打散成 M⁻¹(τ_clip − h)，
+        # 与任务加速度无关 —— 末端因此被饱和力矩主动甩出而不是滞后。
+        torque_scale = 1.0
+        if self.torque_saturation_mode == "uniform":
+            torque_scale = uniform_acceleration_torque_scale(
+                tau_bias, tau - tau_bias, self.feasibility_torque)
+            tau = tau_bias + torque_scale * (tau - tau_bias)
+        # 跟踪段静摩擦前馈。加在【饱和缩放之后】：缩放是为了保住任务加速度
+        # 的方向，而这一项补的是摩擦，不属于任务加速度，不该被一起缩掉。
+        #
+        # ⚠️ 驱动量必须取【参考速度 + 误差】，不能取净力矩 τ − τ_bias。
+        # 2026-08-04 第 17 次上机实测：用净力矩驱动时前馈抬高净力矩、净力矩
+        # 又抬高前馈 —— 瞬时正反馈，操作者观察到剧烈抖振并当场断电。
+        # 参考速度与误差都要经过机械臂动力学才变化，构不成瞬时环路；
+        # approach 段用的就是这个结构，第 16 次实测它把机械臂精确开到了
+        # 轨迹起点（每轴差 0.8° 以内）。
+        tau_track_friction = np.zeros(self.n_arm)
+        if self.tracking_friction.enabled:
+            J6 = kin_ctrl.J_arm_lwa                     # 6×n，与误差同为 6 维
+            twist_ref = np.concatenate([
+                desired.linear_velocity, desired.angular_velocity])
+            err_task = np.concatenate([
+                smc.position_error, smc.orientation_error])
+            qd_ref = np.linalg.lstsq(J6, twist_ref, rcond=None)[0]
+            dq_err = np.linalg.lstsq(J6, err_task, rcond=None)[0]
+            tau_track_friction = stiction_feedforward(
+                self.tracking_friction, qd_ref, dq_err)
+        tau = tau + tau_track_friction
+        return tau, tau_bias, smc, rr, torque_scale, tau_track_friction
 
     def _control_loop(self):
         now = self.get_clock().now().nanoseconds * 1e-9
@@ -1890,72 +2125,9 @@ class WholeTaskSmcRosRunner(Node):
             linear_velocity=kin_ctrl.ee_velocity_lwa[:3],
             angular_velocity=kin_ctrl.ee_velocity_lwa[3:],
         )
-        smc = self.controller.compute(desired, actual)
-        b6 = self.model.compute_task_bias_acceleration(q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa)
-        # 5D 任务（位置 + 笔轴方向）把零空间秩从 0 提到 1，那个自由度用于
-        # 限位规避。6D 任务下本轨迹只有 35% 可达，5D 下 98%/100%。
-        J_task = kin_ctrl.J_arm_lwa
-        rhs_task = smc.nu - b6
-        if self.orientation_mode == "pen_axis":
-            J_task, rhs_task, _ = pen_axis_task(
-                J_task, rhs_task, kin_ctrl.ee_rotation, self.pen_axis_local)
-        rr = resolve_acceleration(
-            J_task,
-            self.model.compute_arm_mass_block(q_full_ctrl),
-            rhs_task,
-            self.q_ctrl,                      # 零空间/限位规避也只有测量值可用
-            self.qd_ctrl,
-            self.ns_q_nominal,
-            self.ns_kp,
-            self.ns_kd,
-            float(self.config["task"]["characteristic_length"]),
-            float(self.config["singularity"]["sigma_warn"]),
-            float(self.config["singularity"]["sigma_critical"]),
-            float(self.config["singularity"]["damping_min"]),
-            float(self.config["singularity"]["damping_max"]),
-            self.ns_accel_weight,
-            limit_avoidance=self.limit_avoidance,
-            # ⚠️【已停用】饱和感知解算。161 个单元测试全绿，但真实 ROS
-            # 8 次重复 RMS 245.7mm（对照：不用它是 2.43mm），坏 100 倍。
-            # 单元测试只验了孤立时刻的盒约束，验不出闭环稳定性 ——
-            # 这正是"调参与验证必须跑真实 ROS"那条规则要防的情况。
-            # 实现保留在 redundancy_resolution.py 里待查，不要直接删。
-            feasibility=None,
-        )
-        tau = self.model.compute_rnea_arm_torque(q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa, rr.qdd_cmd)
-        # 零加速度力矩（重力+科氏）。既是统一缩放的基准，也是静摩擦前馈的驱动量。
-        tau_bias = self.model.compute_rnea_arm_torque(
-            q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa,
-            np.zeros(self.n_arm))
-        # 力矩饱和的处理方式：逐轴限幅（旧）还是保方向的统一缩放（新）。
-        # 逐轴限幅在多轴同时饱和时会把解出的加速度打散成 M⁻¹(τ_clip − h)，
-        # 与任务加速度无关 —— 末端因此被饱和力矩主动甩出而不是滞后。
-        torque_scale = 1.0
-        if self.torque_saturation_mode == "uniform":
-            torque_scale = uniform_acceleration_torque_scale(
-                tau_bias, tau - tau_bias, self.feasibility_torque)
-            tau = tau_bias + torque_scale * (tau - tau_bias)
-        # 跟踪段静摩擦前馈。加在【饱和缩放之后】：缩放是为了保住任务加速度
-        # 的方向，而这一项补的是摩擦，不属于任务加速度，不该被一起缩掉。
-        #
-        # ⚠️ 驱动量必须取【参考速度 + 误差】，不能取净力矩 τ − τ_bias。
-        # 2026-08-04 第 17 次上机实测：用净力矩驱动时前馈抬高净力矩、净力矩
-        # 又抬高前馈 —— 瞬时正反馈，操作者观察到剧烈抖振并当场断电。
-        # 参考速度与误差都要经过机械臂动力学才变化，构不成瞬时环路；
-        # approach 段用的就是这个结构，第 16 次实测它把机械臂精确开到了
-        # 轨迹起点（每轴差 0.8° 以内）。
-        tau_track_friction = np.zeros(self.n_arm)
-        if self.tracking_friction.enabled:
-            J6 = kin_ctrl.J_arm_lwa                     # 6×n，与误差同为 6 维
-            twist_ref = np.concatenate([
-                desired.linear_velocity, desired.angular_velocity])
-            err_task = np.concatenate([
-                smc.position_error, smc.orientation_error])
-            qd_ref = np.linalg.lstsq(J6, twist_ref, rcond=None)[0]
-            dq_err = np.linalg.lstsq(J6, err_task, rcond=None)[0]
-            tau_track_friction = stiction_feedforward(
-                self.tracking_friction, qd_ref, dq_err)
-        tau = tau + tau_track_friction
+        (tau, tau_bias, smc, rr, torque_scale,
+         tau_track_friction) = self._task_space_torque(
+            desired, actual, kin_ctrl, q_full_ctrl, v_full_ctrl, bs_est)
         # 保持位置的目标用【测量值】—— 实物上看门狗手里就只有测量值。
         # ⚠️ 必须是 _q_meas 不是 q_ctrl：路线 D 下 q_ctrl 是 Smith 预测位置
         # （逐关节最多偏 predict_clamp_rad = 0.005 rad），而触发之后这个位形会以
