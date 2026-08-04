@@ -2,8 +2,33 @@
 
 本文档面向使用 A-L1-GAMMA 机械臂做任务空间力矩控制实验的同学。内容覆盖：模块定位、三种机械臂构型、离线与 ROS 仿真、实机操作、标定体系、真机接口的实测特性、参数整定与排错。
 
-> 接手正在进行的工作请先读 [HANDOFF_2026_08_02.md](HANDOFF_2026_08_02.md)：硬件当前状态、
+> 接手正在进行的工作请先读 [docs/HANDOFF_2026_08_02.md](docs/HANDOFF_2026_08_02.md)：硬件当前状态、
 > 已定量排除的方向、以及踩过的坑。本文件是**参考手册**，那份是**工作交接**。
+
+---
+
+## 目录结构
+
+2026-08-04 按职责分层。分桶的判据是**依赖方向**，不是文件大小或新旧：
+
+| 目录 | 判据 | 内容 |
+|---|---|---|
+| `core/` | 不 import ROS，不区分仿真与实物 | 控制律、模型、误差、冗余分解、状态估计（LESO / Smith）、摩擦前馈、交接混合、配置装配 |
+| `sim/` | 只在离线/仿真里跑 | 离线验证 harness、增益扫描、注入项消融、报告绘图 |
+| `hw/` | 需要真机或 ROS 才有意义 | ROS 运行器、分阶段标定（phase1~5）、就位程序、串口抓包 |
+| `docs/` | 文档 | 交接、阶段结论、验证记录 |
+| `config/` | 参数 | `smc_params*.yaml`（**不分层**，`core/config_loader.py` 按包根定位） |
+| `data/` | 运行产物 | 已 gitignore，不入库 |
+
+对应的测试在 `test/{core,sim,hw}/`，`test/` 根目录只留 `conftest.py` 与 C++ 包自己的 `.cc`。
+
+**依赖方向是单向的**：`hw/` 与 `sim/` 都依赖 `core/`，两者之间互不依赖。
+`whole_task_smc_ros_runner.py` 放在 `hw/` 是因为它面向真机，但它**同时支持
+`mode:=simulation` 与 `mode:=hardware`，而且刻意是同一条代码路径** —— 这条约束
+是故意的，否则仿真里得到的结论带不到实物上。
+
+⚠️ `hw/torque_controller_node.py` 是 7 关节时代的遗留独立节点，没有任何 launch
+   文件引用它，已被 `whole_task_smc_ros_runner.py` 取代。
 
 ---
 
@@ -164,8 +189,8 @@ source install/setup.bash
 **不重新 `colcon build` 就不生效**，节点跑的是旧代码。验证：
 
 ```bash
-diff src/arm-platform/task_space_smc/redundancy_resolution.py \
-     install/manipulator/lib/manipulator/task_space_smc/redundancy_resolution.py
+diff src/arm-platform/task_space_smc/core/redundancy_resolution.py \
+     install/manipulator/lib/manipulator/task_space_smc/core/redundancy_resolution.py
 ```
 
 ### 3.2 陷阱二：不要覆盖 `PYTHONPATH`
@@ -182,7 +207,7 @@ export PYTHONPATH="$PWD/src/arm-platform:$PYTHONPATH"
 
 ```bash
 export PYTHONPATH="$PWD/src/arm-platform:$PYTHONPATH"
-python3 src/arm-platform/task_space_smc/offline_simulation.py \
+python3 src/arm-platform/task_space_smc/sim/offline_simulation.py \
   --profile sixdof --reference-mode hold --duration 1.0
 ```
 
@@ -385,8 +410,8 @@ ros2 run manipulator student_arm_node --ros-args \
 上机前确认实物位形与 `initial_pose_rad` 的差值：
 
 ```bash
-python3 task_space_smc/pose_check_readonly.py --offline-selftest       # 先自检解析逻辑
-python3 task_space_smc/pose_check_readonly.py --port /dev/ttyUSB0 --seconds 3
+python3 task_space_smc/hw/pose_check_readonly.py --offline-selftest       # 先自检解析逻辑
+python3 task_space_smc/hw/pose_check_readonly.py --port /dev/ttyUSB0 --seconds 3
 ```
 
 **这个脚本结构上不可能发送字节**：打开串口后把 `write`/`flush` 等方法全替换成抛异常的桩，
@@ -406,11 +431,11 @@ python3 task_space_smc/pose_check_readonly.py --port /dev/ttyUSB0 --seconds 3
 两个方向同时打时间戳落盘并在线解码。方向靠地址字节区分（`0xAA` 下行 / `0x55` 上行）。
 
 ```bash
-python3 task_space_smc/serial_tap.py --selftest                    # 10 项自检，无硬件
-python3 task_space_smc/serial_tap.py --fake-board --link /tmp/ttyFAKE --seconds 20
-python3 task_space_smc/serial_tap.py --port /dev/ttyUSB0 --link /tmp/ttyTAP \
+python3 task_space_smc/hw/serial_tap.py --selftest                    # 10 项自检，无硬件
+python3 task_space_smc/hw/serial_tap.py --fake-board --link /tmp/ttyFAKE --seconds 20
+python3 task_space_smc/hw/serial_tap.py --port /dev/ttyUSB0 --link /tmp/ttyTAP \
         --seconds 60 --capture /tmp/tap.bin                        # 上机中继
-python3 task_space_smc/serial_tap.py --decode /tmp/tap.bin         # 离线复解
+python3 task_space_smc/hw/serial_tap.py --decode /tmp/tap.bin         # 离线复解
 ```
 
 `--fake-board` 冒充控制板按 200 Hz 回放上行帧（含 20 Hz 心跳 —— 少了它节点会封锁力矩
@@ -582,7 +607,7 @@ ros2 run manipulator phase2_torque_probe.py --help
 
 ```bash
 export PYTHONPATH="$PWD/src/arm-platform:$PYTHONPATH"
-python3 src/arm-platform/task_space_smc/phase5_inertia_id.py --help
+python3 src/arm-platform/task_space_smc/hw/phase5_inertia_id.py --help
 ```
 
 ### 9.4 方法学要点

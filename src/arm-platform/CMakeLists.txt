@@ -265,12 +265,16 @@ install(PROGRAMS
   demo/tune_unified_mpc_params.py
   demo/tune_ll100_nmpc.py
   demo/trajectory_visualizer_demo.py
-  task_space_smc/offline_simulation.py
-  task_space_smc/torque_controller_node.py
-  task_space_smc/torque_interface_probe.py
-  task_space_smc/whole_task_smc_ros_runner.py
-  task_space_smc/plot_whole_task_smc.py
-  task_space_smc/tune_whole_task_smc.py
+  task_space_smc/sim/offline_simulation.py
+  task_space_smc/hw/torque_controller_node.py
+  task_space_smc/hw/torque_interface_probe.py
+  task_space_smc/hw/whole_task_smc_ros_runner.py
+  task_space_smc/sim/plot_whole_task_smc.py
+  task_space_smc/sim/tune_whole_task_smc.py
+  task_space_smc/hw/fk_gravity_verify.py
+  task_space_smc/hw/phase2_torque_probe.py
+  task_space_smc/hw/phase3_gravity_calibration.py
+  task_space_smc/hw/phase4_gravity_compensation.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -344,6 +348,30 @@ if(BUILD_TESTING)
     target_compile_definitions(test_torque_sim_arm PRIVATE
       MANIPULATOR_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     )
+  endif()
+
+  ament_add_gtest(test_arm6_config
+    test/test_arm6_config.cc
+  )
+  if(TARGET test_arm6_config)
+    target_link_libraries(test_arm6_config manipulator_core ${YAML_CPP_LIBRARIES})
+    target_compile_definitions(test_arm6_config PRIVATE
+      MANIPULATOR_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+  endif()
+
+  ament_add_gtest(test_protocol_heartbeat
+    test/test_protocol_heartbeat.cc
+  )
+  if(TARGET test_protocol_heartbeat)
+    target_link_libraries(test_protocol_heartbeat manipulator_core)
+  endif()
+
+  ament_add_gtest(test_effort_safety
+    test/test_effort_safety.cc
+  )
+  if(TARGET test_effort_safety)
+    target_link_libraries(test_effort_safety manipulator_core)
   endif()
 endif()
 

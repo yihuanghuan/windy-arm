@@ -1,6 +1,6 @@
 """在任何测试模块导入之前设好布局环境变量。
 
-`task_space_smc.trajectory_reference` 依赖的轨迹配置模块在【模块级】读
+`task_space_smc.core.trajectory_reference` 依赖的轨迹配置模块在【模块级】读
 ``MB_STATION_LAYOUT``，读完就固化。因此谁先 import 谁决定布局。
 
 原先 test_pen_axis_convention.py 自己在文件顶部 setdefault 后再 import，
@@ -22,3 +22,14 @@ import os
 
 # 6 关节实机构型用 horizontal；默认 vertical 是 7 关节的历史布局。
 os.environ.setdefault("MB_STATION_LAYOUT", "horizontal")
+
+# 2026-08-04 目录分层后：测试文件下沉到 test/core|sim|hw/，各文件里那句
+# sys.path 的相对深度全部要 +1。与其依赖每个文件都改对，在这里统一插一次
+# —— conftest 永远在任何测试模块导入之前执行，且它自己固定在 test/ 根，
+# parents[1] 就是包的父目录（src/arm-platform），与测试放在第几层无关。
+import sys
+from pathlib import Path
+
+_PKG_PARENT = str(Path(__file__).resolve().parents[1])
+if _PKG_PARENT not in sys.path:
+    sys.path.insert(0, _PKG_PARENT)
