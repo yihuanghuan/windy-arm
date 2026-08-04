@@ -69,14 +69,20 @@ def _fake(module, guard=None, duration=8.0):
         shape="hwtest", derivative_dt=1e-4, start_delay_sec=duration,
         approach_guard=dict(guard or DEFAULT_GUARD),
         task_approach=None, task_approach_rejected=False,
+        orientation_mode="full", pen_axis_local=np.array([1.0, 0.0, 0.0]),
+        n_arm=6, q_ctrl=np.zeros(6),
+        config={"singularity": {"sigma_warn": 0.03, "sigma_critical": 0.012}},
         get_logger=lambda: log), log
 
 
-def _kin(position, rotation=None):
+def _kin(position, rotation=None, sigma_min=0.0425):
+    """缺省带一个【健康】的雅可比（sigma_min = j5=40° 的实测值），
+    这样护栏类测试只考察工作台判据，不被奇异门抢答。"""
     return types.SimpleNamespace(
         ee_position=np.asarray(position, dtype=float),
         ee_rotation=np.asarray(
-            rotation if rotation is not None else np.eye(3), dtype=float))
+            rotation if rotation is not None else np.eye(3), dtype=float),
+        J_arm_lwa=np.diag([1.0, 0.9, 0.8, 0.7, 0.6, float(sigma_min)]))
 
 
 # --------------------------------------------------------------- 配置
@@ -212,3 +218,63 @@ def test_approach_reference_starts_at_the_current_pose_so_error_starts_at_zero()
     e = a.sample(8.0)
     assert np.allclose(e.position, [0.30, 0.04, 0.26])
     assert np.allclose(e.linear_velocity, 0.0)
+
+
+# --------------------------------------------------------------- 起点奇异
+
+def _kin_with_jacobian(position, J, rotation=None):
+    return types.SimpleNamespace(
+        ee_position=np.asarray(position, dtype=float),
+        ee_rotation=np.asarray(
+            rotation if rotation is not None else np.eye(3), dtype=float),
+        J_arm_lwa=np.asarray(J, dtype=float))
+
+
+def _sing_fake(module, sigma_min):
+    """造一个 sigma_min 可控的 6×6 雅可比。"""
+    J = np.diag([1.0, 0.9, 0.8, 0.7, 0.6, float(sigma_min)])
+    fake, log = _fake(module)
+    fake.orientation_mode = "full"
+    fake.pen_axis_local = np.array([1.0, 0.0, 0.0])
+    fake.n_arm = 6
+    fake.q_ctrl = np.zeros(6)
+    fake.config = {"singularity": {"sigma_warn": 0.03, "sigma_critical": 0.012}}
+    return fake, log, J
+
+
+def test_singular_start_pose_is_rejected_before_any_torque():
+    """j5≈0 的腕部奇异起点必须拒绝就位。
+
+    实测 j5=0.17° 时 sigma_min = 0.00019，比 sigma_critical 0.012 低 63 倍。
+    在这种位形上伪逆会给出一个数，但那个数与期望的末端运动无关 ——
+    机械臂会往任意方向窜。而这一步【不能】由任务空间 SMC 自己解决：
+    它正是被奇异卡住的那一方。
+    """
+    module = _load_runner_module()
+    fake, log, J = _sing_fake(module, 0.00019)
+    ok = module.WholeTaskSmcRosRunner._plan_task_space_approach(
+        fake, _kin_with_jacobian([0.108, 0.011, 0.170], J))
+    assert ok is False
+    assert fake.task_approach_rejected is True
+    msg = "\n".join(log.error_msgs)
+    assert "奇异" in msg
+    assert "wrist_prepose" in msg, "拒绝时必须告诉操作者下一步怎么做"
+
+
+def test_near_singular_start_warns_but_proceeds():
+    module = _load_runner_module()
+    fake, log, J = _sing_fake(module, 0.02)      # 介于 critical 与 warn 之间
+    ok = module.WholeTaskSmcRosRunner._plan_task_space_approach(
+        fake, _kin_with_jacobian([0.2468, 0.0325, 0.1954], J))
+    assert ok is True
+    assert any("接近奇异" in m for m in log.warn_msgs)
+    assert not log.error_msgs
+
+
+def test_healthy_start_pose_neither_warns_nor_errors():
+    module = _load_runner_module()
+    fake, log, J = _sing_fake(module, 0.0425)    # j5=40° 实测值
+    ok = module.WholeTaskSmcRosRunner._plan_task_space_approach(
+        fake, _kin_with_jacobian([0.2468, 0.0325, 0.1954], J))
+    assert ok is True
+    assert not log.warn_msgs and not log.error_msgs

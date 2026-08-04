@@ -1608,6 +1608,40 @@ class WholeTaskSmcRosRunner(Node):
         __init__ 时 self.q 还是配置的 initial_pose_rad，用它规划出来的直线
         和实物实际所在的位置无关。
         """
+        # ⚠️ 先查【起点是不是奇异】。任务空间就位要把末端速度经伪逆映射成关节
+        # 速度，起点掉秩的话这个映射本身就没有意义 —— 阻尼伪逆会给出一个数，
+        # 但那个数与期望的末端运动无关，机械臂会往任意方向窜。
+        # 本机的典型情况：上电/失力后机械臂落回休息位形，j5≈0 是【腕部奇异】
+        # （URDF 里 joint4 与 joint6 都是 axis="1 0 0"，joint5 是 "0 0 1" 夹在
+        # 中间；j5=0 时 j4 与 j6 转轴共线，6D 雅可比掉秩）。
+        # 实测 j5=0.17° 时 sigma_min = 0.00019，比 sigma_critical(0.012) 低 63 倍，
+        # 条件数 9326。j5=40° 才回到 0.0425（高于 sigma_warn 0.03）。
+        # 这一步【不能】由任务空间 SMC 自己完成 —— 它正是被奇异卡住的那一方。
+        # 只能先用关节空间的位置模式把 j5 挪开，即 hw/wrist_prepose.py。
+        J_chk = kin_ctrl.J_arm_lwa
+        if self.orientation_mode == "pen_axis":
+            J_chk, _, _ = pen_axis_task(
+                J_chk, np.zeros(J_chk.shape[0]),
+                kin_ctrl.ee_rotation, self.pen_axis_local)
+        sigma_min = float(np.linalg.svd(J_chk, compute_uv=False)[-1])
+        sigma_crit = float(self.config["singularity"]["sigma_critical"])
+        sigma_warn = float(self.config["singularity"]["sigma_warn"])
+        if sigma_min < sigma_crit:
+            self.get_logger().error(
+                "起点位形奇异，拒绝就位（不发任何力矩）：sigma_min = %.5f < "
+                "sigma_critical %.5f。当前 j5 = %.2f°。\n"
+                "  先用位置模式把 joint5 挪出腕部奇异，再起 SMC：\n"
+                "    python3 task_space_smc/hw/wrist_prepose.py --target-deg 40"
+                % (sigma_min, sigma_crit, np.degrees(self.q_ctrl[4])
+                   if self.n_arm >= 5 else float("nan")))
+            self.task_approach_rejected = True
+            return False
+        if sigma_min < sigma_warn:
+            self.get_logger().warning(
+                "起点位形接近奇异：sigma_min = %.5f < sigma_warn %.5f"
+                "（当前 j5 = %.2f°，建议 >= 40°）"
+                % (sigma_min, sigma_warn,
+                   np.degrees(self.q_ctrl[4]) if self.n_arm >= 5 else float("nan")))
         ref0 = reference_sample(0.0, self.shape, self.derivative_dt)
         self.task_approach = TaskSpaceApproach(
             kin_ctrl.ee_position, kin_ctrl.ee_rotation,
