@@ -1,0 +1,206 @@
+# 构型标识：让配置自带 URDF 信息，避免 6 关节配置配上 7 关节模型
+#
+# arm6_tool = arm6 实物 + 刚性笔架（arm.urdf 把 joint7 改成 fixed）。
+# 自由度仍是 6，只是末端点从腕轴移到笔尖（外移 91.00 mm）。
+# 实测沿轨迹 100 点：6D 姿态可达 43% -> 100%；5D 的 σ最差 0.0082 -> 0.0194。
+# 【笔架是写字必需的物理件】，不是为了凑数值而加的虚拟几何。
+urdf: arm6_tool
+
+# 末端 frame 必须显式给出 —— 自动探测取"最后一个驱动关节的子连杆"，
+# joint7 变 fixed 后那是 link6（腕轴上），正是要避开的退化点。
+ee_frame: link7
+
+# 实测固件上报 200.6 Hz —— 500 Hz 下有一半控制周期拿不到新数据。
+control_rate_hz: 200.0
+
+# ⚠️ position/orientation 的 lambda/k/eta 已整体缩放到原值的 0.6 倍。
+# 原因：实测惯量（含转子反射项）比 URDF 大 2.5~20 倍，同样的加速度需求
+# 就要 2.5~20 倍力矩 —— 原增益下力矩饱和率达 50.2%，姿态误差涨 15 倍。
+# 0.6 倍是扫描出的甜点：位置 0.128mm、姿态 0.017rad、零饱和；
+# 降到 0.4/0.25 反而变差（控制权威不足）。
+
+task:
+  characteristic_length: 0.2
+
+  # 姿态只约束【笔轴方向】(2 DOF)，放弃绕笔轴的自转 —— 对写字/画图任务
+  # 笔转多少度不影响笔迹。这把任务从 6D 降到 5D，零空间秩 0 -> 1。
+  #
+  # 实测（whole 轨迹 120 点）：
+  #   6D  位置可达 35%  姿态可达  38%  sigma最差 0.01497
+  #   5D  位置可达 98%  笔轴可达 100%  sigma最差 0.03802
+  # 6 关节无球腕（腕部只有 joint5 绕 z、joint6 绕 x），6D 任务本就过约束。
+  orientation_mode: pen_axis
+  # 【笔轴 = 末端 x 轴】（RViz 里的红轴）。
+  # 依据是【物理笔架的安装方向】—— 笔沿 link7 的 x 轴延伸，所以要让笔垂直
+  # 于纸面就得让 x 轴垂直于纸面。
+  #
+  # ⚠️ 取错轴的后果不是精度下降，而是【约束方向反了】：放开该锁死的笔尖
+  # 指向、锁死无所谓的绕笔自转。而且 pen_axis_error() 用同一个轴自验，
+  # 不会报警。实测把它从 y 改成 x：whole 任务 RMS 2.42 -> 0.061 mm（40 倍）。
+  # 独立判据见 test/test_pen_axis_convention.py（用笔画点云 SVD 法向做基准）。
+  pen_axis_local: [1.0, 0.0, 0.0]
+
+  # 用那 1 个冗余自由度做限位规避。只在距限位 < activate_rad 时激活，
+  # 中段梯度恒为 0 —— 全局拉向中位会与任务抢自由度，实测把位置可达率
+  # 从 100% 拉到 81%。正确做法下触限 19 -> 3、笔轴可达 88% -> 100%。
+  limit_avoidance:
+    gain: 0.10
+    activate_rad: 0.5
+
+position:
+  lambda: [72.0, 72.0, 72.0]
+  k: [102.0, 102.0, 102.0]
+  eta: [1.08, 1.08, 1.08]
+  phi: [0.003, 0.003, 0.003]
+
+orientation:
+  lambda: [3.6, 3.6, 3.6]
+  k: [6.0, 6.0, 6.0]
+  eta: [0.018, 0.018, 0.018]
+  phi: [0.02, 0.02, 0.02]
+
+# 零空间【必须启用】。orientation_mode=pen_axis 把任务降到 5D 之后，
+# 6 关节有 1 维冗余 —— 停用零空间不等于"没有冗余自由度"，而是让那个
+# 自由度【零刚度且零阻尼】，成为一个自由积分器。
+#
+# 实测后果（停用时）：自运动速度中位 1.00、p90 3.70、峰值 7.32 rad/s，
+# 持续把手臂推离可行 IK 分支直到撞死限位。同一条轨迹、同一起始位姿：
+#     纯运动学 IK 跟踪   触限  0.00%
+#     实际控制器         触限 25.12%   ← 这 25% 贡献了 92.9% 的平方误差
+#
+# ⚠️ runner 的判据是 enabled=true 【且】存在 q_nominal 键，缺一则退回全零。
+#
+# kd 是这里的主角（阻尼自运动），kp 取小值即可 —— 太大会与主任务抢自由度。
+nullspace:
+  enabled: true
+  # 沿轨迹 90 个采样点求可行分支 IK 的中位位形（工具模型 + 水平书写面）。
+  # 90/90 可解，各关节距限位最近 0.95 rad。
+  # ⚠️ 换 URDF 或换书写面几何后必须重算 —— 这是位形空间里的量。
+  q_nominal: [-0.8351, -0.5495, -0.6212, -0.2422, 0.0380, 1.0538]
+  kp: [2.0, 2.0, 2.0, 2.0, 2.0, 2.0]
+  kd: [3.0, 3.0, 3.0, 3.0, 3.0, 3.0]
+
+# 初始位姿。零空间停用后，起始位形不再从 nullspace.q_nominal 取 ——
+# 若退化为零位，雅可比 sigma_min = 0.00001（cond 326263，几乎完全奇异），
+# 仿真在起步阶段力矩饱和 37%、姿态误差达 π。
+# 这个位姿 sigma_min = 0.124、cond = 14，且通过桌面/围栏/限位全部检查。
+# 【与实物驻留位姿一致】。仿真必须从实物实际所在的位形起步，否则上实物时
+# 第一条指令会让机械臂猛跳过去（原值与实物差最大 1.35 rad）。
+# 这是实机复位后的实测值；轨迹起点由 approach 段平滑过渡过去。
+initial_pose_rad: [-0.0467, 1.3052, -1.0927, 0.0028, 0.0014, 0.0022]
+
+singularity:
+  sigma_warn: 0.04
+  sigma_critical: 0.012
+  damping_min: 0.00005
+  damping_max: 0.03
+
+limits:
+  # joint1-3: DM-J4340 / DM4340-48V, rated 9 Nm, peak 27 Nm.
+  # joint4-7: RobStride RS05, rated 1.6 Nm, peak 5.5 Nm.
+  # Use rated torque as the default continuous safe limit; peak torque should
+  # be enabled only by an explicit short-duration hardware profile.
+  # 阶段 2 实测的静摩擦占各关节力矩上限的比例：
+  #   joint1 8.1%   joint2 19.7%   joint3 6.9%   joint4/5/6 6~8%
+  # joint2 尤其突出 —— 控制器必须先克服 1.775 Nm 才会产生【任何】运动，
+  # 这直接决定了它的最小可分辨位移（死区 1.775/kp）。
+  #
+  # 取【2 倍额定】。额定值本身不是任务的物理瓶颈 —— 沿参考轨迹用 RNEA
+  # 独立核算，完美跟踪只需 j1 6.55Nm(额定 73%)、腕部 0.245/0.350/0.224Nm
+  # (额定的 15%/22%/14%)，全程 0 个采样超限。
+  #
+  # 但额定档在【当前控制器架构】下达不到 1mm，因为事后限幅会破坏已解出的
+  # 最优解：多轴同时饱和时实际加速度 M⁻¹(τ_clip − h) 与任务加速度无关。
+  # 实测 q0 扰动 1e-6 rad 重跑四次：额定档 RMS 6.75/9.00/7.71/11.09mm（混沌）
+  #                                 2x 档  RMS 0.302/0.302/0.302/0.303mm（确定性）
+  #
+  # ⚠️ torque_rate 必须同时放开 ×10，否则它变成新瓶颈：200Hz 下原值每步
+  # 只能变 [7.5, 7.5, 7.5, 2.5, 2.5, 1.75] Nm，抬幅值上限也爬不上去。
+  # 二因子实测(RMS mm)：额定+1x 6.752 / 额定+10x 6.108 / 2x+1x 2.615 / 2x+10x 0.302
+  #
+  # 热安全：18 是 DM4340 峰值 27 的 0.67 倍，3.2 是 RS05 峰值 5.5 的 0.58 倍。
+  # 实测力矩 RMS 仅占连续额定的 13~26%，超额定时间占比 <0.35%，最长连续 0.165s。
+  # 【上实物前需按新几何复测该占空比】—— 上述数字来自竖直墙几何。
+  torque: [18.0, 18.0, 18.0, 3.2, 3.2, 3.2]
+  torque_rate: [15000.0, 15000.0, 15000.0, 5000.0, 5000.0, 3500.0]
+  current: [18.0, 18.0, 18.0, 3.2, 3.2, 3.2]
+
+  # 关节速度硬夹。【必须与 config/motor_config.yaml 的 max_velocity 逐轴一致】
+  # （joint1-3 = DM4340-48V 3.0 rad/s，joint4-6 = RS05 5.0 rad/s），
+  # test/test_feasibility_scaling.py 会自动核对这一致性。
+  #
+  # 这里【不是】给控制器一个新的限制，而是把 plant 早就在做、控制器却完全
+  # 不知道的那个夹子告诉它：src/robotics/arm/torque_sim_arm.cc:306 每个子步
+  # 都做 qd = clamp(qd, ±max_velocity)。控制器不知道 -> 命令一个必被逐轴
+  # 夹掉的加速度 -> 方向被转掉 -> 误差起飞 -> 反馈 windup（指令力矩最深
+  # −727.50 Nm = 40 倍限幅）-> 力矩饱和。
+  #
+  # 真实 ROS 实测：速度夹只占 1.52% 的采样却贡献 96.85% 的平方误差
+  # （剔除后 RMS 2.018 -> 0.361 mm）；速度夹∪位置夹占 2.41%、贡献 98.56%。
+  # 【不要靠调大这个值来"解决"问题】—— ×1.5 无改善(2.451~2.994mm)、
+  # ×3 峰值 41 -> 87.8mm 且安静时段误差地板从 0.0196 塌到 0.188mm、
+  # ×30 发散到 RMS 50mm。它是物理量，正确做法是让控制器服从它。
+  joint_velocity: [3.0, 3.0, 3.0, 5.0, 5.0, 5.0]
+
+  # 位置限的制动能力折扣。允许朝限位方向的速度不超过
+  # sqrt(2 · joint_brake_safety · torque_i / M_ii · 剩余余量)，于是靠近
+  # 限位时速度上界连续收敛到 0，控制器提前减速而不是撞墙。
+  # 0.5 是保守取值（解耦近似 tau/M_ii 高估了真实制动能力）。
+  # 实测这条支路只在距限位 0.16~0.25 rad 内起作用，覆盖 joint3(±1.57) /
+  # joint5(±2.0) 那 3 个位置限事件（σ 健康 0.067~0.097、力矩甚至零饱和，
+  # 却因为 qd 被硬夹成精确的 0.000 而产生 4.84mm 误差）。
+  joint_brake_safety: 0.5
+
+safety:
+  command_timeout_sec: 0.03
+  joint_state_timeout_sec: 0.1
+  base_state_timeout_sec: 0.1
+
+approach:
+  initial_joint_offset_rad: [0.25, -0.20, 0.20, 0.25, -0.20, 0.15]
+  kp: [60.0, 60.0, 60.0, 50.0, 50.0, 40.0]
+  kd: [16.0, 16.0, 16.0, 14.0, 14.0, 12.0]
+
+simulation_injection:
+  enabled: false
+  seed: 20260730
+  base_estimator:
+    delay_sec: 0.020
+    position_noise_std_m: 0.0003
+    attitude_noise_std_deg: 0.03
+    linear_velocity_noise_std_m_s: 0.004
+    angular_velocity_noise_std_rad_s: 0.002
+    linear_acceleration_noise_std_m_s2: 0.04
+    angular_acceleration_noise_std_rad_s2: 0.015
+  translation_amplitude_m: [0.01, 0.008, 0.006]
+  translation_frequency_hz: [0.5, 0.7, 0.9]
+  translation_phase_rad: [0.0, 0.6, 1.2]
+  rpy_amplitude_deg: [3.0, 2.5, 2.0]
+  rpy_frequency_hz: [0.45, 0.65, 0.85]
+  rpy_phase_rad: [0.2, 1.0, 1.6]
+  payload:
+    mass_error_kg: 0.08
+    gravity_w_m_s2: [0.0, 0.0, -9.81]
+  friction:
+    viscous_nm_per_rad_s: [0.08, 0.08, 0.06, 0.045, 0.035, 0.025]
+    # 阶段 2 实测的双向启动力矩（半和），非估计值。
+    # 注意这是【静摩擦】；动摩擦小 3~10 倍（Stribeck）。
+    coulomb_nm: [0.725, 1.775, 0.625, 0.125, 0.100, 0.100]
+    stribeck_velocity_rad_s: 0.03
+  backlash:
+    torque_deadband_nm: [0.05, 0.05, 0.04, 0.035, 0.025, 0.02]
+  motor:
+    drive_delay_sec: 0.012
+    torque_gain: [0.96, 1.04, 0.98, 1.03, 0.97, 1.02]
+    torque_bias_nm: [0.02, -0.02, 0.015, -0.01, 0.008, -0.006]
+    torque_noise_std_nm: [0.025, 0.025, 0.02, 0.015, 0.012, 0.01]
+    torque_ripple_amplitude_nm: [0.035, 0.035, 0.025, 0.02, 0.015, 0.012]
+    torque_ripple_frequency_hz: [12.0, 14.0, 11.0, 15.0, 13.0, 17.0]
+    torque_ripple_phase_rad: [0.0, 0.7, 1.3, 2.1, 2.8, 3.4]
+  gust:
+    profile: gust
+    seed: 17
+    period_sec: 4.0
+    width_sec: 0.8
+    base_amplitude_m: 0.004
+    joint_torque_amplitude_nm: [0.18, 0.18, 0.14, 0.10, 0.08, 0.06]

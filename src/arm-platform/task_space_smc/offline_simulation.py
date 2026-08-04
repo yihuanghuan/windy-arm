@@ -23,10 +23,15 @@ if __package__ in (None, ""):
         sys.path.insert(0, str(package_dir))
 
 from task_space_smc.base_state import SimulationInjectedBase, SinusoidSpec
-from task_space_smc.model import DEFAULT_ARM_JOINT_NAMES, FloatingBaseArmModel
+from task_space_smc.model import (
+    DEFAULT_ARM_JOINT_NAMES, FloatingBaseArmModel, arm6_urdf_path,
+    ARM6_JOINT_NAMES, ARM6_EE_FRAME, ARM6_URDF_NAME,
+    ARM6_TOOL_EE_FRAME, ARM6_TOOL_URDF_NAME, arm6_tool_urdf_path,
+)
 from task_space_smc.pose_error import PoseState
 from task_space_smc.quaternion_math import quat_normalize, quaternion_log_error
-from task_space_smc.redundancy_resolution import resolve_acceleration
+from task_space_smc.redundancy_resolution import (
+    resolve_acceleration, pen_axis_task, pen_axis_error, LimitAvoidance)
 from task_space_smc.task_space_smc import SMCGains, TaskSpaceSMC
 
 
@@ -104,13 +109,40 @@ def run_offline(
     config = load_config(config_path)
     if dt is None:
         dt = 1.0 / float(config["control_rate_hz"])
-    model = FloatingBaseArmModel()
+    # URDF 由配置指定 —— 否则 6 关节配置会配上 7 关节模型，
+    # 直到 reshape 才报错（实测：cannot reshape array of size 6 into shape (7,)）。
+    urdf = config.get("urdf")
+    if urdf == "arm6_tool" or urdf == ARM6_TOOL_URDF_NAME:
+        model = FloatingBaseArmModel(urdf_path=arm6_tool_urdf_path(),
+                                     ee_frame_name=ARM6_TOOL_EE_FRAME,
+                                     arm_joint_names=ARM6_JOINT_NAMES)
+    elif urdf == "arm6" or urdf == ARM6_URDF_NAME:
+        model = FloatingBaseArmModel(urdf_path=arm6_urdf_path(),
+                                     ee_frame_name=ARM6_EE_FRAME,
+                                     arm_joint_names=tuple(ARM6_JOINT_NAMES))
+    elif urdf:
+        model = FloatingBaseArmModel(urdf_path=urdf)
+    else:
+        model = FloatingBaseArmModel()
     controller = controller_from_config(config)
     base = make_base(profile)
     rng = np.random.default_rng(seed)
 
-    q_arm = np.asarray(config["nullspace"]["q_nominal"], dtype=float).reshape(7) + rng.normal(0.0, 0.015, 7)
-    qd_arm = np.zeros(7)
+    # 关节数由模型推导。零空间在 6 关节 6D 任务下秩为 0、已停用，
+    # 所以起始位姿不再从 nullspace.q_nominal 取。
+    n_arm = model.n_arm
+    # 起始位形优先取 initial_pose_rad。退化为零位是危险的 —— 6 关节零位的
+    # 雅可比 sigma_min = 0.00001（cond 326263），起步即奇异。
+    init = config.get("initial_pose_rad")
+    q_nominal = config.get("nullspace", {}).get("q_nominal")
+    if init is not None and len(init) == n_arm:
+        q_arm = np.asarray(init, dtype=float).reshape(n_arm)
+    elif q_nominal is not None and len(q_nominal) == n_arm:
+        q_arm = np.asarray(q_nominal, dtype=float).reshape(n_arm)
+    else:
+        q_arm = np.zeros(n_arm)
+    q_arm = q_arm + rng.normal(0.0, 0.015, n_arm)
+    qd_arm = np.zeros(n_arm)
     base0 = base.sample(0.0)
     q_full = model.make_q_full(base0.position_w, base0.quaternion_wxyz, q_arm)
     v_full = model.make_v_full(base0.velocity_lwa, qd_arm)
@@ -125,10 +157,29 @@ def run_offline(
     )
 
     rows: list[dict] = []
-    max_tau = np.zeros(7)
+    max_tau = np.zeros(n_arm)
+    _task = config.get("task", {})
+    orientation_mode = str(_task.get("orientation_mode", "full"))
+    pen_axis_local = np.asarray(_task.get("pen_axis_local", [1.0, 0.0, 0.0]), dtype=float)
+    _la = _task.get("limit_avoidance") or {}
+    limit_avoidance = None
+    if float(_la.get("gain", 0.0)) > 0.0:
+        limit_avoidance = LimitAvoidance(
+            lower=model.model.lowerPositionLimit[7:].copy(),
+            upper=model.model.upperPositionLimit[7:].copy(),
+            gain=float(_la["gain"]),
+            activate_rad=float(_la.get("activate_rad", 0.5)))
+    ns = config.get("nullspace") or {}
+    ns_enabled = bool(ns.get("enabled", True)) and "q_nominal" in ns
+    ns_q_nominal = (np.asarray(ns["q_nominal"], dtype=float).reshape(n_arm)
+                    if ns_enabled else np.zeros(n_arm))
+    ns_kp = (np.asarray(ns["kp"], dtype=float).reshape(n_arm)
+             if ns_enabled else np.zeros(n_arm))
+    ns_kd = (np.asarray(ns["kd"], dtype=float).reshape(n_arm)
+             if ns_enabled else np.zeros(n_arm))
     saturation_count = 0
     steps = max(1, int(round(duration / dt)))
-    torque_limit = np.asarray(config["limits"]["torque"], dtype=float).reshape(7)
+    torque_limit = np.asarray(config["limits"]["torque"], dtype=float).reshape(n_arm)
 
     for k in range(steps):
         t = k * dt
@@ -146,20 +197,29 @@ def run_offline(
         smc = controller.compute(desired, actual)
         b6 = model.compute_task_bias_acceleration(q_full, v_full, bs.acceleration_lwa)
         M_aa = model.compute_arm_mass_block(q_full)
+        # 5D 任务（位置 + 笔轴方向），零空间秩 0 -> 1
+        J_task, rhs_task = kin.J_arm_lwa, smc.nu - b6
+        if orientation_mode == "pen_axis":
+            J_task, rhs_task, _ = pen_axis_task(
+                J_task, rhs_task, kin.ee_rotation, pen_axis_local)
         rr = resolve_acceleration(
-            kin.J_arm_lwa,
+            J_task,
             M_aa,
-            smc.nu - b6,
+            rhs_task,
             q_arm,
             qd_arm,
-            config["nullspace"]["q_nominal"],
-            config["nullspace"]["kp"],
-            config["nullspace"]["kd"],
+            # 零空间在 6 关节做 6D 任务时秩为 0，投影恒为零。配置里
+            # nullspace.enabled=false 时这三项不存在，传中性值即可 ——
+            # resolve_acceleration 仍需形参，但其贡献必然是 0。
+            ns_q_nominal,
+            ns_kp,
+            ns_kd,
             float(config["task"]["characteristic_length"]),
             float(config["singularity"]["sigma_warn"]),
             float(config["singularity"]["sigma_critical"]),
             float(config["singularity"]["damping_min"]),
             float(config["singularity"]["damping_max"]),
+            limit_avoidance=limit_avoidance,
         )
         tau = model.compute_rnea_arm_torque(q_full, v_full, bs.acceleration_lwa, rr.qdd_cmd)
         tau_limited = np.clip(tau, -torque_limit, torque_limit)
@@ -169,11 +229,16 @@ def run_offline(
         qd_arm = qd_arm + qdd * dt
         q_arm = q_arm + qd_arm * dt
         e_R = quaternion_log_error(desired.quaternion_wxyz, actual.quaternion_wxyz)
+        import pinocchio as _pin
+        _qd = np.asarray(desired.quaternion_wxyz, dtype=float)
+        _R_des = _pin.Quaternion(_qd[0], _qd[1], _qd[2], _qd[3]).toRotationMatrix()
+        e_axis = pen_axis_error(kin.ee_rotation, _R_des, pen_axis_local)
         rows.append(
             {
                 "t": t,
                 "pos_error_norm": float(np.linalg.norm(smc.position_error)),
                 "rot_error_rad": float(np.linalg.norm(e_R)),
+                "pen_axis_error": float(e_axis),
                 "s_pos_norm": float(np.linalg.norm(smc.position_sliding)),
                 "s_rot_norm": float(np.linalg.norm(smc.orientation_sliding)),
                 "sigma_min": rr.sigma_min,
@@ -199,6 +264,7 @@ def run_offline(
         "max_position_error_m": max(r["pos_error_norm"] for r in rows),
         "final_orientation_error_rad": rows[-1]["rot_error_rad"],
         "max_orientation_error_rad": max(r["rot_error_rad"] for r in rows),
+        "max_pen_axis_error_rad": max(r["pen_axis_error"] for r in rows),
         "min_sigma": min(r["sigma_min"] for r in rows),
         "max_damping": max(r["damping"] for r in rows),
         "max_nullspace_leakage": max(r["nullspace_leakage"] for r in rows),

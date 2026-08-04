@@ -15,6 +15,10 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+
+# 关节数：6 关节实物上 joint7 不存在
+from task_space_smc.model import ARM6_JOINT_NAMES
+N_ARM = len(ARM6_JOINT_NAMES)
 import pinocchio as pin
 import yaml
 
@@ -48,7 +52,7 @@ def _inj_enabled(config):
     return bool(_inj(config, "enabled", default=True))
 
 
-def _inj_vec(config, *keys, default, n=7):
+def _inj_vec(config, *keys, default, n=N_ARM):
     return np.asarray(_inj(config, *keys, default=default), dtype=float).reshape(n)
 
 
@@ -194,33 +198,33 @@ def _noisy_delayed_base_sample(config, t, true_bs, history, rng):
 def _payload_disturbance_torque(config, kin):
     mass = float(_inj(config, "payload", "mass_error_kg", default=0.0))
     if abs(mass) < 1e-12:
-        return np.zeros(7)
+        return np.zeros(N_ARM)
     gravity = np.asarray(_inj(config, "payload", "gravity_w_m_s2", default=[0.0, 0.0, -9.81]), dtype=float).reshape(3)
     return kin.J_arm_lwa[:3, :].T @ (mass * gravity)
 
 
 def _gust_joint_torque(config, t):
-    amp = _inj_vec(config, "gust", "joint_torque_amplitude_nm", default=[0.0] * 7, n=7)
+    amp = _inj_vec(config, "gust", "joint_torque_amplitude_nm", default=[0.0] * N_ARM, n=N_ARM)
     if not _inj_enabled(config) or not np.any(np.abs(amp) > 0.0):
-        return np.zeros(7)
+        return np.zeros(N_ARM)
     gust_cfg = _inj(config, "gust", default={}) or {}
     period = float(gust_cfg.get("period_sec", 4.0))
     width = float(gust_cfg.get("width_sec", 0.8))
     if period <= 1e-9 or width <= 1e-9:
-        return np.zeros(7)
+        return np.zeros(N_ARM)
     k = math.floor(float(t) / period)
     phase = float(t) - k * period
     if phase < 0.0 or phase >= width:
-        return np.zeros(7)
+        return np.zeros(N_ARM)
     envelope = 0.5 * (1.0 - math.cos(2.0 * math.pi * phase / width))
     rng = np.random.default_rng([int(gust_cfg.get("seed", _inj(config, "seed", default=20260730))), int(k), 0x746175])
-    direction = rng.uniform(-1.0, 1.0, 7)
+    direction = rng.uniform(-1.0, 1.0, N_ARM)
     direction /= np.maximum(np.linalg.norm(direction), 1e-12)
     return envelope * amp * direction
 
 
 def _actual_plant_torque(config, tau_cmd, t, qd, kin, motor_history, rng):
-    tau_cmd = np.asarray(tau_cmd, dtype=float).reshape(7)
+    tau_cmd = np.asarray(tau_cmd, dtype=float).reshape(N_ARM)
     if not _inj_enabled(config):
         return tau_cmd
     delay = max(0.0, float(_inj(config, "motor", "drive_delay_sec", default=0.0)))
@@ -234,17 +238,17 @@ def _actual_plant_torque(config, tau_cmd, t, qd, kin, motor_history, rng):
             delayed = cmd
         else:
             break
-    gain = _inj_vec(config, "motor", "torque_gain", default=[1.0] * 7, n=7)
-    bias = _inj_vec(config, "motor", "torque_bias_nm", default=[0.0] * 7, n=7)
-    noise_std = _inj_vec(config, "motor", "torque_noise_std_nm", default=[0.0] * 7, n=7)
-    ripple = _inj_vec(config, "motor", "torque_ripple_amplitude_nm", default=[0.0] * 7, n=7)
-    ripple_freq = _inj_vec(config, "motor", "torque_ripple_frequency_hz", default=[0.0] * 7, n=7)
-    ripple_phase = _inj_vec(config, "motor", "torque_ripple_phase_rad", default=[0.0] * 7, n=7)
+    gain = _inj_vec(config, "motor", "torque_gain", default=[1.0] * N_ARM, n=N_ARM)
+    bias = _inj_vec(config, "motor", "torque_bias_nm", default=[0.0] * N_ARM, n=N_ARM)
+    noise_std = _inj_vec(config, "motor", "torque_noise_std_nm", default=[0.0] * N_ARM, n=N_ARM)
+    ripple = _inj_vec(config, "motor", "torque_ripple_amplitude_nm", default=[0.0] * N_ARM, n=N_ARM)
+    ripple_freq = _inj_vec(config, "motor", "torque_ripple_frequency_hz", default=[0.0] * N_ARM, n=N_ARM)
+    ripple_phase = _inj_vec(config, "motor", "torque_ripple_phase_rad", default=[0.0] * N_ARM, n=N_ARM)
     tau_motor = gain * delayed + bias + ripple * np.sin(2.0 * math.pi * ripple_freq * float(t) + ripple_phase) + rng.normal(0.0, noise_std, 7)
-    deadband = _inj_vec(config, "backlash", "torque_deadband_nm", default=[0.0] * 7, n=7)
+    deadband = _inj_vec(config, "backlash", "torque_deadband_nm", default=[0.0] * N_ARM, n=N_ARM)
     tau_transmitted = np.sign(tau_motor) * np.maximum(np.abs(tau_motor) - deadband, 0.0)
-    viscous = _inj_vec(config, "friction", "viscous_nm_per_rad_s", default=[0.0] * 7, n=7)
-    coulomb = _inj_vec(config, "friction", "coulomb_nm", default=[0.0] * 7, n=7)
+    viscous = _inj_vec(config, "friction", "viscous_nm_per_rad_s", default=[0.0] * N_ARM, n=N_ARM)
+    coulomb = _inj_vec(config, "friction", "coulomb_nm", default=[0.0] * N_ARM, n=N_ARM)
     stribeck = max(1e-6, float(_inj(config, "friction", "stribeck_velocity_rad_s", default=0.03)))
     tau_friction = viscous * qd + coulomb * np.tanh(qd / stribeck)
     return tau_transmitted - tau_friction + _payload_disturbance_torque(config, kin) + _gust_joint_torque(config, t)
@@ -258,7 +262,7 @@ def _solve_initial_pose(model, config, derivative_dt):
     for _ in range(250):
         q_full = model.make_q_full(bs.position_w, bs.quaternion_wxyz, q)
         kin = model.compute_kinematics(
-            q_full, model.make_v_full(bs.velocity_lwa, np.zeros(7)))
+            q_full, model.make_v_full(bs.velocity_lwa, np.zeros(N_ARM)))
         error = np.concatenate([
             ref.position_w - kin.ee_position,
             pin.log3(ref.rotation_w @ kin.ee_rotation.T),
@@ -280,13 +284,13 @@ def evaluate(config, duration_sec, dt, derivative_dt=0.005):
     model = FloatingBaseArmModel()
     controller = controller_from_config(config)
     q = _solve_initial_pose(model, config, derivative_dt)
-    qd = np.zeros(7)
+    qd = np.zeros(N_ARM)
     torque_limit = np.asarray(config["limits"]["torque"], dtype=float)
     torque_rate = np.asarray(config["limits"]["torque_rate"], dtype=float)
-    last_torque = np.zeros(7)
+    last_torque = np.zeros(N_ARM)
     position_errors = []
     orientation_errors = []
-    max_torque = np.zeros(7)
+    max_torque = np.zeros(N_ARM)
     saturated_steps = 0
     limit_hits = 0
     steps = int(math.ceil(duration_sec / dt))

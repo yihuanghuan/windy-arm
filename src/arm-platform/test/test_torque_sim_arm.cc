@@ -34,8 +34,16 @@ TEST(TorqueSimArmTest, ClampsTorqueStepsAndPublishesFiniteFeedback) {
   ASSERT_EQ(state.position.size(), 7U);
   ASSERT_EQ(state.velocity.size(), 7U);
   ASSERT_EQ(state.current.size(), 7U);
+  // 被控对象模拟【硬件物理能力】，饱和在电机峰值力矩 (motor_config 的
+  // max_torque)，不是额定值 (rated_torque)。额定值是连续热额定，属于
+  // 软件【策略】上限，由 SMC 侧的 ActuatorAdapter 按 config 的
+  // limits.torque 执行。
+  //
+  // 若这里改回额定值，就会形成【双重截断】：控制器按自己的上限限幅后，
+  // 被控对象再截一次。后果是调高控制器配置里的力矩上限变成空操作 ——
+  // 实测把 limits.torque 从 9 抬到 18 时仿真结果一字不变。
   const std::vector<double> expected_limits{
-      9.0, 9.0, 9.0, 1.6, 1.6, 1.6, 1.6};
+      27.0, 27.0, 27.0, 5.5, 5.5, 5.5, 5.5};
   for (size_t i = 0; i < 7; ++i) {
     EXPECT_TRUE(std::isfinite(state.position[i]));
     EXPECT_TRUE(std::isfinite(state.velocity[i]));

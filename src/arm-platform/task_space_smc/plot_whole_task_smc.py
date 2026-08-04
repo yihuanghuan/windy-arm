@@ -12,6 +12,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import re
 import numpy as np
 
 
@@ -91,7 +92,14 @@ def generate_report(csv_path: str | Path, output_dir: str | Path) -> list[str]:
     outputs.append(str(path))
 
     fig, axis = plt.subplots(figsize=(11, 6))
-    for i in range(7):
+    # 关节数取自数据本身，不写死 —— 6 关节实物只有 6 列。
+    # 数的必须是【真正要画的那些列】：CSV 里没有 q1/q2/… 这种列，
+    # 原先按 q\d+ 数恒为 0，只是靠 `or 6` 兜底碰巧对上 6 关节，
+    # 7 关节时会静默少画一条。（同一行还把 data 误写成了未定义的 df，
+    # 导致 NameError，报告图【一张都没生成过】。）
+    n_joints = sum(1 for c in data
+                   if re.fullmatch(r'joint_\d+_torque_nm', str(c)))
+    for i in range(n_joints):
         axis.plot(t, data[f"joint_{i + 1}_torque_nm"], label=f"joint{i + 1}", linewidth=0.9)
     axis.set_xlabel("time (s)")
     axis.set_ylabel("command torque (Nm)")
