@@ -924,6 +924,10 @@ def _watchdog_fake(module, qd_meas, qd_ctrl, q_meas=None):
     n = len(qd_meas)
     return types.SimpleNamespace(
         _watchdog_tripped=False,
+        _watchdog_trip_time=None,
+        watchdog_reason="",
+        stop_on_watchdog=True,
+        watchdog_hold_sec=1.0,
         config={"limits": {"joint_velocity": [3.0, 3.0, 3.0, 5.0, 5.0, 5.0]}},
         n_arm=n,
         _qd_meas=np.asarray(qd_meas, dtype=float),
@@ -1012,3 +1016,21 @@ def test_smith_shadow_integrator_adds_b0_times_u_when_model_input_is_on():
     off = est_off(np.zeros(N), np.zeros(N), T)[1]
     # 两条路的预测修正量必须同量级；漏加 b0·u 时 on 只有 off 的约 1/5。
     assert abs(on[0]) > 0.5 * abs(off[0]), (on[0], off[0])
+
+
+def test_watchdog_records_trip_time_so_the_run_can_end_immediately():
+    """触发时必须记下时刻 —— 控制循环靠它决定何时收尾退出。
+
+    2026-08-04 用户要求：触发之后不要干等剩余时长（实测 60 s 的实验触发在
+    16 s，白等 44 s）。收尾前继续保位 hold_sec，让"交给驱动超时保位"这次
+    交接发生在控制器还在的时候。
+    """
+    module = _load_runner_module()
+    fake = _watchdog_fake(module, [0.0, 0.0, 0.0, 12.0, 0.0, 0.0], np.zeros(6))
+    assert fake._watchdog_trip_time is None
+    assert module.WholeTaskSmcRosRunner._watchdog_trip(fake, now=12.5) is True
+    assert fake._watchdog_trip_time == 12.5
+    assert "joint4" in fake.watchdog_reason
+    # 二次调用不能刷新时刻，否则永远等不到 hold_sec
+    module.WholeTaskSmcRosRunner._watchdog_trip(fake, now=99.0)
+    assert fake._watchdog_trip_time == 12.5

@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""Ablation study for whole-task SMC simulation injection terms."""
-
 from __future__ import annotations
 
 import argparse
@@ -14,10 +11,8 @@ from pathlib import Path
 import yaml
 
 if __package__ in (None, ""):
-    # 直接当脚本跑时把【包的父目录】放进 sys.path。2026-08-04 目录分层后
-    # 模块下沉到 core/ sim/ hw/，原来写死的 package_dir.parent 会指到
-    # task_space_smc/ 本身（少上溯一级），import task_space_smc.* 全部失败。
-    # 改成逐级上溯直到走出带 __init__.py 的目录，对任意层深都成立。
+
+
     _here = Path(__file__).resolve().parent
     _root = _here
     while (_root / "__init__.py").exists():
@@ -80,6 +75,14 @@ ZERO_SECTIONS = {
 }
 
 
+def _zero_section(section: str, n_arm: int) -> dict:
+    values = deepcopy(ZERO_SECTIONS[section])
+    for key, value in values.items():
+        if isinstance(value, list) and len(value) == 7:
+            values[key] = value[:n_arm]
+    return values
+
+
 def _zero_base_motion(injection: dict) -> None:
     injection["translation_amplitude_m"] = [0.0, 0.0, 0.0]
     injection["translation_frequency_hz"] = [0.0, 0.0, 0.0]
@@ -114,8 +117,9 @@ def zero_injection_config(base_config: dict) -> dict:
     injection["enabled"] = True
     injection["seed"] = seed
     _zero_base_motion(injection)
-    for section, values in ZERO_SECTIONS.items():
-        injection[section] = deepcopy(values)
+    n_arm = len(config["limits"]["torque"])
+    for section in ZERO_SECTIONS:
+        injection[section] = _zero_section(section, n_arm)
     return config
 
 
@@ -126,7 +130,9 @@ def enable_term(base_config: dict, term: str) -> dict:
     if term == "base_motion":
         _restore_base_motion(base_injection, injection)
     elif term in ZERO_SECTIONS:
-        injection[term] = deepcopy(base_injection.get(term, ZERO_SECTIONS[term]))
+        n_arm = len(config["limits"]["torque"])
+        injection[term] = deepcopy(
+            base_injection.get(term, _zero_section(term, n_arm)))
     else:
         raise ValueError(f"unknown ablation term: {term}")
     return config
@@ -139,7 +145,7 @@ def disable_term_from_all(base_config: dict, term: str) -> dict:
     if term == "base_motion":
         _zero_base_motion(injection)
     elif term in ZERO_SECTIONS:
-        injection[term] = deepcopy(ZERO_SECTIONS[term])
+        injection[term] = _zero_section(term, len(config["limits"]["torque"]))
     else:
         raise ValueError(f"unknown ablation term: {term}")
     return config
@@ -171,8 +177,8 @@ def _case_configs(base_config: dict, include_leave_one_out: bool) -> list[tuple[
 def main() -> int:
     here = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=Path, default=here / "config" / "smc_params_whole.yaml")
-    parser.add_argument("--output-dir", type=Path, default=here / "data" / "ablation")
+    parser.add_argument("--config", type=Path, default=here.parent / "config" / "smc_params_whole.yaml")
+    parser.add_argument("--output-dir", type=Path, default=here.parent / "data" / "ablation")
     parser.add_argument("--duration-sec", type=float, default=3.0)
     parser.add_argument("--dt", type=float, default=0.004)
     parser.add_argument("--include-leave-one-out", action="store_true")

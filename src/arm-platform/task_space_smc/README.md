@@ -4,8 +4,8 @@ A-L1-GAMMA 机械臂的任务空间力矩控制。控制律在世界系里算末
 映射成关节力矩；基座可以是运动的（浮动基座），臂在其上补偿。
 
 本文件讲**怎么跑**：文件结构、部署、仿真启动、实物启动。
-**为什么这么设计、实测到了什么、出问题怎么查**在 [docs/REFERENCE.md](docs/REFERENCE.md)。
-接手正在进行的工作先读 [docs/HANDOFF_2026_08_02.md](docs/HANDOFF_2026_08_02.md)。
+**当前真相、实测结论、过时说法和接手注意事项**统一在 [docs/HANDOFF.md](docs/HANDOFF.md)。
+若本文与 `HANDOFF.md` 冲突，以 `HANDOFF.md` 为准。
 
 | 我想…… | 去哪 |
 |---|---|
@@ -13,7 +13,7 @@ A-L1-GAMMA 机械臂的任务空间力矩控制。控制律在世界系里算末
 | 第一次把环境跑起来 | [2. 部署](#2-部署) |
 | 在 RViz 里看仿真 | [3. RViz 仿真](#3-rviz-仿真) |
 | 接实物跑 | [4. 实物启动](#4-实物启动) |
-| 理解控制律 / 标定 / 调参 / 排错 | [docs/REFERENCE.md](docs/REFERENCE.md) |
+| 理解控制律 / 标定 / 调参 / 排错 | [docs/HANDOFF.md](docs/HANDOFF.md) |
 
 ---
 
@@ -195,8 +195,8 @@ export ROS_DOMAIN_ID=77     # 仿真
 | | 7 关节 | 6 关节 |
 |---|---|---|
 | launch | `task_space_smc_whole.launch.py` | `task_space_smc_whole6.launch.py` |
-| URDF | `arm.urdf` | `arm6_tool.urdf` |
-| 末端 frame | 自动探测 | `link7`（**显式指定**） |
+| URDF | `arm.urdf` | 配置决定；`hwtest` 当前为 `arm6.urdf` |
+| 末端 frame | 自动探测 | 配置决定；`hwtest` 当前为 `link6` |
 | 默认控制频率 | 500 Hz | 200 Hz |
 | 对应实物 | 无 | **有** |
 
@@ -234,7 +234,7 @@ helper 脚本会清掉可能指向别处的旧 overlay，并确认 `ros2 pkg pre
 | `trajectory_shape` | 内容 | 基座 | 力矩上限 | 周期 | 仿真 RMS |
 |---|---|---|---|---|---|
 | **`hwtest`（默认）** | +x 侧竖直小圆，半径 4 cm | **固定** | 额定 9 / 1.6 | 12.57 s | 0.0041 mm |
-| `whole` | 五工作站完整任务 | 解析摆动 | 2× 额定 18 / 3.2 | 73.04 s | 0.061 mm |
+| `whole` | 五工作站完整任务（`link6`） | 解析摆动 | 2× 额定 18 / 3.2 | 73.04 s | 0.0060 mm |
 
 `hwtest` 是上实机用的：幅度小、余量大、放在**无桌面的 +x 侧**。
 `whole` 是研发用的完整任务，基座带摆动、跨四个方位，难度高得多。
@@ -283,16 +283,14 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
 | `MB_STATION_LAYOUT` | `horizontal` | 6 关节 launch | 书写面布局。6 关节水平、7 关节竖直板 |
 | `MB_BASE_RADIUS` | `0.0` | 6 关节 launch | 基座摆动半径。**实物基座固定在桌边，所以是 0** |
 | `MB_BASE_Z_AMP` | `0.0` | 6 关节 launch | 基座竖直摆幅 |
-| `MB_HWTEST_SPEED` | `0.01` | 6 关节 launch | `hwtest` 圆的**切向速度 m/s**。只改周期不改半径：`0.01` → 25.1 s/圈 |
+| `MB_HWTEST_SPEED` | `0.02` | 6 关节 launch | `hwtest` 圆的**切向速度 m/s**。只改周期不改半径：`0.02` → 12.57 s/圈 |
 | `MB_HWTEST_RADIUS` | `0.04` | 轨迹模块 | `hwtest` 圆半径 m。launch 不设，用模块默认 |
 
-⚠️ `MB_HWTEST_SPEED` 的**模块默认是 `0.02`**，6 关节 launch 把它压到 `0.01`。
-绕过 launch 直接跑轨迹模块时会拿到 `0.02`（周期减半）。
+`MB_HWTEST_SPEED` 的模块默认与 6 关节 launch 默认均为 `0.02`。实机首次运行可
+在启动前显式设为 `0.01`。
 
-> ⚠️ `MB_HWTEST_SPEED` 同时压缩**交接拉入段**的时间轴。2026-08-04 实测：起步位形离
-> 轨迹起点 78 mm 时，速度从 `0.01` 调到 `0.015`，拉入段 j1 峰值速度从 0.25 涨到
-> 3.04 rad/s（**12 倍**），撞包线触发看门狗 —— 而那一段参考轨迹**根本没动**。
-> 要提速就先让机械臂从轨迹起点附近开机。
+> ⚠️ 实机上提高 `MB_HWTEST_SPEED` 会同时压缩交接拉入段的时间轴。若起步位形离
+> 轨迹起点较远，先让机械臂靠近起点，或显式使用 `MB_HWTEST_SPEED=0.01`。
 
 ### 3.5 RViz 里看什么
 
@@ -314,8 +312,8 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
 
 1. **协议里没有使能 / 失能帧。软件层没有急停通道，急停只能物理断电。**
 2. **驱动进程一停，电机立刻失去保持力矩，机械臂会软掉。** 起了就不要关。
-3. **上电即锁当前位姿，掰不动。** 起步位形离实验起点多远都不用管，
-   SMC 运行的前几秒会自己把它开过去（[4.4](#44-起-smc就位与跟踪是同一次运行)）。
+3. **上电即锁当前位姿，掰不动。** 起 SMC 后由同一条力矩控制路径从第一帧接管，
+   通过 handover 参考偏置衰减把当前位姿并入轨迹（[4.4](#44-起-smc从第一帧接管)）。
 
 工作台约束（本台）：桌面在 `z = 0`，与基座安装面同平面；**+x 方向无桌面**，−x 有；
 桌上围栏沿 −x 延伸、+y 到约 `y = 350 mm`、高度约"基座到 joint3"。
@@ -374,6 +372,34 @@ ros2 launch manipulator student_arm6.launch.py arm_type:=a_l1 \
 > 力矩模式 ≤ 200 Hz   板子实测上报 200.6 Hz，再快就有周期拿不到新反馈
 > ```
 
+### 4.2.1 Vicon 基座反馈（先验收数据，再接 SMC）
+
+Vicon 接收单独安装在 `/home/windylab/code/vicon_perception_ws`；它不会启动串口或
+发送任何电机指令。先在 Vicon Tracker 中打开 VRPN 输出并创建基座刚体，然后启动：
+
+```bash
+source /opt/ros/humble/setup.bash
+source /home/windylab/code/windylab_ws/install/setup.bash
+source /home/windylab/code/vicon_perception_ws/install/ros/setup.bash
+export ROS_DOMAIN_ID=77  # 必须与驱动和 SMC 相同
+
+ros2 launch manipulator vicon_floating_base.launch.py \
+  server:=192.168.50.96 pose_topic:=/vrpn/<基座刚体名>/pose
+```
+
+刚体名中的空格在话题里会变成下划线。先用 `ros2 topic list | grep /vrpn/` 找到实际名称，
+并确认 `ros2 topic hz /floating_base/vicon` 稳定在约 100 Hz 以上。`zero_on_first_pose:=true`
+（默认）会把**启动时静止的基座**定义为控制器 `world` 原点；因此启动接收时基座必须不动。
+
+确认数据、Vicon 坐标轴和机械臂世界系完全对齐之后，才把 SMC 启动参数增加为：
+
+```bash
+base_state_mode:=vicon external_base_topic:=/floating_base/vicon
+```
+
+在 `vicon` 模式下，运行器会等待第一帧基座数据；任何超过配置时限的动捕数据都不会被
+用于继续输出力矩。
+
 ### 4.3 把 joint5 挪出腕部奇异
 
 **起驱动之后、起 SMC 之前必须做这一步。**
@@ -416,12 +442,11 @@ python3 task_space_smc/hw/wrist_prepose.py --target-deg 40 --duration 20 --settl
 > 一条力矩都不发，并在日志里直接给出上面这条命令。忘了做这一步不会酿成事故，
 > 但会白跑一趟。
 
-### 4.4 起 SMC（就位与跟踪是同一次运行）
+### 4.4 起 SMC（从第一帧接管）
 
-**没有独立的就位步骤，也不用位置模式。** 上电后机械臂锁在固定的初始位形，
-通常离实验起点很远（实测断电重启后 j2 差 +66.7°、j4 +76.7°、j6 −88.1°，
-末端离轨迹起点 200 mm）。这段距离由 SMC 运行的**前 `start_delay_sec` 秒**走完
-—— 就位段与跟踪段是**同一个控制器、同一套增益、同一条代码路径**。
+**没有独立的位置模式就位步骤。** 当前主架构是：SMC 从第一帧开始发力矩，
+`handover` 用参考偏置衰减把实物当前位姿并入轨迹；参考轨迹在偏置衰减期间冻结，
+避免一边追初始偏差一边追运动目标。
 
 另开一个终端，**同一个 `ROS_DOMAIN_ID`**：
 
@@ -434,7 +459,7 @@ cd /home/windylab/code/windylab_ws/src/arm-platform
 
 ros2 launch manipulator task_space_smc_whole6.launch.py \
   mode:=hardware hardware_enabled:=true rviz:=false \
-  trajectory_shape:=hwtest duration_sec:=60 start_delay_sec:=8 \
+  trajectory_shape:=hwtest duration_sec:=60 start_delay_sec:=0 \
   data_dir:=/path/to/run
 ```
 
@@ -444,40 +469,18 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
 |---|---|---|
 | `mode` | `hardware` | 不自动起硬件节点，接你在 [4.2](#42-起驱动) 起好的那个 |
 | `hardware_enabled` | `true` | **不设的话适配器输出恒为零，机械臂不动** |
-| `start_delay_sec` | `8`（按距离调） | 就位段时长。**不能是 0** —— 0 等于跳过就位直接跟踪 |
+| `start_delay_sec` | `0` | 当前靠 `handover` 冻结轨迹并衰减参考偏置；不要按旧文档改回 8 秒 approach。 |
 
-#### 就位段做什么
+`smc_params_hwtest.yaml` 里仍保留 `approach` 段，作为回退和历史对照。当前主线看
+`handover.reference_blend_sec = 30.0` 与 `freeze_trajectory_during_blend = true`。
 
-`smc_params_hwtest.yaml` 里 `approach.mode: task_space`：
-
-1. **第一个控制拍**读实物当前位形，正运动学得到末端当前位姿
-2. 规划一条到轨迹起点的**末端直线**（位置）+ **SO(3) 测地线**（姿态），
-   时间用五次 smoothstep，两端速度与加速度都为零
-3. 这条参考量喂给**跟踪段那个同一个 Lagrange-SMC**，力矩模式执行
-
-参考量从**当前位姿**起步，所以 SMC 看到的初始误差是 0；直接把参考量设成轨迹起点
-的话第一拍就有 245 mm 误差乘 c₀=216 → 53 m/s² 的需求，实机上就是一次猛冲。
-
-启动日志会打出规划量，**跑之前先看这一行**：
-
-```
-就位（任务空间 SMC）: 末端直线 245.2 mm、姿态 64.89°，8.0 s 走完；
-峰值速度 0.0575 m/s、峰值加速度 0.022 m/s²
-```
-
-**为什么不用位置模式**（`full_prepose.py`）：它不经过 SMC，是另一套控制器，而且
-顶不过静摩擦 —— 实测 j3 在 kp=80 下仍差约 **2°**、j2 差约 **10°**（j2 静摩擦
-1.775 Nm 是其余关节的 2.4~18 倍，同时承载最重）。于是每次实验的**起步位形都不是
-设定的那个**，末端差约 10 mm，跨天对比失真。力矩模式没有这个问题：仿真同参对照下
-就位末端残差 **0.052 mm**。
-
-**为什么在末端空间规划而不是关节空间**：关节空间插值时末端走的是一条没人算过的
-曲线，可能扫过桌面或围栏。末端直线是显式的，可以事先检查。
+`full_prepose.py` 不在正常实验流程里：它是位置模式工具，不经过 SMC，而且会被静摩擦卡住。
+已知位置模式下 j3 在 `kp=80` 仍差约 **2°**、j2 差约 **10°**；它的落点不能当作
+跨天实验起点真值。
 
 #### 工作台护栏
 
-规划完成后自动检查，任一条不过就**一条力矩都不发**（电机由驱动的指令超时保位接管，
-那是协议里唯一设计过的安全兜底），并在日志里打 ERROR：
+工作台护栏按配置检查，任一条不过就**一条力矩都不发**，并在日志里打 ERROR：
 
 | 判据 | 缺省阈值 |
 |---|---|
@@ -486,11 +489,10 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
 | 峰值线速度 | ≤ 0.15 m/s |
 | 峰值线加速度 | ≤ 0.60 m/s² |
 
-阈值在 `approach.workspace_guard` 里改。超速 / 超加速度时提示**加大
-`start_delay_sec`**，不要去放宽阈值。
+阈值在 `approach.workspace_guard` 里改。不要为了跑通一次就放宽阈值。
 
-> ⚠️ 护栏**只查末端点**。连杆本体的扫掠体积没查 —— 末端空间规划沿途没有关节解，
-> 算不出连杆在哪。这是必要条件不是充分条件，**第一次用新起点时人要在旁边看着**。
+> ⚠️ 护栏**只查末端点**。连杆本体的扫掠体积没查。这是必要条件不是充分条件，
+> 第一次用新起点时人要在旁边看着。
 
 #### 手动就位工具（不在正常流程里）
 
@@ -534,10 +536,4 @@ python3 task_space_smc/hw/full_prepose.py --target-rad="<安全位形>" --durati
 
 | 内容 | 位置 |
 |---|---|
-| 控制律推导、三种构型、5D 笔轴任务定义 | [docs/REFERENCE.md](docs/REFERENCE.md) §1、§2、§8 |
-| 离线仿真（不起 ROS） | [docs/REFERENCE.md](docs/REFERENCE.md) §4 |
-| 实机标定体系（phase 1~5） | [docs/REFERENCE.md](docs/REFERENCE.md) §9 |
-| 真机接口实测特性（延迟、噪声、摩擦、量化） | [docs/REFERENCE.md](docs/REFERENCE.md) §10 |
-| 参数整定规则与已被实测否定的做法 | [docs/REFERENCE.md](docs/REFERENCE.md) §11 |
-| 当前能力边界、常见问题 | [docs/REFERENCE.md](docs/REFERENCE.md) §13、§14 |
-| 硬件当前状态与工作交接 | [docs/HANDOFF_2026_08_02.md](docs/HANDOFF_2026_08_02.md) |
+| 当前真相、已推翻旧说法、硬件事实、标定值、调查中事项 | [docs/HANDOFF.md](docs/HANDOFF.md) |

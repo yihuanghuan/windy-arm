@@ -28,10 +28,7 @@ singularity:
   damping_max: 0.03
 
 limits:
-  # joint1-3: DM-J4340 / DM4340-48V, rated 9 Nm, peak 27 Nm.
-  # joint4-7: RobStride RS05, rated 1.6 Nm, peak 5.5 Nm.
-  # Use rated torque as the default continuous safe limit; peak torque should
-  # be enabled only by an explicit short-duration hardware profile.
+
   torque: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6, 1.6]
   torque_rate: [1500.0, 1500.0, 1500.0, 500.0, 500.0, 350.0, 250.0]
   current: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6, 1.6]

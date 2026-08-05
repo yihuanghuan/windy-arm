@@ -14,7 +14,11 @@ class AL1Gamma final : public AbsArm {
    * @param port Serial port device path (e.g., "/dev/ttyUSB0")
    * @param baud Baud rate for serial communication
    */ 
-  void Init(const std::string& port, uint32_t baud);  
+  void Init(const std::string& port, uint32_t baud);
+
+  bool IsLinkAlive(double timeout_sec) const override {
+    return protocol_ && protocol_->IsLinkAlive(timeout_sec);
+  }
 
  private:
   protocol::ProtocolV1::SharedPtr protocol_;

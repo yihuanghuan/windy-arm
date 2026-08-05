@@ -1,7 +1,12 @@
 #include <manipulator/robotics/arm/sim_arm.h>
+#include <manipulator/robotics/config/arm_config.h>
+#include <yaml-cpp/yaml.h>
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <stdexcept>
+#include <string>
 
 namespace manipulator::arm {
 
@@ -87,6 +92,47 @@ void SimArm::Init(const std::string& /*port*/, uint32_t /*baud*/) {
     auto motor = std::make_shared<SimMotor>(id++);
     motor->SetJointLimit(spec.lower, spec.upper);
     AddMotor(spec.name, motor);
+  }
+
+  SetBus(std::make_unique<SimBus>());
+}
+
+void SimArm::InitFromConfig(const std::string& port, uint32_t baud,
+                            const std::string& motor_config_path,
+                            const std::string& arm_config_path,
+                            const std::string& arm_name) {
+  if (arm_config_path.empty()) {
+    Init(port, baud);
+    return;
+  }
+
+  config::ArmConfig arm_config;
+  std::map<std::string, config::MotorModelConfig> motor_models;
+  try {
+    arm_config = config::ConfigLoader::LoadArmConfig(
+        YAML::LoadFile(arm_config_path), "a_l1_" + arm_name);
+    if (not motor_config_path.empty()) {
+      motor_models = config::ConfigLoader::LoadMotorModels(
+          YAML::LoadFile(motor_config_path));
+    }
+  } catch (const std::exception&) {
+    Init(port, baud);
+    return;
+  }
+
+  if (arm_config.joints.empty()) {
+    Init(port, baud);
+    return;
+  }
+
+  for (const auto& joint : arm_config.joints) {
+    auto motor = std::make_shared<SimMotor>(joint.id);
+    motor->SetJointLimit(joint.lower_limit, joint.upper_limit);
+    auto it = motor_models.find(joint.model);
+    if (it != motor_models.end()) {
+      motor->SetRateTorque(it->second.rated_torque);
+    }
+    AddMotor(joint.name, motor);
   }
 
   SetBus(std::make_unique<SimBus>());

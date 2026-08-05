@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""ROS2 node for world-frame floating-base task-space SMC torque commands."""
-
 from __future__ import annotations
 
 import math
@@ -11,10 +8,8 @@ import numpy as np
 import yaml
 
 if __package__ in (None, ""):
-    # 直接当脚本跑时把【包的父目录】放进 sys.path。2026-08-04 目录分层后
-    # 模块下沉到 core/ sim/ hw/，原来写死的 package_dir.parent 会指到
-    # task_space_smc/ 本身（少上溯一级），import task_space_smc.* 全部失败。
-    # 改成逐级上溯直到走出带 __init__.py 的目录，对任意层深都成立。
+
+
     _here = Path(__file__).resolve().parent
     _root = _here
     while (_root / "__init__.py").exists():
@@ -34,7 +29,7 @@ try:
     from dummy_interface.msg import MotorControl
     from rclpy.node import Node
     from sensor_msgs.msg import JointState
-except Exception:  # pragma: no cover
+except Exception:
     rclpy = None
     Node = object
     JointState = object

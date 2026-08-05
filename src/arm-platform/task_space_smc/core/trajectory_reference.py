@@ -1,5 +1,3 @@
-"""World-frame whole-task reference helpers shared by ROS and offline runs."""
-
 from __future__ import annotations
 
 import sys

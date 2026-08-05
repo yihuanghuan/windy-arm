@@ -38,6 +38,13 @@ class ArmPlatform {
       const dummy_interface::msg::MotorControl& cmd, double dt);
   void PublishCurrentState();
   void SetBaseState(const arm::FloatingBaseState& state);
+
+  /**
+   * @brief 转发到 arm 的串口心跳检查；未设置 arm 时视为不活（保守）
+   */
+  bool IsArmLinkAlive(double timeout_sec) const {
+    return arm_ && arm_->IsLinkAlive(timeout_sec);
+  }
   void AddSubscribe(IArmDataSubscriber::SharedPtr subscriber);
   void PrintDebugInfo();
 

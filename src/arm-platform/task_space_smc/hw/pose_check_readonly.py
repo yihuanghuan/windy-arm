@@ -1,38 +1,3 @@
-#!/usr/bin/env python3
-"""上机前的【只读】位形核对：实物当前位形 vs 配置里的 initial_pose_rad。
-
-为什么需要它：仿真从 config 的 initial_pose_rad 起步，如果实物上电后不在
-那个位形，控制器的第一条指令就会命令一次大跳跃。之前实测过原配置与实物
-相差最大 1.35 rad —— 那种跳跃在实机上是危险的。
-
-【安全性由结构保证，不是靠自觉】：
-  * 全程只调用 serial.Serial.read()，从不 write()。
-  * 打开串口后立刻把 write / flush 等发送类方法替换成抛异常的桩，
-    任何代码路径想发字节都会当场崩掉而不是悄悄发出去。
-  * 不 import rclpy，不发布任何话题，不启动任何节点。
-  * 机械臂上电后电机是锁死的，本脚本不改变这一点。
-
-协议（见 task_space_smc/README.md 第 10 节，3 秒抓包 2480 帧零校验错误）：
-    0xFE 0x55 | cmd | len | payload | sumCheck | addCheck      板 -> PC
-    cmd 0x20 = position，7 x float32（第 7 通道是幽灵数据，见 10.4）
-    上报速率 200.6 Hz
-
-⚠️【坐标系取反 —— 2026-08-03 修复的一个安全关键缺陷】
-串口里的 0x20 是【原始】位置，而 `initial_pose_rad` 用的是控制器约定。
-两者对 `coord_system: left_hand` 的关节【差一个负号】：
-    DMMotor::UpdateState()  ->  LeftHand 时 position_ = -position_
-本机 joint4/5/6 是 RS05，motor_config.yaml 里标着 left_hand，所以这三个
-关节的串口读数必须取反才能与配置比较。
-
-本脚本原先直接拿原始值比对，j4/j5/j6 的结论是【反的】。之所以一直没暴露，
-是因为此前记录的位形里这三个关节都≈0（0.0006 / -0.0025 / -0.0029），
-符号看不出来。2026-08-03 实测 j4 到了 -1.3467 rad，照原样写进配置会
-差 154°—— 那是一次剧烈甩动。
-
-取反关系【从配置推导】而不是写死，这样换电机型号时不会失效。
-端到端验证：给 student_arm_node 喂已知原始位置，核对 /joint_states 的输出。
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -46,11 +11,10 @@ import yaml
 
 HEAD = b"\xfe\x55"
 CMD_POSITION = 0x20
-N_CHANNEL = 7                      # 固件固定按 7 通道上报，实物只有前 6 个
+N_CHANNEL = 7
 
 
 def _forbid_writes(port):
-    """把所有发送类方法换成抛异常的桩 —— 只读是结构保证，不是约定。"""
 
     def _blocked(*_args, **_kwargs):
         raise RuntimeError(
@@ -66,17 +30,6 @@ def _forbid_writes(port):
 
 def load_sign_convention(motor_config: str, arm_config: str, arm_name: str,
                          n_arm: int) -> np.ndarray:
-    """从配置推导每个关节的取反系数（+1 右手 / -1 左手）。
-
-    链路与 C++ 侧完全一致：
-        arm_config.yaml  的 arms.<arm_name>.joints[i].model
-        -> motor_config.yaml 的 motor_models.<model>.coord_system
-        -> a_l1.cc:37     "right_hand" ? RightHand : LeftHand
-        -> dm_motor.cc:40 LeftHand 时 position/velocity/torque 全部取反
-
-    注意 arm_config.yaml 的 joints[i] 里也有个 coord_system 字段，
-    但 LoadArmConfig 不解析它 —— 以 motor_config.yaml 的为准。
-    """
     motors = yaml.safe_load(open(motor_config, encoding="utf-8"))["motor_models"]
     arms = yaml.safe_load(open(arm_config, encoding="utf-8"))["arms"]
     if arm_name not in arms:
@@ -90,14 +43,13 @@ def load_sign_convention(motor_config: str, arm_config: str, arm_name: str,
         model = joints[i]["model"]
         if model not in motors:
             raise KeyError(f"{motor_config} 里没有 motor_models.{model}")
-        # 与 a_l1.cc 一致：只有精确等于 right_hand 才是右手，其余一律左手
+
         if motors[model].get("coord_system") != "right_hand":
             signs[i] = -1.0
     return signs
 
 
 def _checksum_ok(frame: bytes) -> bool:
-    """sumCheck = 累加和，addCheck = 累加和的累加和，都取低 8 位。"""
     body = frame[:-2]
     s = 0
     a = 0
@@ -108,7 +60,6 @@ def _checksum_ok(frame: bytes) -> bool:
 
 
 def parse_position_frames(buf: bytes):
-    """从字节流里抽出所有校验通过的 0x20 位置帧。返回 (positions, stats)。"""
     out = []
     total = 0
     bad = 0
@@ -193,7 +144,7 @@ def main(argv=None):
 
     q = np.array(frames)
     rate = len(frames) / max(elapsed, 1e-9)
-    # 【必须先取反再比较】—— 串口是原始值，initial_pose_rad 是控制器约定
+
     raw_median = np.median(q[:, :n_arm], axis=0)
     actual = raw_median * signs
     jitter = np.percentile(q[:, :n_arm], 97.5, axis=0) - np.percentile(
@@ -222,8 +173,7 @@ def main(argv=None):
         print(f"通道 {n_arm+1}（幽灵数据，实物无此关节）: "
               f"{np.round(ghost, 4).tolist()}")
 
-    # 判据：0.05 rad ≈ 2.9°。实测各关节摩擦死区 0.020~0.059 rad，
-    # 小于死区的偏差本来就无法通过位置指令消除，没必要报警。
+
     if np.max(np.abs(diff)) > 0.05:
         print("\n⚠️ 偏差超过 0.05 rad。直接启动会让第一条指令命令一次跳跃。")
         print("   处理方式（二选一）：")
@@ -237,7 +187,6 @@ def main(argv=None):
 
 
 def _selftest(n_arm):
-    """用合成帧验证解析与校验逻辑 —— 无硬件时也能确认脚本是对的。"""
     truth = np.array([0.1, -0.2, 0.3, -0.4, 0.5, -0.6, -6.5231][:N_CHANNEL])
     payload = struct.pack("<%df" % N_CHANNEL, *truth)
     body = HEAD + bytes([CMD_POSITION, len(payload)]) + payload
@@ -248,7 +197,7 @@ def _selftest(n_arm):
         a = (a + s) & 0xFF
     good = body + bytes([s, a])
     corrupt = bytearray(good)
-    corrupt[6] ^= 0xFF                      # 破坏 payload，校验应当拒绝
+    corrupt[6] ^= 0xFF
 
     frames, stats = parse_position_frames(
         b"\x00\x11" + good * 3 + bytes(corrupt) + good)
@@ -278,14 +227,6 @@ def _selftest(n_arm):
 
 
 def _selftest_signs(n_arm):
-    """旋向必须与实测一致 —— 这是 2026-08-03 修掉的安全关键缺陷。
-
-    基准来自端到端实测：给 student_arm_node 喂原始 0x20 位置
-        [0.1111, 0.2222, 0.3333, -1.3467, 0.3654, -0.2626]
-    /joint_states 发布出来的是
-        [0.1111, 0.2222, 0.3333, +1.3467, -0.3654, +0.2626]
-    即 j1~j3 不变、j4~j6 取反。
-    """
     pkg = Path(__file__).resolve().parents[2]
     signs = load_sign_convention(
         str(pkg / "config" / "motor_config.yaml"),

@@ -22,6 +22,7 @@ StudentArmNode::StudentArmNode() : Node("student_arm_node") {
   step_on_effort_command_ =
       GetParam<bool>("step_on_effort_command", false);
   publish_joint_feedback_ = GetParam<bool>("publish_joint_feedback", false);
+  heartbeat_timeout_sec_ = GetParam<double>("heartbeat_timeout_sec", 0.2);
   joint_lower_limits_ = GetParam<std::vector<double>>(
       "joint_lower_limits", {-4.0, -3.1415, -1.5708, -4.0, -2.0, -4.0, -4.0});
   joint_upper_limits_ = GetParam<std::vector<double>>(
@@ -120,6 +121,9 @@ void StudentArmNode::SetArmPlatform() {
   std::vector<double> d_gain = GetParam<std::vector<double>>(
       "d_gain", {1, 1, 1, 0.1, 0.1, 0.1, 0.1});
   controller->SetKpKd(p_gain, d_gain);
+  // 力矩通道的兜底保持使用与位置模式相同的增益
+  hold_p_gain_ = p_gain;
+  hold_d_gain_ = d_gain;
   RCLCPP_INFO(
       this->get_logger(),
       "SmoothPositionController: max_velocity=%.3f, velocity_feedforward=%s, "
@@ -239,19 +243,28 @@ bool StudentArmNode::ValidateEffortCommand(const dummy_interface::msg::MotorCont
   return true;
 }
 
-dummy_interface::msg::MotorControl StudentArmNode::MakeZeroEffortCommand() {
-  dummy_interface::msg::MotorControl cmd;
-  cmd.header.stamp = this->now();
-  cmd.position.resize(joint_count_);
-  cmd.velocity.assign(joint_count_, 0.0);
-  cmd.current.assign(joint_count_, 0.0);
-  cmd.p.assign(joint_count_, 0.0);
-  cmd.d.assign(joint_count_, 0.0);
-  cmd.enable = 0;
+dummy_interface::msg::MotorControl StudentArmNode::MakeHoldPositionCommand() {
+  std::vector<double> positions(joint_count_, 0.0);
   for (size_t i = 0; i < joint_count_; ++i) {
-    cmd.position[i] = (i < last_known_position_.size()) ? last_known_position_[i] : 0.0;
+    positions[i] = (i < last_known_position_.size()) ? last_known_position_[i] : 0.0;
   }
+  auto cmd = BuildHoldCommand(positions, hold_p_gain_, hold_d_gain_);
+  cmd.header.stamp = this->now();
   return cmd;
+}
+
+void StudentArmNode::ExecuteEffortGuarded(
+    const dummy_interface::msg::MotorControl& cmd) {
+  const bool alive = arm_platform_->IsArmLinkAlive(heartbeat_timeout_sec_);
+  if (ShouldBlockTorque(alive, cmd)) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "serial heartbeat stale (> %.2fs): blocking torque feedforward, "
+        "holding position instead", heartbeat_timeout_sec_);
+    arm_platform_->ExecuteDirectMotorCommand(
+        MakeHoldPositionCommand(), effort_control_period_sec_);
+    return;
+  }
+  arm_platform_->ExecuteDirectMotorCommand(cmd, effort_control_period_sec_);
 }
 
 void StudentArmNode::StudentEffortCommandCallback(
@@ -260,13 +273,12 @@ void StudentArmNode::StudentEffortCommandCallback(
     return;
   }
   if (msg->enable == 0) {
-    last_effort_command_ = MakeZeroEffortCommand();
+    last_effort_command_ = MakeHoldPositionCommand();
     got_effort_command_ = true;
     effort_zeroed_ = true;
     last_effort_command_stamp_ = now().seconds();
     if (step_on_effort_command_) {
-      arm_platform_->ExecuteDirectMotorCommand(
-          last_effort_command_, effort_control_period_sec_);
+      ExecuteEffortGuarded(last_effort_command_);
     }
     return;
   }
@@ -290,15 +302,44 @@ void StudentArmNode::StudentEffortCommandCallback(
   }
   got_effort_command_ = true;
   effort_zeroed_ = false;
+  effort_hold_latched_ = false;
   last_effort_command_stamp_ = now().seconds();
   if (step_on_effort_command_) {
-    arm_platform_->ExecuteDirectMotorCommand(
-        last_effort_command_, effort_control_period_sec_);
+    ExecuteEffortGuarded(last_effort_command_);
   }
 }
 
 void StudentArmNode::ControlLoop() {
   if (direct_effort_enabled_) {
+    // 串口刚打开时 available() 可能还是 0；这时 AbsArm 的位置缓存仍是
+    // AddMotor() 初始化出来的全零。此前在这里直接锁存保持会把真机拉向
+    // 零位。直驱启动阶段必须先轮询且确认真实反馈，期间严禁写任何指令。
+    if (!direct_startup_feedback_ready_) {
+      arm_platform_->PublishCurrentState();
+      const bool link_alive =
+          arm_platform_->IsArmLinkAlive(heartbeat_timeout_sec_);
+      if (!link_alive) {
+        RCLCPP_WARN_THROTTLE(
+            this->get_logger(), *this->get_clock(), 1000,
+            "Direct effort startup: waiting for serial heartbeat/feedback; "
+            "no motor command is sent");
+        return;
+      }
+      if (!direct_startup_link_seen_) {
+        direct_startup_link_seen_ = true;
+        direct_startup_feedback_generation_ = joint_feedback_generation_;
+        return;
+      }
+      if (joint_feedback_generation_ <
+          direct_startup_feedback_generation_ + 3) {
+        return;
+      }
+      direct_startup_feedback_ready_ = true;
+      RCLCPP_INFO(
+          this->get_logger(),
+          "Direct effort startup: serial heartbeat and 3 feedback frames "
+          "confirmed; holding at measured pose");
+    }
     if (step_on_effort_command_) {
       if (!got_effort_command_ &&
           now().seconds() - last_initial_state_publish_stamp_ >= 0.1) {
@@ -308,16 +349,24 @@ void StudentArmNode::ControlLoop() {
       return;
     }
     if (!got_effort_command_) {
-      last_effort_command_ = MakeZeroEffortCommand();
-      effort_zeroed_ = true;
+      // 【只锁存一次】。这里曾每个周期都重新取当前位置作为保持目标，
+      // 于是形成棘轮：本周期「保持在现在的位置」-> 重力把它拉低一点 ->
+      // 下周期又以更低的位置为基准。实机上因此三次垂到桌面。
+      if (!effort_hold_latched_) {
+        last_effort_command_ = MakeHoldPositionCommand();
+        effort_hold_latched_ = true;
+        effort_zeroed_ = true;
+        RCLCPP_INFO(this->get_logger(),
+            "effort mode: latching hold position until the first command");
+      }
     } else if (!effort_zeroed_ &&
         now().seconds() - last_effort_command_stamp_ > effort_command_timeout_sec_) {
-      last_effort_command_ = MakeZeroEffortCommand();
+      last_effort_command_ = MakeHoldPositionCommand();
       effort_zeroed_ = true;
-      RCLCPP_WARN(this->get_logger(), "Direct effort command timeout, sending zero torque/current");
+      RCLCPP_WARN(this->get_logger(),
+          "Direct effort command timeout, holding position with default gains");
     }
-    arm_platform_->ExecuteDirectMotorCommand(
-        last_effort_command_, effort_control_period_sec_);
+    ExecuteEffortGuarded(last_effort_command_);
     return;
   }
 
@@ -341,6 +390,7 @@ void StudentArmNode::ControlLoop() {
 
 void StudentArmNode::UpdateJointState(sensor_msgs::msg::JointState& msg) {
   last_known_position_ = msg.position;
+  ++joint_feedback_generation_;
   msg.header.stamp = this->now();
   pub_joint_state_->publish(msg);
 }

@@ -1,5 +1,6 @@
 #include <manipulator/robotics/protocol/protocol_v1.h>
 #include <cstring>
+#include <limits>
 
 namespace manipulator::protocol {
 
@@ -113,14 +114,35 @@ void ProtocolV1::DecodeFrame() {
     return;
 
   switch (recv_.cmd) {
+    case 0x01: DecodeHeartbeat(); break;
     case 0x20: DecodePosition(); break;
     case 0x21: DecodeVelocity(); break;
     case 0x22: DecodeCurrent(); break;
     case 0x23: DecodeVoltage(); break;
     case 0x24: DecodeTemperature(); break;
+    default:
+      // Board also emits 0x25 (28 B, ~2 Hz) whose meaning is undocumented.
+      // Counted rather than interpreted so firmware changes stay visible.
+      unhandled_frame_count_++;
+      last_unhandled_cmd_ = recv_.cmd;
+      break;
   }
 
   Notify();
+}
+
+void ProtocolV1::DecodeHeartbeat() {
+  heartbeat_count_++;
+  heartbeat_seen_ = true;
+  last_heartbeat_ = std::chrono::steady_clock::now();
+}
+
+double ProtocolV1::GetSecondsSinceHeartbeat() const {
+  if (not heartbeat_seen_) {
+    return std::numeric_limits<double>::infinity();
+  }
+  const auto age = std::chrono::steady_clock::now() - last_heartbeat_;
+  return std::chrono::duration<double>(age).count();
 }
 
 template<typename T>

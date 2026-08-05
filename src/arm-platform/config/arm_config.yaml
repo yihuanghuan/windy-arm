@@ -37,3 +37,43 @@ arms:
         id: 6
         lower_limit: -4
         upper_limit: 4
+
+  # 6 自由度实机构型: 末端无电机, link7/joint7 物理不存在。
+  # 固件仍按 7 通道上报 (dataLen=28), 但通道 7 是幽灵数据
+  # (position -6.52 rad / velocity 27.97 rad/s / temperature 1),
+  # 只创建 6 个电机即可让驱动层不去读它。
+  # 与之配套: urdf_path=arm6.urdf, 末端 frame=link6。
+  # 注: 每关节旋向由 motor_config.yaml 的 coord_system 决定,
+  #     本文件的 coord_system 字段不被 LoadArmConfig 解析。
+  a_l1_gamma6:
+    joints:
+      - name: "joint1"
+        model: "DM4340-48V"
+        id: 0
+        lower_limit: -4
+        upper_limit: 4
+      - name: "joint2"
+        model: "DM4340-48V"
+        id: 1
+        lower_limit: -3.1415
+        upper_limit: 2
+      - name: "joint3"
+        model: "DM4340-48V"
+        id: 2
+        lower_limit: -1.5708
+        upper_limit: 1.5708
+      - name: "joint4"
+        model: "RS05"
+        id: 3
+        lower_limit: -4
+        upper_limit: 4
+      - name: "joint5"
+        model: "RS05"
+        id: 4
+        lower_limit: -2
+        upper_limit: 2
+      - name: "joint6"
+        model: "RS05"
+        id: 5
+        lower_limit: -4
+        upper_limit: 4

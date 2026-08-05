@@ -1,36 +1,3 @@
-#!/usr/bin/env python3
-"""阶段 5：惯量辨识 —— 在 kp=0 重力补偿基础上叠加力矩脉冲。
-
-原方案（位置模式跑激励轨迹）行不通：要让惯量项超过摩擦，激励频率需接近
-甚至超过闭环带宽（joint2 是 2.80 Hz），那时位置环跟不上，命令 qdd 不等于
-实际 qdd。
-
-阶段 4 证明了 kp=0 下重力补偿稳定成立，于是有了干净的做法::
-
-    基础：kp=0，t_ff = ĝ(q)          机械臂悬浮不动
-    叠加：t_ff = ĝ(q) + τ_extra      关节自由加速
-    测量：加速度 qdd（由速度斜率拟合）
-    辨识：qdd = (τ_extra − f) / M    斜率 d(qdd)/d(τ_extra) = 1/M
-
-【摩擦只影响截距，不影响斜率】—— 与阶段 2 测 0x12 标度用的是同一手法。
-没有位置环，也就没有带宽限制。
-
-可行性（200 Hz 遥测）::
-
-    关节   M(kg·m²)  qdd(rad/s²)  位移0.05rad用时  采样点  可行性
-    joint1  0.0129      56           42 ms          8     可行
-    joint2  0.0788      22           67 ms         13     最佳
-    joint3  0.0138      45           47 ms          9     可行
-    joint4  0.0006     200           22 ms          4     勉强
-    joint5  0.0008     122           29 ms          6     勉强
-    joint6  0.0000   12595            3 ms        0.6     测不了
-
-⚠️ 这是与阶段 4 不同的风险类别。阶段 4 是【静态】的 —— kp=0 时机械臂不动。
-这里要主动加速，脉冲若未按时终止，joint4 在 200 rad/s² 下 0.5 秒能冲出
-6 rad 撞限位。所以：脉冲时长硬编码在发送循环内、每周期检查位移与速度、
-超限立即切回纯重力补偿。
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -52,27 +19,27 @@ except ImportError as exc:
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from task_space_smc.hw.fk_gravity_verify import (  # noqa: E402
+from task_space_smc.hw.fk_gravity_verify import (
     GravityModel, check_setpoint, N_ARM, JOINT_LOWER, JOINT_UPPER,
 )
-from task_space_smc.hw.phase4_gravity_compensation import (  # noqa: E402
+from task_space_smc.hw.phase4_gravity_compensation import (
     desk_margin, BASE_P, BASE_D,
 )
-from task_space_smc.core.model import load_arm6_calibration  # noqa: E402
+from task_space_smc.core.model import load_arm6_calibration
 
 OUT = Path(__file__).resolve().parent / "data" / "phase5"
 
 STICTION = [0.725, 1.775, 0.625, 0.125, 0.100, 0.100]
 
-# 脉冲力矩取静摩擦的倍数。必须 >1 才会动；用多级取斜率，摩擦落到截距里。
+
 PULSE_SCALES = [1.3, 1.6, 1.9, 2.2, 2.5]
 
 PUBLISH_RATE = 100.0
-PULSE_MAX_SEC = 0.20        # 硬上限，任何情况下脉冲不超过它
-DISP_ABORT = 0.10           # rad，脉冲期间位移上限
-SPEED_ABORT = 2.0           # rad/s
-SETTLE_SEC = 1.5            # 每次脉冲前的静置
-RECOVER_SEC = 3.0           # 脉冲后回到起始位姿
+PULSE_MAX_SEC = 0.20
+DISP_ABORT = 0.10
+SPEED_ABORT = 2.0
+SETTLE_SEC = 1.5
+RECOVER_SEC = 3.0
 
 
 class InertiaId(Node):
@@ -134,7 +101,6 @@ class InertiaId(Node):
         return None
 
     def hold(self, q_hold, seconds, kp_frac=1.0, kd_frac=1.0):
-        """位置保持（用于脉冲前后回位）。"""
         kp = [BASE_P[i] * kp_frac for i in range(N_ARM)]
         kd = [BASE_D[i] * kd_frac for i in range(N_ARM)]
         t0 = time.time()
@@ -148,11 +114,6 @@ class InertiaId(Node):
             rclpy.spin_once(self, timeout_sec=0.002)
 
     def pulse(self, q_hold, joint, tau_extra) -> tuple[dict | None, str | None]:
-        """kp=0 + 重力补偿 + 单关节额外力矩，测加速度。
-
-        脉冲时长硬编码在循环条件里；位移/速度每周期检查，超限立即返回 ——
-        返回后调用方会立刻切回位置保持。
-        """
         idx = joint - 1
         kp = [0.0] * N_ARM
         kd = [BASE_D[i] * 0.2 for i in range(N_ARM)]
@@ -173,9 +134,8 @@ class InertiaId(Node):
                 continue
             d = abs(self.q[idx] - q0[idx])
             sp = abs(self.v[idx]) if self.v is not None else 0.0
-            # 只在【遥测更新】时记一笔。此前每次循环都记（约 800 Hz），
-            # 而遥测只有 200 Hz，导致约 4 倍重复值 —— 拟合不受影响（重复值
-            # 等权），但报出的采样数虚高 4 倍，会误导可行性判断。
+
+
             samp = (now - t0, float(self.q[idx]),
                     float(self.v[idx]) if self.v is not None else 0.0)
             if not samples or samp[1:] != samples[-1][1:]:
@@ -199,7 +159,7 @@ class InertiaId(Node):
         t = np.array([s[0] for s in samples])
         qq = np.array([s[1] for s in samples])
         vv = np.array([s[2] for s in samples])
-        # 加速度由速度斜率拟合（速度是直接反馈，不必二次微分位置）
+
         A = np.column_stack([t, np.ones_like(t)])
         coef, *_ = np.linalg.lstsq(A, vv, rcond=None)
         resid = vv - A @ coef
@@ -212,7 +172,6 @@ class InertiaId(Node):
 
 
 def identify_joint(node: InertiaId, joint: int, q_hold) -> dict:
-    """多级脉冲 -> 拟合 qdd = (tau_extra - f)/M -> 斜率给出 1/M。"""
     idx = joint - 1
     f = STICTION[idx]
     recs = []
@@ -222,7 +181,7 @@ def identify_joint(node: InertiaId, joint: int, q_hold) -> dict:
             f"  joint{joint} 脉冲 {te:.3f} Nm ({sc:.1f}x 静摩擦)")
         node.hold(q_hold, SETTLE_SEC)
         rec, why = node.pulse(q_hold, joint, te)
-        node.hold(q_hold, RECOVER_SEC)      # 立即回位
+        node.hold(q_hold, RECOVER_SEC)
         if rec is None:
             node.get_logger().warn(f"    跳过: {why}")
             continue

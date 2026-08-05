@@ -42,6 +42,15 @@ class AbsArm : public IArm {
   virtual std::vector<std::string> GetJointNames() const;
 
   virtual void Step(double /*dt*/) {}
+
+  /**
+   * @brief 串口链路是否存活（板子心跳 0x01 在 timeout_sec 内到过）
+   *
+   * 仿真臂无串口，恒为 true。真机臂 (AL1/AL1Gamma) 用 ProtocolV1 的
+   * 心跳计数实现。力矩使能链在输出非零前馈之前必须检查它：心跳断了
+   * 意味着关节反馈已经陈旧，基于模型算出的力矩不可信。
+   */
+  virtual bool IsLinkAlive(double /*timeout_sec*/) const { return true; }
   virtual void SetBaseState(const FloatingBaseState& /*state*/) {}
   virtual void SetModelPath(const std::string& /*model_path*/) {}
   virtual void SetInitialJointPositions(

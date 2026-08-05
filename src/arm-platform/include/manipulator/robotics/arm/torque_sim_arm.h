@@ -32,6 +32,9 @@ class TorqueSimArm final : public AbsArm {
       const std::vector<double>& positions) override;
 
  private:
+  // 关节数由 URDF 推导（nv-6），不写死 —— 6 关节实物没有 joint7
+  int arm_dof_ = 7;
+  void ApplyArmature();
   void BuildModel();
   void InitializeState();
   Eigen::VectorXd MakeFullConfiguration() const;

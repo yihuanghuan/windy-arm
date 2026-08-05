@@ -269,6 +269,7 @@ install(PROGRAMS
   task_space_smc/hw/torque_controller_node.py
   task_space_smc/hw/torque_interface_probe.py
   task_space_smc/hw/whole_task_smc_ros_runner.py
+  task_space_smc/hw/vicon_floating_base_bridge.py
   task_space_smc/sim/plot_whole_task_smc.py
   task_space_smc/sim/tune_whole_task_smc.py
   task_space_smc/hw/fk_gravity_verify.py

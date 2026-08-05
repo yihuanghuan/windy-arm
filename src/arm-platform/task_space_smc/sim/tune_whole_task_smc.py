@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""Deterministic gain sweep for the floating-base whole-task SMC simulation."""
-
 from __future__ import annotations
 
 import argparse
@@ -15,18 +12,12 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-
-# 关节数：6 关节实物上 joint7 不存在
-from task_space_smc.core.model import ARM6_JOINT_NAMES
-N_ARM = len(ARM6_JOINT_NAMES)
 import pinocchio as pin
 import yaml
 
 if __package__ in (None, ""):
-    # 直接当脚本跑时把【包的父目录】放进 sys.path。2026-08-04 目录分层后
-    # 模块下沉到 core/ sim/ hw/，原来写死的 package_dir.parent 会指到
-    # task_space_smc/ 本身（少上溯一级），import task_space_smc.* 全部失败。
-    # 改成逐级上溯直到走出带 __init__.py 的目录，对任意层深都成立。
+
+
     _here = Path(__file__).resolve().parent
     _root = _here
     while (_root / "__init__.py").exists():
@@ -34,11 +25,13 @@ if __package__ in (None, ""):
     sys.path = [p for p in sys.path if Path(p or ".").resolve() != _here]
     sys.path.insert(0, str(_root))
 
-from task_space_smc.core.model import FloatingBaseArmModel
+from task_space_smc.core.model import model_from_config
 from task_space_smc.sim.offline_simulation import controller_from_config
 from task_space_smc.core.pose_error import PoseState
 from task_space_smc.core.quaternion_math import quat_to_rotation, quaternion_log_error, rotation_to_quat
-from task_space_smc.core.redundancy_resolution import resolve_acceleration
+from task_space_smc.core.redundancy_resolution import (
+    LimitAvoidance, pen_axis_task, resolve_acceleration,
+)
 from task_space_smc.core.trajectory_reference import AnalyticBaseSample, base_sample, reference_sample, traj, whole_period
 
 
@@ -55,7 +48,7 @@ def _inj_enabled(config):
     return bool(_inj(config, "enabled", default=True))
 
 
-def _inj_vec(config, *keys, default, n=N_ARM):
+def _inj_vec(config, *keys, default, n):
     return np.asarray(_inj(config, *keys, default=default), dtype=float).reshape(n)
 
 
@@ -201,33 +194,34 @@ def _noisy_delayed_base_sample(config, t, true_bs, history, rng):
 def _payload_disturbance_torque(config, kin):
     mass = float(_inj(config, "payload", "mass_error_kg", default=0.0))
     if abs(mass) < 1e-12:
-        return np.zeros(N_ARM)
+        return np.zeros(kin.J_arm_lwa.shape[1])
     gravity = np.asarray(_inj(config, "payload", "gravity_w_m_s2", default=[0.0, 0.0, -9.81]), dtype=float).reshape(3)
     return kin.J_arm_lwa[:3, :].T @ (mass * gravity)
 
 
-def _gust_joint_torque(config, t):
-    amp = _inj_vec(config, "gust", "joint_torque_amplitude_nm", default=[0.0] * N_ARM, n=N_ARM)
+def _gust_joint_torque(config, t, n_arm):
+    amp = _inj_vec(config, "gust", "joint_torque_amplitude_nm", default=[0.0] * n_arm, n=n_arm)
     if not _inj_enabled(config) or not np.any(np.abs(amp) > 0.0):
-        return np.zeros(N_ARM)
+        return np.zeros(n_arm)
     gust_cfg = _inj(config, "gust", default={}) or {}
     period = float(gust_cfg.get("period_sec", 4.0))
     width = float(gust_cfg.get("width_sec", 0.8))
     if period <= 1e-9 or width <= 1e-9:
-        return np.zeros(N_ARM)
+        return np.zeros(n_arm)
     k = math.floor(float(t) / period)
     phase = float(t) - k * period
     if phase < 0.0 or phase >= width:
-        return np.zeros(N_ARM)
+        return np.zeros(n_arm)
     envelope = 0.5 * (1.0 - math.cos(2.0 * math.pi * phase / width))
     rng = np.random.default_rng([int(gust_cfg.get("seed", _inj(config, "seed", default=20260730))), int(k), 0x746175])
-    direction = rng.uniform(-1.0, 1.0, N_ARM)
+    direction = rng.uniform(-1.0, 1.0, n_arm)
     direction /= np.maximum(np.linalg.norm(direction), 1e-12)
     return envelope * amp * direction
 
 
 def _actual_plant_torque(config, tau_cmd, t, qd, kin, motor_history, rng):
-    tau_cmd = np.asarray(tau_cmd, dtype=float).reshape(N_ARM)
+    n_arm = np.asarray(tau_cmd, dtype=float).size
+    tau_cmd = np.asarray(tau_cmd, dtype=float).reshape(n_arm)
     if not _inj_enabled(config):
         return tau_cmd
     delay = max(0.0, float(_inj(config, "motor", "drive_delay_sec", default=0.0)))
@@ -241,31 +235,37 @@ def _actual_plant_torque(config, tau_cmd, t, qd, kin, motor_history, rng):
             delayed = cmd
         else:
             break
-    gain = _inj_vec(config, "motor", "torque_gain", default=[1.0] * N_ARM, n=N_ARM)
-    bias = _inj_vec(config, "motor", "torque_bias_nm", default=[0.0] * N_ARM, n=N_ARM)
-    noise_std = _inj_vec(config, "motor", "torque_noise_std_nm", default=[0.0] * N_ARM, n=N_ARM)
-    ripple = _inj_vec(config, "motor", "torque_ripple_amplitude_nm", default=[0.0] * N_ARM, n=N_ARM)
-    ripple_freq = _inj_vec(config, "motor", "torque_ripple_frequency_hz", default=[0.0] * N_ARM, n=N_ARM)
-    ripple_phase = _inj_vec(config, "motor", "torque_ripple_phase_rad", default=[0.0] * N_ARM, n=N_ARM)
-    tau_motor = gain * delayed + bias + ripple * np.sin(2.0 * math.pi * ripple_freq * float(t) + ripple_phase) + rng.normal(0.0, noise_std, 7)
-    deadband = _inj_vec(config, "backlash", "torque_deadband_nm", default=[0.0] * N_ARM, n=N_ARM)
+    gain = _inj_vec(config, "motor", "torque_gain", default=[1.0] * n_arm, n=n_arm)
+    bias = _inj_vec(config, "motor", "torque_bias_nm", default=[0.0] * n_arm, n=n_arm)
+    noise_std = _inj_vec(config, "motor", "torque_noise_std_nm", default=[0.0] * n_arm, n=n_arm)
+    ripple = _inj_vec(config, "motor", "torque_ripple_amplitude_nm", default=[0.0] * n_arm, n=n_arm)
+    ripple_freq = _inj_vec(config, "motor", "torque_ripple_frequency_hz", default=[0.0] * n_arm, n=n_arm)
+    ripple_phase = _inj_vec(config, "motor", "torque_ripple_phase_rad", default=[0.0] * n_arm, n=n_arm)
+    tau_motor = gain * delayed + bias + ripple * np.sin(2.0 * math.pi * ripple_freq * float(t) + ripple_phase) + rng.normal(0.0, noise_std, n_arm)
+    deadband = _inj_vec(config, "backlash", "torque_deadband_nm", default=[0.0] * n_arm, n=n_arm)
     tau_transmitted = np.sign(tau_motor) * np.maximum(np.abs(tau_motor) - deadband, 0.0)
-    viscous = _inj_vec(config, "friction", "viscous_nm_per_rad_s", default=[0.0] * N_ARM, n=N_ARM)
-    coulomb = _inj_vec(config, "friction", "coulomb_nm", default=[0.0] * N_ARM, n=N_ARM)
+    viscous = _inj_vec(config, "friction", "viscous_nm_per_rad_s", default=[0.0] * n_arm, n=n_arm)
+    coulomb = _inj_vec(config, "friction", "coulomb_nm", default=[0.0] * n_arm, n=n_arm)
     stribeck = max(1e-6, float(_inj(config, "friction", "stribeck_velocity_rad_s", default=0.03)))
     tau_friction = viscous * qd + coulomb * np.tanh(qd / stribeck)
-    return tau_transmitted - tau_friction + _payload_disturbance_torque(config, kin) + _gust_joint_torque(config, t)
+    return tau_transmitted - tau_friction + _payload_disturbance_torque(config, kin) + _gust_joint_torque(config, t, n_arm)
 
 
 def _solve_initial_pose(model, config, derivative_dt):
     bs, _ = _simulation_base_sample(config, 0.0, "whole", derivative_dt)
     ref = reference_sample(0.0, "whole", derivative_dt)
-    q = np.asarray(config["nullspace"]["q_nominal"], dtype=float).copy()
+    n_arm = model.n_arm
+    q_seed = config.get("initial_pose_rad")
+    if isinstance(q_seed, str) or q_seed is None or len(q_seed) != n_arm:
+        q_seed = config.get("nullspace", {}).get("q_nominal")
+    if isinstance(q_seed, str) or q_seed is None or len(q_seed) != n_arm:
+        q_seed = np.zeros(n_arm)
+    q = np.asarray(q_seed, dtype=float).copy()
     scale = np.diag([1.0, 1.0, 1.0, 0.12, 0.12, 0.12])
     for _ in range(250):
         q_full = model.make_q_full(bs.position_w, bs.quaternion_wxyz, q)
         kin = model.compute_kinematics(
-            q_full, model.make_v_full(bs.velocity_lwa, np.zeros(N_ARM)))
+            q_full, model.make_v_full(bs.velocity_lwa, np.zeros(n_arm)))
         error = np.concatenate([
             ref.position_w - kin.ee_position,
             pin.log3(ref.rotation_w @ kin.ee_rotation.T),
@@ -284,16 +284,17 @@ def _solve_initial_pose(model, config, derivative_dt):
 
 
 def evaluate(config, duration_sec, dt, derivative_dt=0.005):
-    model = FloatingBaseArmModel()
+    model = model_from_config(config)
+    n_arm = model.n_arm
     controller = controller_from_config(config)
     q = _solve_initial_pose(model, config, derivative_dt)
-    qd = np.zeros(N_ARM)
-    torque_limit = np.asarray(config["limits"]["torque"], dtype=float)
-    torque_rate = np.asarray(config["limits"]["torque_rate"], dtype=float)
-    last_torque = np.zeros(N_ARM)
+    qd = np.zeros(n_arm)
+    torque_limit = np.asarray(config["limits"]["torque"], dtype=float).reshape(n_arm)
+    torque_rate = np.asarray(config["limits"]["torque_rate"], dtype=float).reshape(n_arm)
+    last_torque = np.zeros(n_arm)
     position_errors = []
     orientation_errors = []
-    max_torque = np.zeros(N_ARM)
+    max_torque = np.zeros(n_arm)
     saturated_steps = 0
     limit_hits = 0
     steps = int(math.ceil(duration_sec / dt))
@@ -330,21 +331,48 @@ def evaluate(config, duration_sec, dt, derivative_dt=0.005):
         command = controller.compute(desired, actual)
         bias = model.compute_task_bias_acceleration(
             q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa)
+        J_task, rhs_task = kin_ctrl.J_arm_lwa, command.nu - bias
+        task = config.get("task", {})
+        if str(task.get("orientation_mode", "full")) == "pen_axis":
+            J_task, rhs_task, _ = pen_axis_task(
+                J_task, rhs_task, kin_ctrl.ee_rotation,
+                np.asarray(task.get("pen_axis_local", [1.0, 0.0, 0.0]), dtype=float),
+            )
+        ns = config.get("nullspace") or {}
+        ns_nominal = ns.get("q_nominal")
+        if isinstance(ns_nominal, str) and ns_nominal.strip() == "track_start":
+            ns_nominal = _solve_initial_pose(model, config, derivative_dt)
+        if not bool(ns.get("enabled", True)) or ns_nominal is None:
+            ns_nominal = np.zeros(n_arm)
+            ns_kp = np.zeros(n_arm)
+            ns_kd = np.zeros(n_arm)
+        else:
+            ns_nominal = np.asarray(ns_nominal, dtype=float).reshape(n_arm)
+            ns_kp = np.asarray(ns.get("kp", [0.0] * n_arm), dtype=float).reshape(n_arm)
+            ns_kd = np.asarray(ns.get("kd", [0.0] * n_arm), dtype=float).reshape(n_arm)
+        la_cfg = task.get("limit_avoidance") or {}
+        limit_avoidance = None
+        if float(la_cfg.get("gain", 0.0)) > 0.0:
+            limit_avoidance = LimitAvoidance(
+                model.arm_lower_position_limit, model.arm_upper_position_limit,
+                float(la_cfg["gain"]), float(la_cfg.get("activate_rad", 0.5)),
+            )
         resolved = resolve_acceleration(
-            kin_ctrl.J_arm_lwa,
+            J_task,
             model.compute_arm_mass_block(q_full_ctrl),
-            command.nu - bias,
+            rhs_task,
             q,
             qd,
-            config["nullspace"]["q_nominal"],
-            config["nullspace"]["kp"],
-            config["nullspace"]["kd"],
+            ns_nominal,
+            ns_kp,
+            ns_kd,
             float(config["task"]["characteristic_length"]),
             float(config["singularity"]["sigma_warn"]),
             float(config["singularity"]["sigma_critical"]),
             float(config["singularity"]["damping_min"]),
             float(config["singularity"]["damping_max"]),
-            config["nullspace"].get("joint_acceleration_weight"),
+            ns.get("joint_acceleration_weight"),
+            limit_avoidance=limit_avoidance,
         )
         raw_torque = model.compute_rnea_arm_torque(
             q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa, resolved.qdd_cmd)
@@ -426,8 +454,8 @@ def main() -> int:
     here = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config", type=Path, default=here / "config" / "smc_params_whole.yaml")
-    parser.add_argument("--output-dir", type=Path, default=here / "data" / "autotune")
+        "--config", type=Path, default=here.parent / "config" / "smc_params_whole.yaml")
+    parser.add_argument("--output-dir", type=Path, default=here.parent / "data" / "autotune")
     parser.add_argument("--duration-sec", type=float, default=20.0)
     parser.add_argument("--dt", type=float, default=0.002)
     parser.add_argument("--max-candidates", type=int, default=12)

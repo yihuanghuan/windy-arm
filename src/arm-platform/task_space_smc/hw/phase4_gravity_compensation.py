@@ -1,37 +1,3 @@
-#!/usr/bin/env python3
-"""阶段 4：整臂重力补偿 —— 分级降 kp 直到机械臂"悬浮"。
-
-判据只有一个，肉眼可判：**一根手指能推动，松手停在原地不掉**。
-它一次性验证整条前馈链：参数标定 + 力矩标度 + 符号 + 通路。
-
-为什么可以做（阶段 3 数据支持）::
-
-    关节   前馈力矩误差   静摩擦    结论
-    joint1   0.1014 Nm   0.725    误差 < 摩擦
-    joint2   0.0481      1.775    误差 < 摩擦
-    joint3   0.0244      0.625    误差 < 摩擦
-    joint4   0.0084      0.125    误差 < 摩擦
-    joint5   0.0081      0.100    误差 < 摩擦
-
-每个关节的前馈误差都小于自身静摩擦，所以 kp=0 时残余不平衡力矩落在摩擦
-死区内 —— 机械臂不动。这正是悬浮成立的条件。
-
-⚠️ 注意：标定的【参数】不确定度很大（offset 与 bias 相关系数 0.96，
-单一位姿下无法分离），但【预测】不确定度小。两者不是一回事 ——
-对重力补偿而言重要的是后者。
-
-前馈不含摩擦偏置项。bias 是摩擦，它【阻碍运动】而非需要补偿的负载；
-补偿它会让机械臂朝一个方向漂。
-
-用法::
-
-    ros2 run manipulator phase4_gravity_compensation.py --dry-run
-    ros2 run manipulator phase4_gravity_compensation.py --max-level 2   # 只到 kp=20%
-    ros2 run manipulator phase4_gravity_compensation.py                 # 全程到 kp=0
-
-节点须以力矩模式启动（enable_direct_effort_command:=true）。
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -53,20 +19,19 @@ except ImportError as exc:
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from task_space_smc.hw.fk_gravity_verify import (  # noqa: E402
+from task_space_smc.hw.fk_gravity_verify import (
     GravityModel, check_setpoint, N_ARM, JOINT_LOWER, JOINT_UPPER,
     DESK_PLANE_Z, DESK_EDGE_X, DESK_CLEARANCE, FENCE_Y, FENCE_HEIGHT,
     FENCE_CLEARANCE,
 )
-from task_space_smc.core.model import load_arm6_calibration  # noqa: E402
+from task_space_smc.core.model import load_arm6_calibration
 
 OUT = Path(__file__).resolve().parent / "data" / "phase4"
 
 BASE_P = [30.0, 30.0, 30.0, 5.0, 5.0, 5.0]
 BASE_D = [1.0, 1.0, 1.0, 0.1, 0.1, 0.1]
 
-# 分级方案。kd 始终保留 20% —— 阻尼不产生位置牵引，不影响「松手停住」的
-# 判据，但推动后的运动是阻尼的而非自由滑行，安全性与可观察性都更好。
+
 LEVELS = [
     dict(name="L0 基线", kp_frac=1.00, kd_frac=1.00),
     dict(name="L1", kp_frac=0.50, kd_frac=0.50),
@@ -78,9 +43,9 @@ LEVELS = [
 PUBLISH_RATE = 100.0
 SETTLE_SEC = 3.0
 HOLD_SEC = 4.0
-DRIFT_ABORT = 0.20      # rad，任一关节偏离起始位姿超过它立即回退
-SPEED_ABORT = 0.5       # rad/s
-DESK_MARGIN_MIN = 0.10  # m，比常规 0.08 更严 —— 失去位置环后下坠更快
+DRIFT_ABORT = 0.20
+SPEED_ABORT = 0.5
+DESK_MARGIN_MIN = 0.10
 FENCE_MARGIN_MIN = 0.05
 
 
@@ -118,14 +83,6 @@ class Compensator(Node):
             self.tau = np.array(m.effort)
 
     def feedforward(self, q: np.ndarray) -> np.ndarray:
-        """ĝ(q) = ratio × g_model(q + zero_offset)。
-
-        零位偏差的约定是「实际角 = 命令角 + offset」，所以模型要在
-        q + offset 处求值。符号已用阶段 3 数据离线验证（q+offset 的
-        预测 RMS 优于 q-offset 与无修正）。
-
-        【不含摩擦偏置】—— bias 是摩擦，它阻碍运动而非需要补偿的负载。
-        """
         qc = np.asarray(q, float) + self.offset
         return self.model.gravity(qc) * self.ratio
 
@@ -182,7 +139,6 @@ class Compensator(Node):
         return None
 
     def run_level(self, q_hold, level) -> tuple[dict | None, str | None]:
-        """在给定 kp/kd 下保持并测量残余误差。"""
         kp = [BASE_P[i] * level["kp_frac"] for i in range(N_ARM)]
         kd = [BASE_D[i] * level["kd_frac"] for i in range(N_ARM)]
         period = 1.0 / PUBLISH_RATE
@@ -217,12 +173,6 @@ class Compensator(Node):
 
 
 def pick_start_posture(model: GravityModel) -> tuple[np.ndarray, dict]:
-    """挑一个适合悬浮测试的起始位姿。
-
-    比常规扫描更严：桌面/围栏余量 >= 0.10 m（失去位置环后下坠更快）、
-    各关节限位余量 >= 0.30 rad、重力力矩适中（太小验证不充分，太大
-    失败后果严重）。
-    """
     rng = np.random.default_rng(11)
     lo = np.maximum(JOINT_LOWER, -1.4)
     hi = np.minimum(JOINT_UPPER, 1.4)
@@ -237,7 +187,7 @@ def pick_start_posture(model: GravityModel) -> tuple[np.ndarray, dict]:
         if room < 0.30:
             continue
         g = np.abs(model.gravity(q))
-        # 重力适中：主关节 1~4 Nm
+
         score = -abs(g[:3].max() - 2.5)
         if best is None or score > best[0]:
             best = (score, q.copy(), desk_margin(model, q), room, g)
@@ -330,7 +280,7 @@ def main() -> int:
             rec, why = node.run_level(q_hold, lv)
             if why:
                 node.get_logger().error(f"{lv['name']} 中止: {why}")
-                # 立刻回到上一级（或基线）并保持
+
                 safe = LEVELS[max(i - 1, 0)]
                 node.get_logger().warn(f"回退到 {safe['name']}")
                 for _ in range(300):
@@ -347,7 +297,7 @@ def main() -> int:
                 f"({np.degrees(rec['residual_max']):.2f}°)  "
                 f"抖动 {rec['drift_ptp']:.5f} rad")
 
-            # 判据：残余误差应与 kp 成反比。急剧发散即回退。
+
             base = next((r for r in results if r.get('ok')
                          and r['kp_frac'] == 1.0), None)
             if base and lv['kp_frac'] > 0:

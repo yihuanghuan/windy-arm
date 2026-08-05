@@ -16,6 +16,10 @@ class AL1 final : public AbsArm {
                       const std::string& arm_config_path,
                       const std::string& arm_name) override;
 
+  bool IsLinkAlive(double timeout_sec) const override {
+    return protocol_ && protocol_->IsLinkAlive(timeout_sec);
+  }
+
  private:
   protocol::ProtocolV1::SharedPtr protocol_;
 };

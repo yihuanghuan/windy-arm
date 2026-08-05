@@ -1,6 +1,8 @@
 #pragma once
 #include <vector>
 #include <memory>
+#include <chrono>
+#include <cstdint>
 #include <manipulator/robotics/protocol/abs_protocol.h>
 #include "rclcpp/rclcpp.hpp"
 
@@ -77,6 +79,44 @@ class ProtocolV1 : public AbsProtocol {
    * @return Motor voltage in Volts
    */
   double GetVoltage(const uint8_t id) const { return voltages_[id]; }
+
+  /**
+   * @brief Number of heartbeat frames (cmd 0x01) received since construction
+   *
+   * The controller board broadcasts 0x01 at ~20 Hz. Earlier revisions of this
+   * class silently dropped the frame, so a dead serial link was indistinguish-
+   * able from a live one that simply had not moved.
+   */
+  uint64_t GetHeartbeatCount() const { return heartbeat_count_; }
+
+  /**
+   * @brief Seconds since the last heartbeat frame
+   * @return +inf when no heartbeat has ever been received
+   */
+  double GetSecondsSinceHeartbeat() const;
+
+  /**
+   * @brief True when a heartbeat arrived within timeout_sec
+   *
+   * Intended as an interlock before enabling torque output: a stale link must
+   * never be driven with a non-zero feedforward torque.
+   */
+  bool IsLinkAlive(double timeout_sec) const {
+    return GetSecondsSinceHeartbeat() <= timeout_sec;
+  }
+
+  /**
+   * @brief Count of checksum-valid frames whose cmd id this class ignores
+   *
+   * Non-zero is not an error: the board also emits 0x25 at ~2 Hz whose meaning
+   * is not documented. Tracked so firmware changes do not go unnoticed.
+   */
+  uint64_t GetUnhandledFrameCount() const { return unhandled_frame_count_; }
+
+  /**
+   * @brief Last unhandled cmd id, or 0 when none has been seen
+   */
+  uint8_t GetLastUnhandledCommand() const { return last_unhandled_cmd_; }
 
   /**
    * @brief Set desired joint position command
@@ -228,6 +268,15 @@ class ProtocolV1 : public AbsProtocol {
   bool cur_cmd_updated_ = false;
   bool kp_cmd_updated_ = false;
   bool kd_cmd_updated_ = false;
+
+  /**
+   * @brief Link-health bookkeeping (see GetHeartbeatCount / IsLinkAlive)
+   */
+  uint64_t heartbeat_count_ = 0;
+  bool heartbeat_seen_ = false;
+  std::chrono::steady_clock::time_point last_heartbeat_;
+  uint64_t unhandled_frame_count_ = 0;
+  uint8_t last_unhandled_cmd_ = 0;
 };
 
 } // namespace manipulator::protocol

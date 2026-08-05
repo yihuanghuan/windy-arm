@@ -1,5 +1,3 @@
-"""Pinocchio floating-base A-L1-GAMMA model wrapper."""
-
 from __future__ import annotations
 
 import os
@@ -15,18 +13,12 @@ from .quaternion_math import quat_normalize
 DEFAULT_ARM_JOINT_NAMES = ("joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7")
 DEFAULT_EE_FRAME = "link7"
 
-# 6 自由度实机构型: 末端无电机, joint7/link7 物理不存在。
+
 ARM6_JOINT_NAMES = ("joint1", "joint2", "joint3", "joint4", "joint5", "joint6")
 ARM6_EE_FRAME = "link6"
 ARM6_URDF_NAME = "arm6.urdf"
 
-# 6 关节实物 + 刚性笔架。由 arm.urdf 把 joint7 从 revolute 改为 fixed 得到，
-# link7 成为 link6 的刚性延伸（偏移 91.00 mm）。自由度仍是 6。
-#
-# 【末端必须显式取 link7】。自动探测规则是"最后一个驱动关节的子连杆"，
-# joint7 变 fixed 后那是 link6 —— 恰好是我们要避开的那个点：末端落在腕
-# 转轴上时 q6 转动不移动末端，只贡献 5D 任务的 2 行姿态行，容易掉秩。
-# 实测沿轨迹 100 点：6D 姿态可达 43% -> 100%，5D 的 σ最差 0.0082 -> 0.0194。
+
 ARM6_TOOL_EE_FRAME = "link7"
 ARM6_TOOL_URDF_NAME = "arm6_tool.urdf"
 
@@ -48,25 +40,10 @@ ARM6_CALIBRATION_NAME = "arm6_calibration.yaml"
 
 
 def arm6_calibration_path() -> str:
-    """实机标定文件路径（与 URDF 同目录）。"""
     return os.path.join(os.path.dirname(arm6_urdf_path()), ARM6_CALIBRATION_NAME)
 
 
 def load_arm6_calibration(path: str | None = None) -> dict:
-    """加载实机标定值。文件不存在时返回恒等标定（全零偏差、ratio=1）。
-
-    标定值的语义：
-        实际关节角 = 命令角 + zero_offset_rad
-        前馈重力   = g_model(q)   ← 【比值已烘进 URDF，不要再乘】
-
-    ⚠️ first_moment_ratio 是"实测 / CAD名义模型"的比值。config/arm6.urdf 与
-    config/arm6_tool.urdf 的连杆惯性参数【已按它修正】，所以模型算出的重力
-    就是实机重力。再乘一次是重复修正 —— 曾在 test_phase2_probe.py 里出现过，
-    把 2.83 Nm 夸大成 4.09 Nm。config/arm.urdf (7关节) 未修正，仍是名义值。
-
-    ⚠️ 标定与机械状态绑定。拆装关节、改变基座【倾角】、手工掰动之后必须重测。
-    纯平移不影响 —— 重力是均匀场。
-    """
     import yaml
     path = path or arm6_calibration_path()
     n = len(ARM6_JOINT_NAMES)
@@ -104,13 +81,29 @@ def load_arm6_calibration(path: str | None = None) -> dict:
 
 
 def arm6_tool_urdf_path() -> str:
-    """6 关节 + 笔架 URDF 的绝对路径。"""
     return default_urdf_path(ARM6_TOOL_URDF_NAME)
 
 
 def arm6_urdf_path() -> str:
-    """Path to the 6-joint URDF used by the real hardware."""
     return default_urdf_path(ARM6_URDF_NAME)
+
+
+def model_from_config(config: dict) -> "FloatingBaseArmModel":
+    urdf = config.get("urdf")
+    ee_frame = config.get("ee_frame") or None
+    if urdf in ("arm6_tool", ARM6_TOOL_URDF_NAME):
+        return FloatingBaseArmModel(
+            urdf_path=arm6_tool_urdf_path(),
+            ee_frame_name=ee_frame or ARM6_TOOL_EE_FRAME,
+            arm_joint_names=ARM6_JOINT_NAMES,
+        )
+    if urdf in ("arm6", ARM6_URDF_NAME):
+        return FloatingBaseArmModel(
+            urdf_path=arm6_urdf_path(),
+            ee_frame_name=ee_frame or ARM6_EE_FRAME,
+            arm_joint_names=ARM6_JOINT_NAMES,
+        )
+    return FloatingBaseArmModel(urdf_path=urdf, ee_frame_name=ee_frame)
 
 
 @dataclass
@@ -125,19 +118,6 @@ class Kinematics:
 
 
 class FloatingBaseArmModel:
-    """Free-flyer base plus the actuated A-L1-GAMMA joints.
-
-    Supports both the original 7-joint model (arm.urdf, EE=link7) and the
-    6-joint hardware model (arm6.urdf, EE=link6). The joint count is derived
-    from the URDF, never hardcoded: n_arm = nv - 6.
-
-    q_full is [base_xyz(3), base_quat_xyzw(4), arm_q(n_arm)] because that is
-    the Pinocchio FreeFlyer convention. Public helpers accept base quaternions
-    as [w, x, y, z] and convert at the boundary.
-
-    Note the base offsets 7 (nq) and 6 (nv) below are the FreeFlyer tangent
-    sizes, not joint counts -- they stay fixed regardless of n_arm.
-    """
 
     def __init__(
         self,
@@ -150,11 +130,10 @@ class FloatingBaseArmModel:
         self.model = pin.buildModelFromUrdf(self.urdf_path, pin.JointModelFreeFlyer())
         self.data = self.model.createData()
 
-        # FreeFlyer contributes nq=7 / nv=6; the remainder is the arm.
+
         self.n_arm = self.model.nv - 6
-        # 转子惯量经减速比反射的等效值，加在质量矩阵对角上。URDF 只有连杆
-        # 惯量，而实测显示转子项占 60~95% —— 不加它 M 会小一个数量级，
-        # 动态前馈几乎不起作用。
+
+
         if apply_armature:
             cal = load_arm6_calibration()
             arm = cal.get("armature_kgm2")
@@ -168,7 +147,7 @@ class FloatingBaseArmModel:
                 f"nq={self.model.nq}, nv={self.model.nv}"
             )
 
-        # Joint 0 is the free-flyer; the actuated joints follow in model order.
+
         model_joint_names = tuple(self.model.names[i] for i in range(2, self.model.njoints))
         if arm_joint_names is None:
             arm_joint_names = model_joint_names
@@ -180,8 +159,8 @@ class FloatingBaseArmModel:
             )
 
         if ee_frame_name is None:
-            # Body frame carried by the last actuated joint (robust against
-            # extra sensor/tool frames appended after it).
+
+
             last_joint = self.model.njoints - 1
             bodies = [
                 self.model.frames[i].name

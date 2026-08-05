@@ -53,7 +53,60 @@ class StudentArmNode : public rclcpp::Node, public IArmDataSubscriber {
       const dummy_interface::msg::FloatingBaseState::ConstSharedPtr& msg);
   void ControlLoop();
   bool ValidateEffortCommand(const dummy_interface::msg::MotorControl& msg);
-  dummy_interface::msg::MotorControl MakeZeroEffortCommand();
+  dummy_interface::msg::MotorControl MakeHoldPositionCommand();
+  void ExecuteEffortGuarded(const dummy_interface::msg::MotorControl& cmd);
+
+ public:
+  /**
+   * @brief 构造"位置保持"兜底指令：默认 kp/kd + 保持给定位置 + 零前馈
+   *
+   * 旧实现发 p=0,d=0,current=0 —— 在 MIT 模式下同时杀掉位置环，机械臂
+   * 直接在重力下垮落。而力矩通道的超时(默认 0.05s)会被扫描程序里任何
+   * >50ms 的间隙常规触发，等于每次实验都会垮一次臂。位置保持才是兜底。
+   *
+   * 静态方法以便单元测试（不依赖 ROS 节点状态）。
+   */
+  static dummy_interface::msg::MotorControl BuildHoldCommand(
+      const std::vector<double>& positions,
+      const std::vector<double>& p_gains,
+      const std::vector<double>& d_gains) {
+    const size_t n = positions.size();
+    dummy_interface::msg::MotorControl cmd;
+    cmd.position = positions;
+    cmd.velocity.assign(n, 0.0);
+    cmd.current.assign(n, 0.0);            // 兜底状态绝不输出前馈力矩
+    cmd.p.resize(n);
+    cmd.d.resize(n);
+    for (size_t i = 0; i < n; ++i) {
+      // 增益向量为空/过短时退回一个保守正增益，绝不允许落到 0：
+      // MIT 模式下 p=d=0 意味着该关节彻底失力。
+      cmd.p[i] = (i < p_gains.size() && p_gains[i] > 0.0) ? p_gains[i] : 5.0;
+      cmd.d[i] = (i < d_gains.size() && d_gains[i] > 0.0) ? d_gains[i] : 0.1;
+    }
+    cmd.enable = 0;
+    return cmd;
+  }
+
+  /**
+   * @brief 非零力矩前馈是否必须被拦下
+   *
+   * 串口心跳断了(link_alive=false)意味着关节反馈已经陈旧，基于模型算出的
+   * 力矩不可信；此时只允许位置保持，不允许任何非零 current。
+   */
+  static bool ShouldBlockTorque(bool link_alive,
+                                const dummy_interface::msg::MotorControl& cmd) {
+    if (link_alive) {
+      return false;
+    }
+    for (double c : cmd.current) {
+      if (c != 0.0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+ private:
 
   rclcpp::TimerBase::SharedPtr control_timer_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_joint_state_;
@@ -75,14 +128,26 @@ class StudentArmNode : public rclcpp::Node, public IArmDataSubscriber {
   bool step_on_effort_command_ = false;
   bool got_effort_command_ = false;
   bool effort_zeroed_ = false;
+  // 直驱模式绝不能把构造时的全零缓存当作实物位姿。启动时先只读串口，
+  // 收到心跳后再连续确认数帧关节反馈，随后才允许发送任何保持/力矩命令。
+  bool direct_startup_feedback_ready_ = false;
+  bool direct_startup_link_seen_ = false;
+  size_t direct_startup_feedback_generation_ = 0;
+  size_t joint_feedback_generation_ = 0;
+  // 保持目标只锁存一次，避免「每周期重新以当前位置为基准」的棘轮下垂
+  bool effort_hold_latched_ = false;
   double last_command_stamp_ = 0.0;
   double last_effort_command_stamp_ = 0.0;
   double last_initial_state_publish_stamp_ = 0.0;
   double command_timeout_sec_ = 1.0;
   double effort_command_timeout_sec_ = 0.05;
   double effort_control_period_sec_ = 0.01;
+  double heartbeat_timeout_sec_ = 0.2;   // 板子心跳 20Hz，0.2s = 丢 4 拍
   bool publish_joint_feedback_ = false;
   dummy_interface::msg::MotorControl last_effort_command_;
+  // 兜底保持所用增益，取自 p_gain/d_gain 参数（与位置模式一致）
+  std::vector<double> hold_p_gain_;
+  std::vector<double> hold_d_gain_;
 };
 
 }  // namespace manipulator

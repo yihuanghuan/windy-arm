@@ -1,15 +1,3 @@
-#!/usr/bin/env python3
-"""合并多次 fk_gravity_verify 运行的结果，输出统一判决表与零位标定向量。
-
-扫描按关节分次运行时（例如先单独验证 joint1、再跑 joint2~5），每次都会
-写出独立的 JSON。本工具把它们按关节合并，同一关节以最新一次为准，并给出
-可直接写入模型的零位偏差向量。
-
-用法:
-    ros2 run manipulator merge_fk_verify.py
-    ros2 run manipulator merge_fk_verify.py --data-dir <dir> --json out.json
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -21,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 N_ARM = 6
-# 与 fk_gravity_verify 保持一致
+
 SHAPE_RESIDUAL_LIMIT = 0.05
 ENGINEERING_THRESHOLD_DEG = 0.5
 
@@ -41,12 +29,6 @@ def load_runs(data_dir: Path) -> list[dict]:
 
 
 def ingest_log(path: Path) -> dict | None:
-    """从 runner 日志重建扫描结果。
-
-    JSON 只在运行结束时写出，被中断的运行什么也留不下 —— 实测发生过：
-    joint2 完整跑完了 26 个点，但进程被杀，结果只存在于日志里。日志是逐行
-    写穿的，所以它是最可靠的恢复源。
-    """
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from task_space_smc.hw.fk_gravity_verify import (
         SWEEP_PLAN, GravityModel, fit_sine, model_reference,
@@ -79,7 +61,7 @@ def ingest_log(path: Path) -> dict | None:
     for j, dd in sorted(data.items()):
         want = SWEEP_PLAN[j]["points"]
         if len(dd.get("fwd", [])) != want or len(dd.get("rev", [])) != want:
-            continue                       # 该关节没跑完，丢弃而不是半截拟合
+            continue
         fwd = np.array(dd["fwd"])
         rev = np.array(dd["rev"])[::-1]
         q = 0.5 * (fwd[:, 0] + rev[:, 0])
@@ -106,7 +88,6 @@ def ingest_log(path: Path) -> dict | None:
 
 
 def collect(runs) -> tuple[dict, dict, list[str]]:
-    """按关节取最新一次成功的扫描与方向校验。"""
     sweeps, directions, notes = {}, {}, []
     for path, run in runs:
         stamp = run.get("timestamp", path.stem)
@@ -114,9 +95,8 @@ def collect(runs) -> tuple[dict, dict, list[str]]:
             directions[r["joint"]] = (stamp, r)
         for s in run.get("sweeps", []):
             if s.get("warmup"):
-                # 热身扫描的数据保留在文件里作为证据，但不能进拟合：
-                # 到达新位姿后的首扫会被污染，joint2 的四次首扫散布在
-                # -7.9 ~ +5.6 度，而热身后的两遍吻合到 0.007 度。
+
+
                 continue
             if s.get("ok"):
                 sweeps[s["joint"]] = (stamp, s)

@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""Offline floating-base task-space SMC validation harness."""
-
 from __future__ import annotations
 
 import argparse
@@ -15,10 +12,8 @@ import numpy as np
 import yaml
 
 if __package__ in (None, ""):
-    # 直接当脚本跑时把【包的父目录】放进 sys.path。2026-08-04 目录分层后
-    # 模块下沉到 core/ sim/ hw/，原来写死的 package_dir.parent 会指到
-    # task_space_smc/ 本身（少上溯一级），import task_space_smc.* 全部失败。
-    # 改成逐级上溯直到走出带 __init__.py 的目录，对任意层深都成立。
+
+
     _here = Path(__file__).resolve().parent
     _root = _here
     while (_root / "__init__.py").exists():
@@ -28,9 +23,7 @@ if __package__ in (None, ""):
 
 from task_space_smc.core.base_state import SimulationInjectedBase, SinusoidSpec
 from task_space_smc.core.model import (
-    DEFAULT_ARM_JOINT_NAMES, FloatingBaseArmModel, arm6_urdf_path,
-    ARM6_JOINT_NAMES, ARM6_EE_FRAME, ARM6_URDF_NAME,
-    ARM6_TOOL_EE_FRAME, ARM6_TOOL_URDF_NAME, arm6_tool_urdf_path,
+    FloatingBaseArmModel, model_from_config,
 )
 from task_space_smc.core.pose_error import PoseState
 from task_space_smc.core.quaternion_math import quat_normalize, quaternion_log_error
@@ -39,10 +32,7 @@ from task_space_smc.core.redundancy_resolution import (
 from task_space_smc.core.task_space_smc import SMCGains, TaskSpaceSMC
 
 
-# 配置加载/控制器装配已搬到 core/config_loader.py —— 实物运行器也要用它们，
-# 留在 sim 里会形成"实物层 import 仿真层"的倒挂。这里再导出，既有调用方
-# （task_space_smc.sim.offline_simulation.controller_from_config 等）不受影响。
-from task_space_smc.core.config_loader import (  # noqa: E402,F401
+from task_space_smc.core.config_loader import (
     _arr, controller_from_config, default_config_path, load_config)
 
 
@@ -97,35 +87,20 @@ def run_offline(
     config = load_config(config_path)
     if dt is None:
         dt = 1.0 / float(config["control_rate_hz"])
-    # URDF 由配置指定 —— 否则 6 关节配置会配上 7 关节模型，
-    # 直到 reshape 才报错（实测：cannot reshape array of size 6 into shape (7,)）。
-    urdf = config.get("urdf")
-    if urdf == "arm6_tool" or urdf == ARM6_TOOL_URDF_NAME:
-        model = FloatingBaseArmModel(urdf_path=arm6_tool_urdf_path(),
-                                     ee_frame_name=ARM6_TOOL_EE_FRAME,
-                                     arm_joint_names=ARM6_JOINT_NAMES)
-    elif urdf == "arm6" or urdf == ARM6_URDF_NAME:
-        model = FloatingBaseArmModel(urdf_path=arm6_urdf_path(),
-                                     ee_frame_name=ARM6_EE_FRAME,
-                                     arm_joint_names=tuple(ARM6_JOINT_NAMES))
-    elif urdf:
-        model = FloatingBaseArmModel(urdf_path=urdf)
-    else:
-        model = FloatingBaseArmModel()
+    model = model_from_config(config)
     controller = controller_from_config(config)
     base = make_base(profile)
     rng = np.random.default_rng(seed)
 
-    # 关节数由模型推导。零空间在 6 关节 6D 任务下秩为 0、已停用，
-    # 所以起始位姿不再从 nullspace.q_nominal 取。
+
     n_arm = model.n_arm
-    # 起始位形优先取 initial_pose_rad。退化为零位是危险的 —— 6 关节零位的
-    # 雅可比 sigma_min = 0.00001（cond 326263），起步即奇异。
+
+
     init = config.get("initial_pose_rad")
     q_nominal = config.get("nullspace", {}).get("q_nominal")
-    if init is not None and len(init) == n_arm:
+    if not isinstance(init, str) and init is not None and len(init) == n_arm:
         q_arm = np.asarray(init, dtype=float).reshape(n_arm)
-    elif q_nominal is not None and len(q_nominal) == n_arm:
+    elif not isinstance(q_nominal, str) and q_nominal is not None and len(q_nominal) == n_arm:
         q_arm = np.asarray(q_nominal, dtype=float).reshape(n_arm)
     else:
         q_arm = np.zeros(n_arm)
@@ -159,8 +134,15 @@ def run_offline(
             activate_rad=float(_la.get("activate_rad", 0.5)))
     ns = config.get("nullspace") or {}
     ns_enabled = bool(ns.get("enabled", True)) and "q_nominal" in ns
-    ns_q_nominal = (np.asarray(ns["q_nominal"], dtype=float).reshape(n_arm)
-                    if ns_enabled else np.zeros(n_arm))
+
+
+    ns_nominal = ns.get("q_nominal")
+    if isinstance(ns_nominal, str) and ns_nominal.strip() == "track_start":
+        ns_q_nominal = q_arm.copy()
+    elif ns_enabled:
+        ns_q_nominal = np.asarray(ns_nominal, dtype=float).reshape(n_arm)
+    else:
+        ns_q_nominal = np.zeros(n_arm)
     ns_kp = (np.asarray(ns["kp"], dtype=float).reshape(n_arm)
              if ns_enabled else np.zeros(n_arm))
     ns_kd = (np.asarray(ns["kd"], dtype=float).reshape(n_arm)
@@ -185,7 +167,7 @@ def run_offline(
         smc = controller.compute(desired, actual)
         b6 = model.compute_task_bias_acceleration(q_full, v_full, bs.acceleration_lwa)
         M_aa = model.compute_arm_mass_block(q_full)
-        # 5D 任务（位置 + 笔轴方向），零空间秩 0 -> 1
+
         J_task, rhs_task = kin.J_arm_lwa, smc.nu - b6
         if orientation_mode == "pen_axis":
             J_task, rhs_task, _ = pen_axis_task(
@@ -196,9 +178,8 @@ def run_offline(
             rhs_task,
             q_arm,
             qd_arm,
-            # 零空间在 6 关节做 6D 任务时秩为 0，投影恒为零。配置里
-            # nullspace.enabled=false 时这三项不存在，传中性值即可 ——
-            # resolve_acceleration 仍需形参，但其贡献必然是 0。
+
+
             ns_q_nominal,
             ns_kp,
             ns_kd,

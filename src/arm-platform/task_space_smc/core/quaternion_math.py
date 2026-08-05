@@ -1,9 +1,3 @@
-"""Quaternion and SO(3) helpers used by the task-space SMC controller.
-
-Internal quaternions are always stored as [w, x, y, z].  ROS messages use
-[x, y, z, w] and must be converted at the interface boundary.
-"""
-
 from __future__ import annotations
 
 import math

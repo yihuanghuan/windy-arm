@@ -1,49 +1,3 @@
-#!/usr/bin/env python3
-"""阶段 3：迭代重力标定（零位偏差 + 一阶质量矩）。
-
-与阶段 1 的 fk_gravity_verify 的区别只有一个：**加了力矩前馈**。
-
-    位置模式    kp·(q_cmd − q) = τ_g          下垂 = τ_g/kp
-    本工具      kp·(q_cmd − q) + t_ff = τ_g   下垂 = (τ_g − t_ff)/kp
-
-前馈把下垂压到只剩摩擦死区 f/kp，而下垂的变化正是阶段 1 里零位偏差测不准
-的根因（差异集中在扫描端点 —— 那里 |τ| 最大、下垂也最大）。
-
-实测收益（阶段 2 数据）:
-
-    关节   重力幅值  静摩擦   当前下垂  前馈后   改善
-    joint1  4.2272   0.725    0.1409   0.0242   5.83x
-    joint2  3.3131   1.775    0.1104   0.0592   1.87x
-    joint3  0.8867   0.625    0.0296   0.0208   1.42x
-    joint4  0.1318   0.125    0.0264   0.0250   1.05x
-    joint5  0.1319   0.100    0.0264   0.0200   1.32x
-
-前馈**消不掉摩擦**，所以摩擦死区 f/kp 是下垂的物理下限，也是零位偏差精度的
-硬约束。不要期待数量级改善。
-
-为什么必须走力矩通道：SmoothPositionController 从不设置 cmd.current，位置链
-没有注入 t_ff 的接口。唯一路径是 /student/joint_effort_command 的 MIT 模式
-（position + kp + kd + t_ff 一次下发）。代价是绕过了位置控制器的限速/限加速，
-所以本工具自带胡萝卜逼近（沿用阶段 2 已在实机验证的实现）。
-
-用法::
-
-    # 先看计划，不动机械臂
-    ros2 run manipulator phase3_gravity_calibration.py --dry-run
-
-    # 标定单个关节
-    ros2 run manipulator phase3_gravity_calibration.py --joints 2
-
-    # 全部（joint6 无重力信号，自动跳过）
-    ros2 run manipulator phase3_gravity_calibration.py --joints 1,2,3,4,5
-
-节点必须以 **力矩模式** 启动::
-
-    ros2 launch manipulator student_arm6.launch.py arm_type:=a_l1 \\
-        port_name:=/dev/ttyUSB0 use_rviz:=false \\
-        enable_direct_effort_command:=true publish_joint_feedback:=true
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -59,13 +13,13 @@ try:
     from rclpy.node import Node
     from sensor_msgs.msg import JointState
     from dummy_interface.msg import MotorControl
-except ImportError as exc:          # 离线 dry-run 仍可用
+except ImportError as exc:
     rclpy = None
     _IMPORT_ERROR = exc
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from task_space_smc.hw.fk_gravity_verify import (  # noqa: E402
+from task_space_smc.hw.fk_gravity_verify import (
     GravityModel, check_setpoint, fit_sine, model_reference_measured,
     zero_offset, JOINT_LOWER, JOINT_UPPER, N_ARM, SWEEP_PLAN,
     APPROACH_OVERSHOOT, DESK_PLANE_Z, DESK_EDGE_X, DESK_CLEARANCE,
@@ -73,40 +27,32 @@ from task_space_smc.hw.fk_gravity_verify import (  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "data" / "phase3"
 
-# 与 student_arm_node 的 p_gain/d_gain 默认一致
+
 HOLD_P = [30.0, 30.0, 30.0, 5.0, 5.0, 5.0]
 HOLD_D = [1.0, 1.0, 1.0, 0.1, 0.1, 0.1]
 
-# 阶段 2 实测的一阶质量矩比值（A_实测 / A_模型）。
-# 前馈用 ĝ = ratio × g_model，所以 ratio 越准前馈越准。
-# joint6 无重力信号，恒为 1（也不会被用到）。
+
 RATIO = {1: 1.223, 2: 1.445, 3: 1.220, 4: 1.479, 5: 0.920, 6: 1.000}
 
-# 阶段 2 实测的静摩擦（Nm）。它决定死区 f/kp，是精度的硬下限。
+
 STICTION = {1: 0.725, 2: 1.775, 3: 0.625, 4: 0.125, 5: 0.100, 6: 0.100}
 
-# 扫描点数：按各关节对末端误差的贡献分配（joint2 独占 79%）。
-# 目标 95% 分位 < 10 mm。joint2 的死区取【满载值】3.39° 而非位形平均 2.75°
-# —— 扫描端点载荷最大，而相位拟合恰恰最依赖端点，用平均值会低估 15%。
-# 相位精度由【拟合条件数】决定，不是 死区/√N —— 后者只在拟合良态时成立。
-# 有效噪声 0.0075 Nm（由 joint1/2 实测重复性标定、joint5 四遍数据交叉验证），
-# 与力矩传感噪声同量级、远小于静摩擦，证实 approach() 已把摩擦变成常数。
+
 POINTS = {1: 13, 2: 13, 3: 21, 4: 13, 5: 21}
 
-# 前馈把下垂压到摩擦死区后稳定更快，dwell 可比阶段 1 缩短
+
 DWELL = {1: 2.0, 2: 2.5, 3: 5.0, 4: 7.5, 5: 5.0}
 
-RAMP_STEP = 0.20            # rad，kp=30 时 6.0 Nm；阶段 2 实机验证可靠
+RAMP_STEP = 0.20
 RAMP_KD = 10.0
-SPEED_ABORT = 1.3           # rad/s
+SPEED_ABORT = 1.3
 SETTLE_SPAN = 1.5e-3
 SETTLE_WIN = 0.6
-PUBLISH_RATE = 100.0        # Hz，须远高于节点 0.05 s 的力矩超时
-DISPLACEMENT_ABORT = 0.15   # rad，非目标关节偏离位姿的上限
+PUBLISH_RATE = 100.0
+DISPLACEMENT_ABORT = 0.15
 
 
 def desk_margin(model: GravityModel, q: np.ndarray) -> float:
-    """最小桌面余量（m）。负值 = 已侵入安全余量。"""
     m = np.inf
     for p in model.link_points(np.asarray(q, float)):
         if p[0] < DESK_EDGE_X:
@@ -137,16 +83,8 @@ class Calibrator(Node):
         if len(m.effort) == N_ARM:
             self.tau = np.array(m.effort)
 
-    # ---------------------------------------------------------------- 前置检查
 
     def check_effort_enabled(self, timeout: float = 5.0) -> str | None:
-        """确认节点在【力矩模式】—— 否则本工具发的指令全部被无声忽略。
-
-        阶段 1 的工具走位置话题、本工具走力矩话题，两者互斥：ControlLoop
-        在力矩模式下直接 return，位置路径被旁路；反之力矩话题无人订阅。
-        实机上曾因此空跑一次 25 分钟的扫描，且表象（关节不动）与静摩擦、
-        与通道失效难以区分，必须在入口拦下。
-        """
         from rcl_interfaces.srv import GetParameters
         cli = self.create_client(GetParameters,
                                  '/student_arm_node/get_parameters')
@@ -170,10 +108,8 @@ class Calibrator(Node):
             rclpy.spin_once(self, timeout_sec=0.1)
         return self.q is not None and self.tau is not None
 
-    # ---------------------------------------------------------------- 运动原语
 
     def feedforward(self, q: np.ndarray) -> np.ndarray:
-        """ĝ(q) = ratio × g_model(q)，逐关节缩放。"""
         g = self.model.gravity(np.asarray(q, float))
         return np.array([g[i] * RATIO[i + 1] for i in range(N_ARM)])
 
@@ -190,13 +126,6 @@ class Calibrator(Node):
 
     def guard(self, posture, joint_idx: int,
               check_drift: bool = True) -> str | None:
-        """桌面与限速始终检查；关节漂移检查仅在【测量期间】有效。
-
-        漂移守卫的用途是发现「本该静止的关节动了」。大范围转移时所有关节
-        都在按设计移动，此时套用它会把正常转移误判为漂移 —— 实机上第一次
-        运行就因此在起步瞬间中止（joint3 距扫描位姿 2.496 rad 是转移距离，
-        不是漂移）。转移时传 check_drift=False。
-        """
         if self.q is None:
             return None
         if check_drift:
@@ -213,11 +142,6 @@ class Calibrator(Node):
 
     def goto(self, q_target, joint_idx: int, timeout: float = 40.0,
              check_drift: bool = True) -> str | None:
-        """胡萝卜逼近 + 前馈。每周期从【实测】位置重算，不用预算路径。
-
-        预算路径会与实际下垂脱节 —— 阶段 1 踩过这个坑（move_through 用一次
-        算好的插值，却拿漂移后的实测位置去校验，产生大量假 REFUSED）。
-        """
         q_target = np.asarray(q_target, float)
         period = 1.0 / PUBLISH_RATE
         t0 = time.time()
@@ -232,8 +156,8 @@ class Calibrator(Node):
             if why:
                 return why
             err = q_target - self.q
-            # 收敛判据是「胡萝卜不再被限幅 + 位置稳定」，不是「实测 == 目标」：
-            # kp 下垂使后者永远不成立，那个判据一定超时。
+
+
             if np.max(np.abs(err)) < RAMP_STEP:
                 win.append(self.q.copy())
                 if len(win) > 60:
@@ -252,28 +176,6 @@ class Calibrator(Node):
         return f"goto timed out {np.max(np.abs(q_target - self.q)):.3f} rad away"
 
     def approach(self, q_target, joint_idx: int) -> str | None:
-        """带过冲的单向进入 —— 保证测量前最后一次运动方向恒定。
-
-        【这是测量协议，不是移动方式，移植时必须原样保留。】
-
-        双向平均本应消掉库仑摩擦（正反方向摩擦符号相反），但它要求正反两次
-        的摩擦对称。扫描的第一个点破坏了这个前提：机械臂从转移过来，最后
-        一次运动方向由转移决定而非扫描方向。阶段 1 实测该点的表观摩擦达
-        0.866 Nm（中段仅 0.02），造成约 -6.8° 的系统性相位偏差 —— 量级正好
-        覆盖 joint2 两次测量 9.4° 的差异。
-
-        每点先过冲再退回，摩擦就变成同号常数，被拟合的 b 项吸收，A 与 phi
-        都不受影响。代价是每点多一次移动。
-
-        【为什么本工具单向单遍，而阶段 1 是往返双向】
-        阶段 1 用 tau_avg = 0.5*(fwd+rev) 抵消库仑摩擦。但过冲方向恒为 +，
-        正反扫的最后进入方向因此相同、摩擦同号，双向平均抵消不掉任何东西。
-        实测 joint4 的半差 0.5*(fwd-rev) = +0.0052 +/- 0.0134 Nm，只有其真实
-        静摩擦 0.125 Nm 的 4% —— 反扫是冗余的。单遍即可，时间减半。
-
-        （附带结论：阶段 1 报告的「静摩擦 0.07~0.21 Nm」其实是这个半差残余，
-        不是静摩擦。真值见阶段 2 的双向启动力矩：0.625~1.775 Nm。）
-        """
         q_target = np.asarray(q_target, float)
         for overshoot in (APPROACH_OVERSHOOT, APPROACH_OVERSHOOT * 0.5,
                           APPROACH_OVERSHOOT * 0.25):
@@ -285,7 +187,7 @@ class Calibrator(Node):
                 if why:
                     return why
                 return self.goto(q_target, joint_idx)
-        # 过冲点全不安全时退回直接进入；该点摩擦符号无法保证，记录为可疑。
+
         self.get_logger().warn(
             f"no safe overshoot for joint{joint_idx + 1} at "
             f"{q_target[joint_idx]:+.4f}; approaching directly")
@@ -293,7 +195,6 @@ class Calibrator(Node):
         return self.goto(q_target, joint_idx)
 
     def dwell(self, q_target, joint_idx: int, seconds: float) -> dict | None:
-        """静止采样。全程维持前馈，否则关节会在采样期间沉下去。"""
         q_target = np.asarray(q_target, float)
         tff = self.feedforward(q_target)
         period = 1.0 / PUBLISH_RATE
@@ -317,23 +218,14 @@ class Calibrator(Node):
                     n=len(qs))
 
 
-# --------------------------------------------------------------------------
-# 扫描与迭代
-# --------------------------------------------------------------------------
-
 def run_sweep(node: Calibrator, joint: int, offsets: dict,
               n_points: int, dwell: float) -> dict:
-    """扫描单个关节一遍，返回正弦拟合结果。
-
-    offsets 是【上一轮标定出的零位偏差】，用于修正前馈：模型认为的关节角
-    与实际编码器角差了这个量，不修正的话前馈本身就是错位的。
-    """
     idx = joint - 1
     plan = SWEEP_PLAN[joint]
     posture = np.array(plan['posture'], float)
     qs_cmd = np.linspace(plan['lo'], plan['hi'], n_points)
 
-    # 先转移到扫描位姿（关闭漂移守卫：此时所有关节都在按设计大范围移动）
+
     first = posture.copy()
     first[idx] = qs_cmd[0]
     if node.q is not None and np.max(np.abs(node.q - first)) > 0.05:
@@ -381,10 +273,8 @@ def run_sweep(node: Calibrator, joint: int, offsets: dict,
     q_meas = np.array([r['q_meas'] for r in rows])
     tau = np.array([r['tau'] for r in rows])
     fit = fit_sine(q_meas, tau)
-    # 参考相位必须用【实测位姿】算，不能用名义位姿：其余关节的下垂会改变
-    # 该关节的重力相位。阶段 1 实测这一项在 joint3 上值 4.1 度。
-    # 签名是 (model, joint, q_full)：q_full 是 (n, N_ARM) 的【实测完整关节角】，
-    # 该关节自己的角度就在其中，不另传。
+
+
     ref = model_reference_measured(
         node.model, joint,
         np.array([r['posture_meas'] for r in rows]))
@@ -403,11 +293,6 @@ def run_sweep(node: Calibrator, joint: int, offsets: dict,
 
 def calibrate_joint(node: Calibrator, joint: int, warmup: int,
                     max_sweeps: int, tol_deg: float) -> dict:
-    """对单个关节反复扫描直到零位偏差收敛。
-
-    第一遍必弃（热身）：机械臂刚转移到新位姿，首扫被污染 —— 阶段 1 实测
-    首扫散布 ±13.5 度，剔除后重复性 0.11 sigma。
-    """
     idx = joint - 1
     n = POINTS[joint]
     dwell = DWELL[joint]
@@ -458,10 +343,6 @@ def calibrate_joint(node: Calibrator, joint: int, warmup: int,
                 ratio=float(np.mean([x['ratio'] for x in real])) if real else None,
                 sweeps=sweeps)
 
-
-# --------------------------------------------------------------------------
-# 计划与报告
-# --------------------------------------------------------------------------
 
 def print_plan(joints: list[int]) -> None:
     model = GravityModel()

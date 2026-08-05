@@ -46,7 +46,7 @@ EE_PERIOD_SEC = 4.0
 # default; the MPC node also exposes this as the ROS parameter
 # ``trajectory_shape``.
 SUPPORTED_EE_TRAJECTORIES = (
-    'circle', 'triangle', 'square', 'sine', 'windylab', 'whole')
+    'circle', 'triangle', 'square', 'sine', 'windylab', 'whole', 'hwtest')
 EE_TRAJECTORY_SHAPE = os.environ.get('MB_EE_SHAPE', 'circle').strip().lower()
 EE_DRAW_PLANE_Z = float(os.environ.get('MB_EE_DRAW_Z', EE_WORLD_CIRCLE_CENTER[2]))
 EE_PEN_LIFT_HEIGHT = float(os.environ.get('MB_EE_PEN_LIFT', 0.03))
@@ -84,12 +84,40 @@ TARGET_ROTATION = pin.rpy.rpyToMatrix(TARGET_ROLL, TARGET_PITCH, TARGET_YAW)
 # operator maps those same local primitives onto five different work surfaces:
 #   front circle -> left triangle -> back windylab -> right sine -> top square
 _SIDE_STATION_RADIUS = 0.30
-_SIDE_STATION_HEIGHT = 0.12
+
+# 四个侧面工作面的朝向。【默认 vertical = 原竖直板，不要改默认值】。
+#
+# 本文件被 7 关节 SMC 通路、demo/pinocchio_ik、MPC demo、trajectory_visualizer
+# 和 demo/test_moving_base_trajectory_shapes.py 共同 import。改默认值等于
+# 单方面废掉 7 关节那版已验证的基线 —— 实测把默认换成 horizontal 后，
+# 7 关节从原来的达标直接发散到 RMS 353.9mm、峰值 587mm、96.4% 力矩饱和、
+# 七个关节全部跑满限位。
+#
+# horizontal 是【6 关节实机构型专用】的布局：四个面水平铺在基座平面上、
+# 笔轴朝下。对 6 关节 arm6 的实测对比（半径 0.30，站心附近 20 点）：
+#     竖直板   限位余量 0.126      sigma_min 0.0075
+#     水平面   限位余量 0.47~0.52  sigma_min 0.081~0.143
+# 余量好 4 倍、sigma 好一个数量级 —— 竖直板要求腕部产生水平笔轴，
+# 而 6 关节没有球腕，那正是奇异的来源。7 关节有球腕，不受这个约束，
+# 所以对它竖直板反而是更好的布局。
+#
+# ⚠️ horizontal 的已知代价：只有 front(+x) 站的 link2~link5 能全部保持在
+# 平面之上 (+9.5mm)；left/right/back 站会插到面下 23~34mm，且该值与半径
+# 几乎无关（结构性）。仿真无碍，但实物桌面只在 -x 方向，back 站会撞桌。
+# back 站同时也是限位余量最差的 (0.10，其余方位 0.47~0.55)。
+_STATION_LAYOUT = os.environ.get('MB_STATION_LAYOUT', 'vertical')
+if _STATION_LAYOUT not in ('vertical', 'horizontal'):
+    raise ValueError(
+        f"MB_STATION_LAYOUT must be 'vertical' or 'horizontal', "
+        f"got {_STATION_LAYOUT!r}")
+_HORIZONTAL_STATIONS = _STATION_LAYOUT == 'horizontal'
+
+_SIDE_STATION_HEIGHT = BASE_HEIGHT if _HORIZONTAL_STATIONS else 0.12
 # The top board is above and slightly in front of the arm rather than directly
 # over joint1.  This keeps the complete 12 cm square inside the validated
 # neutral-seed IK basin while the tool points down.
 _TOP_STATION_FORWARD = 0.22
-_TOP_STATION_HEIGHT = 0.30
+_TOP_STATION_HEIGHT = float(os.environ.get('MB_TOP_STATION_HEIGHT', '0.30'))
 _WHOLE_TASKS = (
     ('circle', 'front'),
     ('triangle', 'left'),
@@ -126,6 +154,63 @@ def _smoothstep(value: float) -> float:
     value = float(np.clip(value, 0.0, 1.0))
     return value ** 3 * (
         10.0 + value * (-15.0 + 6.0 * value))
+
+
+# ---------------------------------------------------------------------------
+# hwtest：首次上实机用的小幅轨迹。【纯增量，不改动任何现有形状】
+# ---------------------------------------------------------------------------
+# 放在 +x 侧 —— 实物桌面只在 -x 方向，+x 是空的，万一解算异常连杆下探也不撞桌。
+#
+# 参数由带约束的搜索选出（arm6_tool 模型，6 关节 + 笔架，基座固定）：
+#   圆心 (0.30, 0, 0.26)  半径 0.04  笔轴 (0.707, 0, -0.707) 斜前下 45°
+#   σ最差 0.1810   限位余量 0.749 rad   连杆最低 z +10.0mm   连杆最大 y 250.6mm
+# 对照 whole 任务：σ 低到 0.0009、限位余量到过 0.000。每项都宽松一个量级。
+#
+# 笔轴取 45° 斜前下而非垂直或水平，是为了同时避开两个退化：
+#   垂直朝下 -> 与 joint1 转轴对齐，joint1 对 5D 任务的姿态行贡献为零
+#   纯水平   -> 要求腕部产生水平笔轴，而 6 关节没有球腕（joint5 绕 z、joint6 绕 x）
+# 实测 19 个候选里"斜前下"包揽前 8 名。
+_HWTEST_CENTER = np.array([0.30, 0.0, 0.26])
+_HWTEST_RADIUS = float(os.environ.get('MB_HWTEST_RADIUS', 0.04))
+_HWTEST_SPEED = float(os.environ.get('MB_HWTEST_SPEED', 0.02))   # m/s，比绘制默认值慢一半
+_HWTEST_AXIS = np.array([1.0, 0.0, -1.0]) / math.sqrt(2.0)
+# 笔轴 = 末端 x 轴（RViz 红轴）。按列拼出旋转矩阵：body x 取 _HWTEST_AXIS，
+# body y 取圆平面内的一个正交方向，body z 补右手系。
+_HWTEST_U = np.array([0.0, 1.0, 0.0])                      # 圆平面内方向 1
+_HWTEST_V = np.cross(_HWTEST_U, _HWTEST_AXIS)              # 圆平面内方向 2
+_HWTEST_V = _HWTEST_V / np.linalg.norm(_HWTEST_V)
+# 【笔轴 = 末端 X 轴】（RViz 里的红轴），所以 AXIS 放第一列。
+# 列序还必须让 det=+1（右手系）：X × Y = Z，即 AXIS × U 必须等于第三列。
+# 若手性搞反会得到【镜像】矩阵 —— 姿态左右翻转，而正交性检查照样通过，很难发现。
+_HWTEST_ROTATION = np.column_stack(
+    (_HWTEST_AXIS, _HWTEST_U, np.cross(_HWTEST_AXIS, _HWTEST_U)))
+if abs(np.linalg.det(_HWTEST_ROTATION) - 1.0) > 1e-9:
+    raise ValueError(
+        f"_HWTEST_ROTATION 不是右手系旋转矩阵: "
+        f"det={np.linalg.det(_HWTEST_ROTATION)}")
+_HWTEST_PERIOD_SEC = 2.0 * math.pi * _HWTEST_RADIUS / max(_HWTEST_SPEED, 1e-6)
+
+
+def hwtest_period() -> float:
+    """hwtest 转一圈的时长（秒）。"""
+    return float(_HWTEST_PERIOD_SEC)
+
+
+def _hwtest_sample(t: float) -> EeTrajectorySample:
+    """+x 侧竖直小圆，匀速。首圈用 smoothstep 起步，避免 t=0 的速度阶跃。"""
+    t = float(t)
+    period = _HWTEST_PERIOD_SEC
+    # 起步整形：第一圈的前 20% 用 C2 时间律从静止加速，之后匀速。
+    ramp = 0.2 * period
+    if t < ramp:
+        phase = _smoothstep(t / ramp) * (ramp / period) * 0.5
+    else:
+        phase = (ramp / period) * 0.5 + (t - ramp) / period
+    angle = 2.0 * math.pi * phase
+    position = _HWTEST_CENTER + _HWTEST_RADIUS * (
+        math.cos(angle) * _HWTEST_U + math.sin(angle) * _HWTEST_V)
+    return EeTrajectorySample(
+        position, True, int(math.floor(phase)), _HWTEST_ROTATION.copy())
 
 
 def _line_sample(start: np.ndarray, end: np.ndarray, phase: float) -> np.ndarray:
@@ -283,6 +368,7 @@ def _local_trajectory_period(shape: str) -> float:
     shape = _validate_ee_shape(shape)
     return {
         'circle': EE_PERIOD_SEC,
+        'hwtest': _HWTEST_PERIOD_SEC,
         'triangle': _TRIANGLE_PERIOD_SEC,
         'square': _SQUARE_PERIOD_SEC,
         'sine': (
@@ -437,12 +523,19 @@ def _station_geometry(station: str):
         axis_u = np.array([1.0, 0.0, 0.0])
         axis_v = np.array([0.0, 1.0, 0.0])
         lift_direction = np.array([0.0, 0.0, 1.0])
-        # Keep link7's y-axis normal to the top drawing plane.
-        rotation = np.array([
-            [1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0],
-            [0.0, -1.0, 0.0],
-        ])
+        # 顶面站【两种布局共用】，所以笔轴约定必须跟着布局走：
+        #   vertical   (7 关节历史基线) 笔轴 = 末端 y 轴，保持原矩阵不动
+        #   horizontal (6 关节实机构型) 笔轴 = 末端 x 轴（RViz 红轴）
+        # 两者都让笔垂直于顶面（朝下 -ẑ），差别只在用哪一列承载它。
+        pen = np.array([0.0, 0.0, -1.0])
+        if _HORIZONTAL_STATIONS:
+            rotation = np.column_stack((pen, axis_u, np.cross(pen, axis_u)))
+        else:
+            rotation = np.array([
+                [1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [0.0, -1.0, 0.0],
+            ])
         return center, axis_u, axis_v, lift_direction, rotation
 
     azimuth = _STATION_AZIMUTH[station]
@@ -451,11 +544,24 @@ def _station_geometry(station: str):
     # This is the robot's right direction (negative local y); using local left
     # here would mirror asymmetric glyphs such as "windylab".
     axis_u = np.array([math.sin(azimuth), -math.cos(azimuth), 0.0])
-    axis_v = np.array([0.0, 0.0, 1.0])
     center = (
         _SIDE_STATION_RADIUS * radial
         + np.array([0.0, 0.0, _SIDE_STATION_HEIGHT])
     )
+    if _HORIZONTAL_STATIONS:
+        # 水平工作面：第二个面内方向取径向，不再是竖直的 [0,0,1]；
+        # 抬笔就是垂直离开桌面。
+        axis_v = radial.copy()
+        lift_direction = np.array([0.0, 0.0, 1.0])
+        # 【笔轴 = 末端 x 轴】（RViz 红轴）朝下。按列拼比复合旋转更好核对：
+        #   body x = -ẑ(笔轴), body y = axis_u, body z = x × y
+        # 手性由 cross 保证；写反会得到镜像矩阵，正交性检查抓不到。
+        pen = np.array([0.0, 0.0, -1.0])
+        rotation = np.column_stack((pen, axis_u, np.cross(pen, axis_u)))
+        return center, axis_u, axis_v, lift_direction, rotation
+
+    # 原竖直板布局（默认）。7 关节已验证基线用的就是这个。
+    axis_v = np.array([0.0, 0.0, 1.0])
     # Move toward the robot to lift away from a vertical drawing surface.
     lift_direction = -radial
     rotation = _rz(azimuth) @ TARGET_ROTATION
@@ -594,6 +700,8 @@ def ee_trajectory_sample(t: float, shape: str = None) -> EeTrajectorySample:
     shape = _validate_ee_shape(shape)
     if shape == 'whole':
         return _whole_trajectory_sample(t)
+    if shape == 'hwtest':
+        return _hwtest_sample(t)
     local = _local_trajectory_sample(t, shape)
     return EeTrajectorySample(
         local.position.copy(),

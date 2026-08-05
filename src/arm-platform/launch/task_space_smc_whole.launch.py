@@ -3,8 +3,10 @@ import os
 import numpy as np
 import yaml
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, EmitEvent, RegisterEventHandler
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from ament_index_python.packages import get_package_prefix
 from launch_ros.actions import Node
@@ -174,6 +176,13 @@ def generate_launch_description():
         data_dir_arg,
         rviz_arg,
         control_rate_arg,
+        RegisterEventHandler(
+            OnProcessExit(
+                target_action=smc_runner_node,
+                on_exit=[EmitEvent(event=Shutdown(
+                    reason='whole-task SMC runner exited'))],
+            )
+        ),
         student_arm_node,
         robot_state_publisher_node,
         smc_runner_node,

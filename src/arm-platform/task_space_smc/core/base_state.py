@@ -1,5 +1,3 @@
-"""Base-state providers for simulation injection and ROS feedback."""
-
 from __future__ import annotations
 
 import math
@@ -83,7 +81,6 @@ def _rot_axis_second(axis: str, a: float, ad: float, add: float) -> tuple[np.nda
 
 
 class SimulationInjectedBase:
-    """Analytic six-axis sinusoidal base motion in world coordinates."""
 
     def __init__(self, translation: SinusoidSpec, rpy: SinusoidSpec):
         self.translation = translation
@@ -125,12 +122,6 @@ class SimulationInjectedBase:
 
 
 class RosFeedbackBaseState:
-    """Minimal holder for an externally fused ROS base state.
-
-    IMU specific force, mounting offsets, TF transforms and filtering must be
-    resolved before calling update().  The controller consumes only the unified
-    Pinocchio LOCAL_WORLD_ALIGNED free-flyer tangent convention.
-    """
 
     def __init__(self, timeout_sec: float = 0.1):
         self.timeout_sec = float(timeout_sec)

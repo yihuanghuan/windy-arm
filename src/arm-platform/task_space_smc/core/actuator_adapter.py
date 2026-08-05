@@ -1,5 +1,3 @@
-"""Safety-oriented adapter from joint torques to motor commands."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -25,25 +23,6 @@ class ActuatorLimits:
 
 
 def uniform_acceleration_torque_scale(tau_bias, tau_accel, torque_limit):
-    """求最大的 s ∈ [0,1] 使 |tau_bias + s·tau_accel| 逐轴不超过 torque_limit。
-
-    【为什么需要它】τ = M·qdd_cmd + h。逐轴限幅（本文件 :101 的 np.clip）在
-    多轴同时饱和时会把已经解出的最优加速度打散：实际加速度变成
-    M⁻¹(τ_clip − h)，与任务加速度【无关】——config/smc_params_whole6.yaml
-    的 limits 注释里已经记下这个现象（当时的对策是把力矩上限翻倍绕开它）。
-
-    真实 ROS 实测这正是尖峰的驱动方式：误差 >10mm 时末端实际速度中位
-    0.44~0.46 m/s，而"被夹住只能被动滞后"的上界 |v_ref|+|v_base@ee| 中位只有
-    0.18 m/s，89~96% 的采样超过该上界（中位超 2.4~2.7 倍）。也就是说末端是
-    被 18 N·m 的饱和力矩【主动驱动】着甩出去的，方向来自逐轴限幅后的残余。
-    最深的一步 joint2 指令 −727.50 Nm（40.4 倍限幅），其中 99.87% 是误差反馈。
-
-    做法：把偏置项 h（重力/科氏/浮动基座耦合）原样留下 —— 它必须全额补偿，
-    少给一点就直接掉高度；只对"加速度需求"那一部分做【统一标量缩放】，于是
-    合成加速度方向不变，末端沿指令方向按比例变慢（滞后）而不是转向甩出。
-
-    |h| 本身已经超限时返回 0（此时只能交给下游逐轴限幅，是硬件能力问题）。
-    """
     bias = np.asarray(tau_bias, dtype=float).ravel()
     accel = np.asarray(tau_accel, dtype=float).ravel()
     lim = np.abs(np.asarray(torque_limit, dtype=float).ravel())
@@ -59,13 +38,6 @@ def uniform_acceleration_torque_scale(tau_bias, tau_accel, torque_limit):
 
 
 class ActuatorAdapter:
-    """Convert torque to protocol command with conservative safety gates.
-
-    current_unit may be:
-    - "ampere": command is electric current after tau/(Kt*N*eta).
-    - "torque_nm": command is torque-like and is sent after torque limiting.
-    - "unknown": hardware output is refused.
-    """
 
     def __init__(
         self,
@@ -81,8 +53,8 @@ class ActuatorAdapter:
         hardware_enabled: bool = False,
     ):
         self.joint_names = list(joint_names)
-        # 关节数由 joint_names 推导，不写死 —— 6 关节实物上 joint7 不存在，
-        # 写死 7 会让每个 reshape 都抛异常。与 model.py 从 URDF 推导 n_arm 同理。
+
+
         self.n = len(self.joint_names)
         self.limits = limits
         self.current_unit = current_unit
