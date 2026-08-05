@@ -14,7 +14,7 @@ blend_sec = 45 s —— 拉入期间参考点自己绕了 45/25.13 = 1.79 圈：
 
 守住的核心事实：
   * 开关【关闭】时逐位等价于改动前（reference_sample(t)）——
-    smc_params_hwtest_simbest.yaml / smc_params_whole6.yaml 这些已验证基线
+    smc_params_whole6.yaml / smc_params_whole.yaml 这些已验证基线
     不写这个键，代码缺省必须是 false，否则它们会在不改一个字的情况下变行为
   * 冻结期间参考轨迹恒等于起点 reference_sample(0.0)
   * t = blend_sec 处轨迹时钟从 0 开始，且 clock(t) 连续（参考位姿无跳变）
@@ -319,7 +319,7 @@ def test_hwtest_enables_the_freeze():
 
 def test_verified_baselines_do_not_carry_the_key():
     """已验证基线不写这个键，配合代码缺省 false 保证它们逐位不变。"""
-    for name in ("hwtest_simbest", "whole6", "whole"):
+    for name in ("whole6", "whole"):
         cfg = _config(name)
         if cfg is None:
             continue
@@ -337,11 +337,9 @@ def test_runner_defaults_the_switch_to_off():
 
 
 def test_runner_feeds_the_clock_into_reference_sample():
-    """控制循环必须喂 traj_t，且不得再有 reference_sample(t, ...) 的调用。"""
+    """控制循环必须喂 traj_t，再经统一的末端参考包装函数取样。"""
     assert "traj_t = self._trajectory_clock(t)" in RUNNER_SRC
-    assert "ref = reference_sample(traj_t, self.shape, self.derivative_dt)" in RUNNER_SRC
-    assert not re.search(r"reference_sample\(\s*t\s*,", RUNNER_SRC), \
-        "控制循环里不能再直接用墙钟 t 采轨迹"
+    assert "ref = self._reference_sample(traj_t)" in RUNNER_SRC
 
 
 def test_runner_records_the_trajectory_clock_column():

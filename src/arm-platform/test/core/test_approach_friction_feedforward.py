@@ -459,7 +459,7 @@ def test_stale_nominal_concentrates_its_disturbance_on_joint6():
 
 def test_simulation_baselines_keep_their_explicit_nominal():
     """whole6 是已验证基线，其 q_nominal 必须保持显式向量、不受本次改动影响。"""
-    for name in ("whole6", "hwtest_simbest"):
+    for name in ("whole6",):
         cfg = _config(name)
         if cfg is None:
             continue

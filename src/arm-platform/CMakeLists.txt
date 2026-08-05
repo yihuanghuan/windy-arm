@@ -266,7 +266,6 @@ install(PROGRAMS
   demo/tune_ll100_nmpc.py
   demo/trajectory_visualizer_demo.py
   task_space_smc/sim/offline_simulation.py
-  task_space_smc/hw/torque_controller_node.py
   task_space_smc/hw/torque_interface_probe.py
   task_space_smc/hw/whole_task_smc_ros_runner.py
   task_space_smc/hw/vicon_floating_base_bridge.py

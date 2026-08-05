@@ -62,6 +62,18 @@ from task_space_smc.core.trajectory_reference import (
 METRICS_FLUSH_INTERVAL = 1000
 
 
+def _deep_update(target: dict, update: dict) -> None:
+    """Recursively apply a simulation-only configuration overlay."""
+    for key, value in update.items():
+        if value is None:
+            target.pop(key, None)
+            continue
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            _deep_update(target[key], value)
+        else:
+            target[key] = value
+
+
 def tune_gc_for_realtime():
     import gc
     gc.collect()
@@ -126,6 +138,8 @@ class WholeTaskSmcRosRunner(Node):
         self.declare_parameter("initial_joint_positions", [0.0] * 6)
         self.declare_parameter("base_state_mode", "analytic")
         self.declare_parameter("external_base_topic", "/floating_base/vicon")
+        self.declare_parameter("simulation_handover_enabled", True)
+        self.declare_parameter("simulation_profile_name", "")
 
         self.config_path = str(self.get_parameter("config_path").value)
         with open(self.config_path, "r", encoding="utf-8") as f:
@@ -135,6 +149,18 @@ class WholeTaskSmcRosRunner(Node):
         if self.mode not in ("simulation", "internal_simulation", "hardware"):
             raise ValueError(
                 "mode must be simulation, internal_simulation, or hardware")
+        profile_name = str(self.get_parameter("simulation_profile_name").value)
+        if self.mode == "simulation" and profile_name:
+            profiles = self.config.pop("simulation_profiles", {}) or {}
+            profile = profiles.get(profile_name)
+            if not isinstance(profile, dict):
+                raise RuntimeError(
+                    "simulation profile %r is unavailable in %s"
+                    % (profile_name, self.config_path))
+            overrides = profile.get("controller_overrides", {})
+            if not isinstance(overrides, dict):
+                raise RuntimeError("controller_overrides must be a mapping")
+            _deep_update(self.config, overrides)
         self.internal_plant = self.mode == "internal_simulation"
         self.simulated_base = self.mode in ("simulation", "internal_simulation")
         self.base_state_mode = str(self.get_parameter("base_state_mode").value)
@@ -371,6 +397,10 @@ class WholeTaskSmcRosRunner(Node):
                 "回路负裕度而非噪声放大，本滤波会让它更早发散 —— 以实测为准。")
 
         handover_cfg = self.config.get("handover", {}) or {}
+        if (self.mode == "simulation"
+                and not bool(self.get_parameter(
+                    "simulation_handover_enabled").value)):
+            handover_cfg = {}
         self.handover_blend = HandoverBlend(
             float(handover_cfg.get("reference_blend_sec", 0.0)))
 
@@ -545,6 +575,9 @@ class WholeTaskSmcRosRunner(Node):
             f"start_delay={self.start_delay_sec:.3f}s, duration={self.duration_sec:.3f}s, "
             f"config={self.config_path}, metrics={self.metrics_path}"
         )
+        if self.mode == "simulation" and profile_name:
+            self.get_logger().info(
+                "simulation profile applied: %s (%s)" % (profile_name, self.config_path))
         if self.uses_external_base:
             self.get_logger().warning(
                 "Vicon base feedback enabled: waiting for a fresh %s message; "

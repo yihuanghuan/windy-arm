@@ -67,6 +67,7 @@ def _fake(module, guard=None, duration=8.0):
     log = _Log()
     return types.SimpleNamespace(
         shape="hwtest", derivative_dt=1e-4, start_delay_sec=duration,
+        _reference_sample=lambda t: module.reference_sample(t, "hwtest", 1e-4),
         approach_guard=dict(guard or DEFAULT_GUARD),
         task_approach=None, task_approach_rejected=False,
         orientation_mode="full", pen_axis_local=np.array([1.0, 0.0, 0.0]),
@@ -93,8 +94,8 @@ def test_default_is_still_joint_space():
     fake = types.SimpleNamespace(config={"approach": {}})
     approach = fake.config.get("approach", {})
     assert str(approach.get("mode", "joint_space")) == "joint_space"
-    # 顺带确认 whole6 / simbest 两份已验证配置没被顺手改掉
-    for name in ("smc_params_whole6.yaml", "smc_params_hwtest_simbest.yaml"):
+    # 6DOF 仿真配置不应带实物的 task-space approach 模式。
+    for name in ("smc_params_whole6.yaml",):
         cfg = yaml.safe_load(open(os.path.join(CONFIG_DIR, name)))
         assert (cfg.get("approach") or {}).get("mode") is None, name
 

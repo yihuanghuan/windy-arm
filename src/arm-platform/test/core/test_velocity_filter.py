@@ -192,7 +192,7 @@ def test_the_noise_asymmetry_that_motivated_the_filter_is_still_recorded():
 def test_simulation_baselines_do_not_filter():
     """仿真反馈没有噪声，滤波只剩滞后。基线必须保持直通。"""
     checked = 0
-    for name in ("whole6", "hwtest_simbest"):
+    for name in ("whole6", "whole"):
         cfg = _config(name)
         if cfg is None:
             continue

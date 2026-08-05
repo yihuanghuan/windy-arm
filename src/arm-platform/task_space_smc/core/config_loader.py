@@ -18,8 +18,8 @@ def load_config(path: str) -> dict:
 
 
 def default_config_path() -> str:
-
-    return str(Path(__file__).resolve().parents[1] / "config" / "smc_params.yaml")
+    # 唯一的 7DOF 仿真配置；6DOF 仿真与实物入口都显式传自己的配置。
+    return str(Path(__file__).resolve().parents[1] / "config" / "smc_params_whole.yaml")
 
 
 def controller_from_config(config: dict) -> TaskSpaceSMC:

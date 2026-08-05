@@ -753,7 +753,7 @@ def test_buffers_are_bounded_so_cost_does_not_grow():
 # 7. 已验证基线不能被动到
 # ==========================================================================
 
-@pytest.mark.parametrize("name", ["whole6", "hwtest_simbest"])
+@pytest.mark.parametrize("name", ["whole6", "whole"])
 def test_verified_baselines_declare_no_estimator(name):
     """⚠️ 这条才是"已有基线一个字都不能改"的真正保证：把"基线文件里没有这一段"
     变成 CI 断言。
@@ -904,7 +904,7 @@ def test_velocity_lowpass_stays_all_zero():
     存活 0.47 -> 0.35 s，更早发散。降噪 ~30% 却花掉 26.6° 相位就变糟 ——
     证明该回路【相位受限】而非噪声受限。配置必须保持全零。
     """
-    for name in ("hwtest", "hwtest_simbest", "whole6"):
+    for name in ("hwtest", "whole6", "whole"):
         cfg = _config(name)
         lp = (cfg.get("feedback") or {}).get("velocity_lowpass_hz", 0.0)
         assert np.allclose(np.asarray(lp, dtype=float), 0.0), name

@@ -81,10 +81,10 @@ task_space_smc/
 | `phase5_inertia_id.py` | 阶段 5：惯量辨识 |
 | `serial_tap.py` | 双向串口抓包（伪终端透明中继） |
 | `torque_interface_probe.py` | 力矩通路小幅探针 |
-| `torque_controller_node.py` | ⚠️ **遗留**：7 关节时代的独立节点，无任何 launch 引用，已被主运行器取代 |
 
 > `whole_task_smc_ros_runner.py` 放在 `hw/` 是因为它面向真机，但它**同时跑仿真和实物，
-> 而且刻意是同一条代码路径**。这条约束是故意的 —— 否则仿真里得到的结论带不到实物上。
+> 而且刻意是同一条控制代码路径**。控制律和机器人模型共享；仿真专用 launch 另行管理
+> 起始位姿、反馈通路和交接设置，避免把实物上机参数带进仿真。
 
 ### 1.4 `config/` 与 `data/`
 
@@ -92,11 +92,9 @@ task_space_smc/
 
 | 配置 | 用于 |
 |---|---|
-| `smc_params_hwtest.yaml` | 6 关节实机（`hwtest` 轨迹）。**上机默认用这份** |
-| `smc_params_hwtest_simbest.yaml` | 同上，但取仿真最优增益。已验证基线，不要改 |
-| `smc_params_whole6.yaml` | 6 关节完整五工作站任务 |
-| `smc_params_whole.yaml` | 7 关节完整任务 |
-| `smc_params.yaml` | 离线仿真默认配置 |
+| `smc_params_whole.yaml` | 7 关节仿真 |
+| `smc_params_whole6.yaml` | 6 关节仿真；`simulation_profiles` 内区分 `hwtest` / `whole` |
+| `smc_params_hwtest.yaml` | 6 关节实物。**上机默认用这份** |
 
 `data/` 是每次运行的 CSV / JSON / PNG，已 gitignore，不入库。
 
@@ -194,7 +192,8 @@ export ROS_DOMAIN_ID=77     # 仿真
 
 | | 7 关节 | 6 关节 |
 |---|---|---|
-| launch | `task_space_smc_whole.launch.py` | `task_space_smc_whole6.launch.py` |
+| 仿真 launch | `task_space_smc_whole.launch.py` | `task_space_smc_whole6_sim.launch.py` |
+| 实物 launch | — | `task_space_smc_whole6.launch.py` |
 | URDF | `arm.urdf` | 配置决定；`hwtest` 当前为 `arm6.urdf` |
 | 末端 frame | 自动探测 | 配置决定；`hwtest` 当前为 `link6` |
 | 默认控制频率 | 500 Hz | 200 Hz |
@@ -244,13 +243,12 @@ cd /home/windylab/code/windylab_ws
 source /opt/ros/humble/setup.bash && source install/setup.bash
 export ROS_DOMAIN_ID=77
 
-# 默认：上机前的小幅轨迹
-ros2 launch manipulator task_space_smc_whole6.launch.py \
+# 默认：小幅 hwtest 圆
+ros2 launch manipulator task_space_smc_whole6_sim.launch.py \
   trajectory_shape:=hwtest duration_sec:=0.0 rviz:=true
 
-# 完整五工作站任务（必须显式换配置）
-WINDYLAB_SMC_CONFIG=$PWD/src/arm-platform/task_space_smc/config/smc_params_whole6.yaml \
-ros2 launch manipulator task_space_smc_whole6.launch.py \
+# 完整五工作站任务
+ros2 launch manipulator task_space_smc_whole6_sim.launch.py \
   trajectory_shape:=whole duration_sec:=0.0 rviz:=true
 ```
 
@@ -258,7 +256,7 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
 |---|---|---|
 | `trajectory_shape` | `hwtest` | `hwtest` / `whole` |
 | `mode` | `simulation` | 见 [3.3](#33-三种-mode) |
-| `start_delay_sec` | `3.0` | 靠近段时长。**上机架构用 `0`** |
+| `start_delay_sec` | `0.0` | 仿真从轨迹起点开始，不经过实物靠近段 |
 | `duration_sec` | `0.0` | `0` = **该形状的**一个完整周期（按形状查，不是写死值） |
 | `hardware_enabled` | `false` | 是否允许适配器输出非零 `MotorControl` |
 | `control_rate_hz` | `200.0` | SMC 与 `student_arm_node` 共用 |
@@ -463,7 +461,8 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
   data_dir:=/path/to/run
 ```
 
-**与仿真的差别只有两个参数**，其余含义见 [3.2](#32-6-关节)：
+实物入口与 [3.2](#32-6-关节) 的仿真入口有意分离：前者读取实物就位和
+`handover` 配置，后者从解析轨迹起点直接开始。
 
 | 参数 | 实物取值 | 为什么 |
 |---|---|---|

@@ -487,7 +487,7 @@ def test_unconverged_sweeps_are_marked_warmup():
     """未收敛的扫描必须标成 warmup，绝不能进标定。"""
     import task_space_smc.hw.fk_gravity_verify as mod
     src = open(mod.__file__).read()
-    assert "r['warmup'] = True      # 未收敛的都算热身" in src
+    assert "r['warmup'] = True" in src
     assert "did not converge" in src
 
 
@@ -512,4 +512,3 @@ def test_tool_refuses_to_run_when_the_position_path_is_bypassed():
     assert re.search(r'why = check_position_path_active\(node\)', src), \
         "main must call the guard before doing anything else"
     assert re.search(r'enable_direct_effort_command', src)
-

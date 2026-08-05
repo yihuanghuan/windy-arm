@@ -506,8 +506,8 @@ def test_hwtest_does_not_carry_both_generations_of_keys():
 
 
 def test_verified_baselines_carry_no_delay_key_of_either_kind():
-    """whole6 / simbest 是已验证基线，加延迟或量化会改变它们的既有结论。"""
-    for name in ("whole6", "hwtest_simbest"):
+    """whole6 是已验证基线，加延迟或量化会改变它的既有结论。"""
+    for name in ("whole6",):
         cfg = _config(name)
         if cfg is None:
             continue

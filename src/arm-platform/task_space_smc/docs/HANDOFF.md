@@ -120,15 +120,14 @@ export PYTHONPATH="$PWD/src/arm-platform:$PYTHONPATH"
 6 关节仿真入口：
 
 ```bash
-ros2 launch manipulator task_space_smc_whole6.launch.py \
+ros2 launch manipulator task_space_smc_whole6_sim.launch.py \
   trajectory_shape:=hwtest duration_sec:=0.0 rviz:=true
 ```
 
-完整五工作站任务要显式换配置：
+完整五工作站任务由仿真入口自动选择对应配置和起点：
 
 ```bash
-WINDYLAB_SMC_CONFIG=$PWD/src/arm-platform/task_space_smc/config/smc_params_whole6.yaml \
-ros2 launch manipulator task_space_smc_whole6.launch.py \
+ros2 launch manipulator task_space_smc_whole6_sim.launch.py \
   trajectory_shape:=whole duration_sec:=0.0 rviz:=true
 ```
 
