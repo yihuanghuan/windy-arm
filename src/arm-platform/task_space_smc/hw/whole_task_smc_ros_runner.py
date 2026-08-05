@@ -1602,7 +1602,7 @@ class WholeTaskSmcRosRunner(Node):
             tau,
             now,
             self.last_joint_stamp or now,
-            bs.stamp,
+            getattr(bs, "stamp", now),
             self.control_period,
         )
         self._publish_motor_command(motor)
@@ -1926,7 +1926,8 @@ class WholeTaskSmcRosRunner(Node):
         if not self._watchdog_trip(now):
             self._watchdog_hold_q = np.asarray(self._q_meas, dtype=float).copy()
         motor = self.adapter.torque_to_motor_command(
-            tau, now, self.last_joint_stamp or now, bs_est.stamp, dt)
+            tau, now, self.last_joint_stamp or now,
+            getattr(bs_est, "stamp", now), dt)
 
 
         recorded_q = self.q_ctrl.copy()
