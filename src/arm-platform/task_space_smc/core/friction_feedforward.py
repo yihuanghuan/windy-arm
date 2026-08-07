@@ -23,9 +23,9 @@ class FrictionFeedforwardConfig:
         stiction_nm,
         *,
         enabled: bool = False,
-        scale: float = 0.8,
-        velocity_epsilon: float = 0.02,
-        error_gain: float = 1.0,
+        scale: float = 0.8,           # 补偿比例，必须 < 1。大→残留死区小，≥1 时零误差处即可自行挣脱、自激成极限环；小→补不动
+        velocity_epsilon: float = 0.02,  # tanh 的速度尺度 ε (rad/s)。大→过零平缓、零速附近补得少；小→接近 sign()、零速换向抖
+        error_gain: float = 1.0,      # 位置误差折成等效速度的 k_e (1/s)。大→静止时也肯补、死区更窄但易越过；小→只在真动起来时才补
     ) -> None:
         stiction = np.asarray(stiction_nm, dtype=float).ravel()
         if stiction.size == 0:
@@ -41,8 +41,7 @@ class FrictionFeedforwardConfig:
         if scale >= _MAX_SAFE_SCALE:
             raise ValueError(
                 f"scale={scale} 不允许。必须严格小于 1 —— scale >= 1 时零误差处的"
-                "前馈本身就够挣脱静摩擦，会自激成振幅约等于死区的极限环。"
-                "详见 friction_feedforward 模块 docstring 设计选择 3。")
+                "前馈本身就够挣脱静摩擦，会自激成振幅约等于死区的极限环。")
 
         velocity_epsilon = float(velocity_epsilon)
         if not np.isfinite(velocity_epsilon) or velocity_epsilon <= 0.0:
@@ -71,6 +70,12 @@ class FrictionFeedforwardConfig:
                 f"stiction_nm={np.round(self.stiction_nm, 4).tolist()})")
 
 
+# 静摩擦前馈力矩。静摩擦在零速附近是符号函数，直接补 f_s·sign(q̇) 会在零速处
+# 反复换向抖动，故用 tanh 光滑化，并把位置误差按 k_e 折成等效速度一并作为驱动量：
+#   drive = q̇_ref + k_e·e_q
+#   τ_ff  = scale · f_s · tanh(drive / ε)
+# f_s 为静摩擦力矩，ε (velocity_epsilon) 是 tanh 的速度尺度，k_e (error_gain, 1/s)
+# 把位置误差换算成速度，scale < 1 保证零误差处的前馈不足以自行挣脱静摩擦。
 def stiction_feedforward(
     config: FrictionFeedforwardConfig,
     velocity_reference,
@@ -92,6 +97,8 @@ def stiction_feedforward(
         drive / config.velocity_epsilon)
 
 
+# 关节等效力矩刚度。关节空间 PD 的比例项经惯量折算成力矩：
+#   τ = M·q̈_des ≈ M·kp·e_q  ⇒  K = M ⊙ kp   (N·m/rad)
 def approach_torque_stiffness(inertia_diagonal, kp) -> np.ndarray:
     M = np.asarray(inertia_diagonal, dtype=float).ravel()
     gains = np.asarray(kp, dtype=float).ravel()
@@ -102,6 +109,9 @@ def approach_torque_stiffness(inertia_diagonal, kp) -> np.ndarray:
     return M * gains
 
 
+# 残留稳态死区 δ：卡住的位置误差恰好使总驱动力矩等于静摩擦，
+#   K·δ + scale·f_s·tanh(δ / knee) = f_s,   knee = ε / k_e
+# 左端对 δ 单调递增，故在 [0, f_s/K] 上二分求根；前馈关闭时退化为 δ = f_s / K。
 def residual_deadband(config: FrictionFeedforwardConfig, torque_stiffness) -> np.ndarray:
     n = config.n_joints
     gains = np.asarray(torque_stiffness, dtype=float).reshape(n)

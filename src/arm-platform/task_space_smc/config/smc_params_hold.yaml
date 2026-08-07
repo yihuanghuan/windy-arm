@@ -1,0 +1,150 @@
+# 6DOF 实物 Vicon hold 专用配置（arm6，200 Hz）。不含 simulation / injection 段。
+# 位置通道：s_p = ė_p + Λ_p·e_p，a_cmd = a_d + Λ_p·ė_p + K_p·s_p + η_p·tanh(s_p/φ_p)
+urdf: arm6                  # 运动学/动力学模型来源，决定 M(q)、h(q,q̇)、J(q) 与关节限位
+ee_frame: link6             # 被控末端帧；换到更外的帧力臂变长，基座扰动经 ω×r 放大
+control_rate_hz: 200.0      # 控制频率 (Hz)，dt = 1/f。大→可上更高增益；小→(k+η/φ)·dt 逼近 2 会抖
+
+task:
+  characteristic_length: 0.2   # 姿态折成长度的特征长度 L (m)，QP 里姿态有效权重是 w_R·L²。大→姿态更被优先；小→位置更被优先
+
+  orientation_mode: weak       # full=姿态 6 维硬约束（零空间 0 维）；weak=位置严格、姿态弱约束，腾出约 3 维零空间；pen_axis=放开绕笔轴自转
+
+  solver: qp                   # qp=力矩硬约束在求解器内；缺省=伪逆分解 + 后端力矩限幅
+
+  # 任务加速度保方向范数饱和 s = min(1, max/‖ν‖)
+  max_linear_task_accel: 3.0    # 线加速度上限 (m/s²)。大→响应快但解一直贴在约束边界上、bang-bang；小→末端沿指令方向滞后
+  max_angular_task_accel: 8.0   # 角加速度上限 (rad/s²)，同上
+
+  pen_axis_local: [1.0, 0.0, 0.0]   # 末端系下的笔轴，仅 orientation_mode=pen_axis 时用
+  limit_avoidance:
+    gain: 0.10               # 限位排斥强度 (rad/s²)，q̈_null += gain·∇limit。大→更早被推离限位、挤占回中作用；小→易贴限位
+    activate_rad: 0.5        # 排斥项起作用的限位距离 (rad)。大→更早介入、可用行程变窄；小→来不及刹住
+
+qp:
+  # 代价 min w_p‖A_p q̈−y_p‖² + w_R‖A_R q̈−y_R‖² + w_n‖q̈−q̈_null‖² + w_d‖q̈−q̈_prev‖² + w_reg‖q̈‖²
+  weights:
+    position: 10000.0         # 一级，位置残差权重。大→位置更严格、姿态与回中让位；小→位置精度让给其它项
+    orientation: 1.0          # 二级，姿态残差权重，不可行时先让它。大→姿态跟得更紧但与位置争自由度；小→姿态更快放弃
+    joint_centering: 0.01     # 三级，向零空间目标位形靠拢的权重。大→位形更稳但任务精度受损；小→位形自由漂移
+    smoothness: 0.01          # 三级，对上一拍 q̈ 的二次罚。大→指令更平滑、响应变钝；小→跟得快但相邻拍跳变大
+    regularization: 0.000001  # Tikhonov 项，保 H 正定；近奇异时再叠加 w_position·damping²。大→解更保守、有常态偏差；小→H 条件数变差
+    qdd_box_slack: 100000000.0  # 加速度箱越界的罚权重（该箱是软的，力矩箱才是硬的）。大→速度包线几乎被严格遵守；小→包线形同虚设
+  qdd_max: [40.0, 40.0, 40.0, 80.0, 80.0, 80.0]   # 关节加速度上限 (rad/s²)，裁进速度/限位箱而非取交集。大→动作更急、力矩需求高；小→跟不上任务加速度
+  max_iterations: 40        # QP 迭代上限。大→更可能收敛到最优但单拍耗时长（200 Hz 只有 5 ms）；小→更常触发 max_iter 返回次优解
+  fallback_hold_ticks: 5    # 连续多少拍求解失败就退回保位。大→容忍偶发失败但故障时反应慢；小→抖一下就退出跟踪
+
+position:
+  # 边界层内闭环为 (s+Λ_p)(s+K_p+η_p/φ_p) = 0，稳态误差 e_ss = d / [Λ_p·(K_p + η_p/φ_p)]
+  lambda: [18.0, 18.0, 18.0]   # 滑模面斜率 Λ_p (1/s)。大→收敛快但需更大加速度、易饱和；小→变软
+  k: [8.0, 8.0, 8.0]           # 趋近律线性项 K_p (1/s)。大→稳态误差小、抗扰强；小→趋近慢
+  eta: [0.08, 0.08, 0.08]      # 切换项幅值 η_p (m/s²)，能压住的扰动上限。大→抗扰强但易抖；小→压不住摩擦
+  phi: [0.02, 0.02, 0.02]      # 边界层宽度 φ_p (m/s)，tanh 斜率 1/φ_p。大→抖振小、误差带宽；小→接近 sign()、抖
+
+orientation:
+  # e_R = log(q_d ⊗ q⁻¹) (rad)，量纲是角度，数值不能与 position 段直接比较
+  lambda: [3.6, 3.6, 3.6]      # 姿态滑模面斜率 Λ_R (1/s)
+  k: [6.0, 6.0, 6.0]           # 姿态趋近律线性项 K_R (1/s)
+  eta: [0.018, 0.018, 0.018]   # 姿态切换项幅值 η_R (rad/s²)
+  phi: [0.02, 0.02, 0.02]      # 姿态边界层宽度 φ_R (rad/s)
+
+nullspace:
+  # q̈_null = −kp·(q − q_nom) − kd·q̇，经零空间投影后不影响任务
+  enabled: false
+  q_nominal: track_start       # hold_capture_measured=true 时以当前位形为目标，不解 IK
+  kp: [2.0, 2.0, 2.0, 2.0, 2.0, 2.0]   # 回中刚度 (1/s²)。大→更快回标称位形；小→位形随机漂移
+  kd: [3.0, 3.0, 3.0, 3.0, 3.0, 3.0]   # 零空间阻尼 (1/s)。大→自运动不振荡；小→零空间内晃
+
+initial_pose_rad: [-0.0635, 1.5558, -1.4086, -0.0002, 0.6938, 0.0033]   # 仅供启动时模型完整性检查；hold 捕获当前末端位姿，不用它就位
+
+singularity:
+  # J̄ = M⁻¹Jᵀ(J M⁻¹ Jᵀ + λ²I)⁻¹，阻尼 λ 按 σ_min 在 [critical, warn] 线性插值
+  sigma_warn: 0.03          # 开始加阻尼的最小奇异值阈值。大→更早保守、精度更早让步；小→近奇异处力矩尖峰
+  sigma_critical: 0.012     # 阻尼打满的阈值。大→提前进入最大阻尼、末端变钝；小→留给尖峰的余地更大
+  damping_min: 0.00005      # 远离奇异时的阻尼 λ_min。大→常态就有跟踪偏差；小→数值条件变差
+  damping_max: 0.03         # 奇异处的阻尼 λ_max。大→安全但任务误差更大；小→压不住 1/σ 放大
+
+limits:
+  # torque / torque_rate / current 是实机额定值
+  torque: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6]                       # 关节力矩上限 (N·m)，QP 的硬箱
+  torque_rate: [1500.0, 1500.0, 1500.0, 500.0, 500.0, 350.0]   # 力矩变化率上限 (N·m/s)，窗口 τ_prev ± rate·dt。大→响应快、电流冲击大；小→平滑、跟不上突变
+  current: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6]                      # 电流上限 (A)
+  joint_velocity: [3.0, 3.0, 3.0, 5.0, 5.0, 5.0]   # 关节速度包线 (rad/s)，折成加速度盒 q̈ ∈ [(v_lo−q̇)/dt, (v_hi−q̇)/dt]。大→动作快、刹车距离长；小→安全但跟不上
+  joint_brake_safety: 0.5   # 制动可用力矩比例，a_brake = safety·τ_max/M_ii，限位前速度上限 v ≤ √(2·a_brake·余量)。大→敢更快逼近限位；小→提早减速
+
+safety:
+  command_timeout_sec: 0.03        # 指令超时 (s)，超过则力矩变化率基准清零
+  joint_state_timeout_sec: 0.1     # 关节反馈陈旧阈值 (s)，超时输出零力矩。大→拿旧状态算力矩；小→抖动就停发
+  base_state_timeout_sec: 0.15     # 基座状态陈旧阈值 (s)，比的是样本真实年龄（含传输延迟）。大→拿更旧的基座位姿算补偿；小→更多控制拍停发力矩
+
+approach:
+  mode: task_space               # 就位轨迹类型：任务空间五次测地线
+  workspace_guard:
+    enabled: true
+    desk_plane_z: 0.0            # 桌面高度 (m，世界系 z)
+    desk_edge_x: 0.02            # 桌沿位置 (m)，x 小于它才算伸到桌面上方
+    desk_clearance: 0.08         # 桌面上方最小离空 (m)。大→更安全、可用空间小；小→贴桌风险
+    fence_y: 0.40                # 围栏位置 (m，世界系 y)
+    fence_height: 0.331          # 围栏高度 (m)，低于此高度才检查 y 向越界
+    fence_clearance: 0.03        # 围栏留白 (m)。大→更早拦、行程变窄；小→擦栏风险
+    max_linear_speed: 0.15       # 就位段末端线速度上限 (m/s)。大→就位快、撞击动能大；小→安全但耗时
+    max_linear_accel: 0.60       # 就位段末端线加速度上限 (m/s²)。大→起停急、力矩需求高；小→起停柔和
+  initial_joint_offset_rad: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   # 就位起点相对当前位形的偏移 (rad)，全零即原地起步
+  kp: [60.0, 60.0, 60.0, 250.0, 250.0, 200.0]    # 就位段关节 PD 刚度 (1/s²)，摩擦死区为 f_s/kp。大→跟随紧、死区窄但易过冲；小→位置误差大
+  kd: [16.0, 16.0, 16.0, 31.6, 31.6, 28.3]       # 就位段阻尼 (1/s)，ζ = kd/(2√(kp·J))。大→不过冲；小→静摩擦挣脱时甩
+  friction_feedforward:
+    # τ_ff = scale·f_s·tanh( (q̇_ref + error_gain·e_q) / velocity_epsilon )
+    enabled: true
+    scale: 0.8                   # 静摩擦补偿比例，必须 < 1。大→残留死区小，≥1 时零误差处即可自行挣脱、自激成极限环；小→补不动、卡在死区
+    velocity_epsilon: 0.02       # tanh 的速度尺度 ε (rad/s)。大→过零平缓、零速附近补得少；小→接近 sign()，零速处换向抖
+    error_gain: 1.0              # 位置误差折成等效速度的系数 k_e (1/s)。大→静止时也肯补、死区更窄但易越过；小→只在真动起来时才补
+
+tracking:
+  # 跟踪段的摩擦前馈，参数含义同 approach.friction_feedforward
+  friction_feedforward:
+    enabled: true
+    scale: 0.8
+    velocity_epsilon: 0.02
+    error_gain: 1.0
+
+feedback:
+  # 关节速度一阶低通：τ = 1/(2π·f_c)，α = dt/(τ+dt)，相位滞后 arctan(f/f_c)
+  velocity_lowpass_hz: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   # 截止频率 f_c (Hz)，0 = 直通。大→噪声压得少、滞后小；小→更干净但滞后大，等效降低阻尼
+
+estimator:
+  source: motor               # 速度来源：motor 直通电机自报 / finite_difference 位置后向差分 / leso 观测器
+
+# 末端反馈来源。姿态在任何模式下都取 FK，Vicon 只提供位置。
+ee_feedback:
+  mode: vicon_direct          # fk_only=只用 FK / vicon_direct=直接用 Vicon 位置 / vicon_bias_corrected=FK 走高频、Vicon 只修慢变偏置（稳态仍收敛到 Vicon）
+  topic: /vicon/arm_ee
+  apply_control_point_offset: true   # 把控制点从 link6 原点搬到标记簇原点：p'=p+r，J_p'=J_p−[r]×J_w，r = R_fk·t
+  velocity_source: vicon      # 线速度来源：fk 或 vicon
+  angular_velocity_source: fk # 角速度来源，与线速度分开选
+  # 对照闸：|v_vicon − v_fk| <= tol·max(|v_fk|, floor) 才采信这一拍。
+  # 取相对判据是因为 FK 速度跨两个数量级，floor 保证静止时不会除以 ~0。
+  velocity_cross_check_tol: 0.5          # 线速度相对容差。大→几乎全放行、闸门失效；小→几乎全拒、退化成纯 FK
+  velocity_cross_check_floor_m_s: 0.05   # 线速度绝对底噪 (m/s)，避免静止时除以 ~0。大→低速段放行更宽松；小→静止时噪声就触发拒绝
+  angular_cross_check_tol: 0.5           # 角速度相对容差，同上
+  angular_cross_check_floor_rad_s: 0.2   # 角速度绝对底噪 (rad/s)
+  bias_bandwidth_hz: 0.2      # 偏置跟踪带宽 f_c (Hz)，α = 1−exp(−2π·f_c·dt)。大→偏置跟得快但把 Vicon 延迟引进环；小→稳态收敛慢
+  bias_init: first_sample     # 偏置初始化方式：first_sample = 首帧一次性置好；从零渐进会让 hold 捕获在 FK 点上
+  max_bias_m: 0.02            # 偏置幅值上限 (m)。大→错配也被当偏置吸收；小→真实安装偏差修不完
+  max_bias_rate_m_s: 0.01     # 偏置变化率上限 (m/s)。大→跳变直接传给控制器；小→偏置跟不上真实漂移
+  innovation_reject_m: 0.05   # 新息拒绝阈 (m)，超过即判为错刚体/错外参而非噪声。大→错配也被吸收；小→正常噪声就误拒
+  innovation_reject_hold_sec: 0.5   # 新息持续超阈多久判定降级 (s)。大→偶发跳点不误判；小→反应快但易误报
+  max_age_sec: 0.15           # Vicon 样本可用年龄上限 (s)，与 base_state_timeout_sec 同源
+  hold_after_sec: 1.0         # 超过此年龄进入保位 (s)。大→更久拿旧数据硬撑；小→链路一抖就保位
+  require_vicon_at_capture: true    # 捕获保持目标前是否必须已收到有效 arm_ee 样本，否则拒绝启动
+
+base_feedback:
+  prefer_vicon_twist: true          # 基座线速度采信 Vicon 上报值，而不是本地位姿差分
+  prefer_vicon_linear_accel: true   # 基座线加速度采信 Vicon 上报值
+  # 角速度、角加速度同样采信 Vicon，但每拍先与位姿差分对照：
+  #   |cand − ref| <= tol · max(|ref|, floor) 才采信
+  prefer_vicon_angular_velocity: true
+  angular_cross_check_tol: 0.5            # 角速度相对容差。大→放行区间变宽、错标度也被采信；小→退化成本地差分
+  angular_cross_check_floor_rad_s: 0.2    # 角速度绝对底噪 (rad/s)，避免静止时除以 ~0
+  prefer_vicon_angular_accel: true
+  angular_accel_cross_check_floor_rad_s2: 2.0   # 角加速度绝对底噪 (rad/s²)，放行区间 |α| <= tol·floor = 1.0 rad/s²
+  max_cross_channel_skew_sec: 0.004   # pose/twist/accel 三通道允许的源时间错位 (s)，小于半个帧周期 8 ms。大→相邻帧被误配成同帧；小→正常抖动就配不上
+  accel_hold_sec: 0.05        # 加速度通道断流后保持上一值的时长 (s)。大→用旧加速度撑更久；小→更快归零、补偿突然消失

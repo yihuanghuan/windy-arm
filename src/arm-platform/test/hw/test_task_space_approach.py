@@ -65,7 +65,7 @@ DEFAULT_GUARD = dict(
 
 def _fake(module, guard=None, duration=8.0):
     log = _Log()
-    return types.SimpleNamespace(
+    fake = types.SimpleNamespace(
         shape="hwtest", derivative_dt=1e-4, start_delay_sec=duration,
         _reference_sample=lambda t: module.reference_sample(t, "hwtest", 1e-4),
         approach_guard=dict(guard or DEFAULT_GUARD),
@@ -73,7 +73,13 @@ def _fake(module, guard=None, duration=8.0):
         orientation_mode="full", pen_axis_local=np.array([1.0, 0.0, 0.0]),
         n_arm=6, q_ctrl=np.zeros(6),
         config={"singularity": {"sigma_warn": 0.03, "sigma_critical": 0.012}},
-        get_logger=lambda: log), log
+        get_logger=lambda: log)
+    # 奇异门是共用的：就位段和 hold 保持段（没有就位段）都走这一个实现。
+    # 这里绑真方法而不是打桩，免得测试通过而被测的那条路已经换掉。
+    fake._start_singularity_reason = (
+        lambda kin: module.WholeTaskSmcRosRunner._start_singularity_reason(
+            fake, kin))
+    return fake, log
 
 
 def _kin(position, rotation=None, sigma_min=0.0425):

@@ -5,6 +5,9 @@ import numpy as np
 __all__ = ["JointVelocityFilter"]
 
 
+# 关节速度一阶低通（指数滑动平均），逐关节独立，截止频率 f_c ≤ 0 时该关节直通：
+#   τ = 1/(2π·f_c),  α = dt/(τ + dt),  y_k = y_{k−1} + α·(u_k − y_{k−1})
+#   相位滞后 φ(f) = arctan(f / f_c)
 class JointVelocityFilter:
 
     def __init__(self, cutoff_hz, n_joints: int) -> None:

@@ -8,6 +8,9 @@ from .pose_error import PoseState
 from .quaternion_math import rotation_to_quat
 
 
+# 五次插值多项式及其对 u 的一、二阶导：
+#   s(u) = 10u³ − 15u⁴ + 6u⁵
+# 满足 s(0)=0、s(1)=1，且两端一阶、二阶导都为零 —— 起停时速度与加速度均为零。
 def quintic(u: float) -> tuple[float, float, float]:
     u = float(min(max(u, 0.0), 1.0))
     s = 10.0 * u ** 3 - 15.0 * u ** 4 + 6.0 * u ** 5
@@ -16,6 +19,8 @@ def quintic(u: float) -> tuple[float, float, float]:
     return s, ds, dds
 
 
+# SO(3) 对数映射，经四元数中转：q = (w, v)，取 w ≥ 0 的短程分支，
+#   ω = 2·atan2(‖v‖, w)/‖v‖ · v
 def rotation_log(R: np.ndarray) -> np.ndarray:
     q = rotation_to_quat(np.asarray(R, dtype=float).reshape(3, 3))
     w = float(q[0])
@@ -29,6 +34,7 @@ def rotation_log(R: np.ndarray) -> np.ndarray:
     return (2.0 * np.arctan2(n, w) / n) * v
 
 
+# SO(3) 指数映射（Rodrigues）：R = I + sinθ·[n]× + (1 − cosθ)·[n]×²,  n = φ/θ
 def rotation_exp(phi: np.ndarray) -> np.ndarray:
     phi = np.asarray(phi, dtype=float).reshape(3)
     theta = float(np.linalg.norm(phi))
@@ -52,9 +58,16 @@ class ApproachPlan:
     peak_linear_accel: float
 
 
+# 就位段的任务空间参考轨迹：从起点位姿到目标位姿走一条五次时间律的测地线。
+#   p(t) = p0 + s·Δp,                Δp = p1 − p0
+#   R(t) = R0·exp(s·Δr),             Δr = log(R0ᵀ·R1)   （在起点体系下的转轴）
+#   v = ṡ·Δp,   ω = ṡ·(R0·Δr),      a = s̈·Δp,   α = s̈·(R0·Δr)
+# 姿态走单轴等速转，故角速度方向恒定，可直接用同一个 ṡ 缩放。
 class TaskSpaceApproach:
 
-
+    # s'(u) 与 s''(u) 的极值，用于事前估算峰值速度/加速度：
+    #   max s'  = s'(1/2)          = 15/8 = 1.875
+    #   max s'' = s''(1/2 − √3/6)  = 10/√3
     PEAK_DS = 1.875
     PEAK_DDS = 10.0 / np.sqrt(3.0)
 

@@ -1,3 +1,16 @@
+"""关节等效惯量辨识（实物）。
+
+在保持位姿上给单个关节叠加一个超过静摩擦的力矩脉冲，量测由此产生的角加速度：
+
+    q̈ = (τ_extra − f) / M
+
+对若干个脉冲幅值做一元线性回归 q̈ = a·τ_extra + b，得到
+
+    M = 1/a,        隐含摩擦 f = −b/a
+
+隐含摩擦与实测静摩擦一致，即说明上面这个模型成立、M 可信。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -160,6 +173,7 @@ class InertiaId(Node):
         qq = np.array([s[1] for s in samples])
         vv = np.array([s[2] for s in samples])
 
+        # 脉冲段内按匀加速拟合速度 v(t) = q̈·t + v0，最小二乘取斜率作为 q̈
         A = np.column_stack([t, np.ones_like(t)])
         coef, *_ = np.linalg.lstsq(A, vv, rcond=None)
         resid = vv - A @ coef
@@ -193,6 +207,8 @@ def identify_joint(node: InertiaId, joint: int, q_hold) -> dict:
     if len(recs) < 3:
         return dict(joint=joint, ok=False, reason=f"only {len(recs)} usable pulses",
                     records=recs)
+    # 回归 q̈ = a·τ_extra + b，取 M = 1/a、隐含摩擦 = −b/a；
+    # se 是斜率的标准误，经 |se/a²| 传播成 M 的标准误。
     te = np.array([r['tau_extra'] for r in recs])
     qdd = np.array([r['qdd'] for r in recs])
     A = np.column_stack([te, np.ones_like(te)])

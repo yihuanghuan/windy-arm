@@ -12,8 +12,10 @@ __all__ = [
 ]
 
 
-DEFAULT_MAX_VELOCITY_CORRECTION = (0.20, 0.20, 0.20, 0.50, 0.50, 0.50)
-DEFAULT_MAX_POSITION_CORRECTION = 0.005
+# 两路修正的限幅缺省值。大→敢补更多、模型不准时把错误直接灌进控制器；
+# 小→补偿被截断，连续触顶还会触发整体退回原始反馈。
+DEFAULT_MAX_VELOCITY_CORRECTION = (0.20, 0.20, 0.20, 0.50, 0.50, 0.50)  # Δq̇ 上限 (rad/s)，大臂 0.20、腕部 0.50
+DEFAULT_MAX_POSITION_CORRECTION = 0.005                                 # Δq 上限 (rad)
 
 
 class SmithPredictorConfig:
@@ -28,13 +30,13 @@ class SmithPredictorConfig:
         n_joints: int,
         *,
         enabled: bool = False,
-        velocity_horizon_sec: float = 0.025,
-        position_horizon_sec: float = 0.010,
-        beta_velocity: float = 0.0,
-        beta_position: float = 0.0,
+        velocity_horizon_sec: float = 0.025,  # 速度路补偿时域 H_v (s)，应等于速度路名义延时。大→补过头、超前振荡；小→补不足、仍滞后
+        position_horizon_sec: float = 0.010,  # 位置路补偿时域 H_p (s)，同理对应位置路延时
+        beta_velocity: float = 0.0,   # 速度路补偿力度 β_v ∈ [0,1]，1 = 按名义延时全补。大→更接近真实当前速度、模型错时放大误差；小→退化成不补
+        beta_position: float = 0.0,   # 位置路补偿力度 β_p ∈ [0,1]，同上
         max_velocity_correction=DEFAULT_MAX_VELOCITY_CORRECTION,
         max_position_correction=DEFAULT_MAX_POSITION_CORRECTION,
-        fallback_after_clamped_ticks: int = 10,
+        fallback_after_clamped_ticks: int = 10,  # 连续触顶多少拍就整体退回原始反馈。大→容忍偶发触顶但模型跑偏时纠正慢；小→轻微触顶就放弃预测
     ) -> None:
         n = int(n_joints)
         if n <= 0:
@@ -99,6 +101,14 @@ class SmithPredictorConfig:
                self.fallback_after_clamped_ticks))
 
 
+# Smith 预测器：反馈链路有传输与滤波延时，读回的 (q, q̇) 是过去时刻的状态。
+# 用已经发出、但反馈里还没体现的指令加速度往前推，把状态补到当前时刻。
+# 缓冲最近若干拍的 (q̈_cmd, dt)，从最新一拍往回累加到给定时域 H：
+#   Δv(H) = Σ q̈·Δt,   Δx(H) = Σ (Δv·Δt + ½·q̈·Δt²)
+#   q̇̂ = q̇ + β_v·Δv(H_v)
+#   q̂  = q + β_p·(H_p·q̇̂ + Δx(H_p))
+# β ∈ [0,1] 是补偿力度（1 为按名义延时全补）。两路修正各自限幅；连续
+# fallback_after_clamped_ticks 拍触顶说明模型与实际已经对不上，直接退回原始反馈。
 class JointStatePredictor:
 
     def __init__(self, config: SmithPredictorConfig) -> None:

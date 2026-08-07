@@ -1,0 +1,63 @@
+# Vicon 刚体 -> 机器人坐标系的实测外参（模型 D：FK 用原始编码器角 + 末端标记杠杆臂）。
+# 采集工具 task_space_smc/hw/vicon_base_extrinsic_calibrate.py，
+# 原始数据 task_space_smc/hw/data/vicon_base_extrinsic/base_extrinsic_20260805_010427.json。
+#
+# 本文件的 FK 角度约定为 q_fk = q_encoder，不加 arm6_calibration.yaml 的 zero_offset_rad；
+# zero_offset_rad 只用于重力前馈那一路。
+
+# 标定溯源记录，不被任何代码读取。三项残差同源，都是第 i 个静止位姿上末端标记位置的预测误差
+#   e_i = ‖ V_p_meas,i − V_T_B · ( B_p_link6(q_i) + B_R_link6(q_i)·t_ee ) ‖
+metadata:
+  date: "2026-08-05"                  # 采集日期。外参与这一天的安装状态绑定
+  model: "D — raw encoder angles + end-marker lever arm"  # A~E 五个候选模型里选中的那个
+  samples: 16                         # 参与拟合的静止位姿数 N
+  position_residual_rms_mm: 1.77      # √(Σe_i²/N)，mm。拟合的典型位置精度
+  position_residual_max_mm: 2.75      # max e_i，mm。最差的那个位姿
+  leave_one_out_rms_mm: 2.15          # 留一交叉验证 RMS，mm。比上面 RMS 大出的部分就是过拟合量
+  urdf: "arm6.urdf"                   # 拟合所用的运动学模型；换 URDF 则本文件外参失效，必须重测
+  ee_frame: "link6"                   # 上式里 B_p_link6 / B_R_link6 的末端帧
+  vicon_up_axis: "+y"                 # Vicon 世界系中重力反方向的轴，与 caveats 第 1 条同一套约定
+
+# ---------------------------------------------------------------------------
+# 基座外参：arm_base 刚体 -> base_link
+# ---------------------------------------------------------------------------
+# 语义：把 base_link 系里的点变换到 arm_base 刚体系。
+#   p_arm_base = R * p_base_link + t
+# 桥按 V_T_B = V_T_Rb · Rb_T_B 合成，即
+#   p_wb = p_vr + R_vr @ t_rb ; q_wb = q_vr * q_rb
+# 与 vicon_floating_base_bridge.py 的 _transform_pose 一致。
+#
+# 旋转量 85.3°：不加这一项，zero_on_first_pose 会把【标记簇】的坐标系当成
+# 控制器 world，世界系会整整歪 85°。
+arm_base_from_base_link:
+  translation_m: [0.019621, -0.026358, -0.003764]      # 上式的 t (m)，表达在 arm_base 刚体系。|t| = 33.1 mm
+  # 上式的 R，单位四元数 (x,y,z,w)。这是唯一进代码的旋转表示，缺它即硬失败、不退化成单位阵
+  quaternion_xyzw: [-0.668951, 0.035188, 0.103549, 0.735217]
+  # 同一个 R 的矩阵形式，代码不读，仅供人核对；改了四元数必须同步改这里，否则两者会悄悄分叉
+  rotation_matrix:
+    - [0.976079, -0.199340, -0.086798]
+    - [0.105184, 0.083563, 0.990936]
+    - [-0.190280, -0.976361, 0.102532]
+
+# ---------------------------------------------------------------------------
+# 末端标记杠杆臂：link6 -> arm_ee 刚体原点
+# ---------------------------------------------------------------------------
+# 与基座外参无关，两个用处：
+#   ① 验收与残差分析：V_p_arm_ee = V_T_B · ( B_p_link6(q) + B_R_link6(q)·t )
+#   ② apply_control_point_offset: true 时把控制点从 link6 原点搬到标记簇原点（r = R_fk·t）：
+#        p' = p + r ; v' = v + ω×r ; J_p' = J_p − [r]×·J_w ; b_p' = b_p + b_w×r + ω×(ω×r)
+arm_ee_from_link6:
+  # 上式的 t (m)，表达在 link6 局部系。只给位置不给旋转，姿态不可用的原因见 caveats 第 2 条
+  translation_m: [0.0119, 0.0047, 0.0125]              # |t| = 17.8 mm
+
+# ---------------------------------------------------------------------------
+# 已知的未决项
+# ---------------------------------------------------------------------------
+caveats:
+  - "拟合出的 base_link +z 与 Vicon +y 差 6.49°。若基座实际是水平安装的，
+     这 6.5° 就是残留的模型误差；先确认实物基座是否真有倾角。"
+  - "arm_ee 刚体的姿态不可直接使用：它相对 link6 绕工具轴(link6 的 +x)滚转了
+     114.4°，而 joint6 的零位偏差恰是 arm6_calibration.yaml 里唯一没标定的量，
+     两者数学上不可分离。本文件只用 arm_ee 的【位置】。"
+  - "单条圆弧无法把关节零位与外参分开。要定案需在工作空间另一个区域再采一段
+     形状不同的弧，用同一模型拟合后比对；两次之差就是真实不确定度。"

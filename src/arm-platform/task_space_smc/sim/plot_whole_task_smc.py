@@ -1,3 +1,9 @@
+"""把运行器输出的逐拍 CSV 画成报告图。
+
+读 CSV 与 summary JSON，输出误差时间曲线、力矩曲线与末端画迹。
+画迹按 pen_down 与 stroke_id 切段，抬笔处断开，不把两笔连成一条线。
+"""
+
 from __future__ import annotations
 
 import argparse

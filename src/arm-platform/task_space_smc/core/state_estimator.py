@@ -89,6 +89,14 @@ def _per_joint_float(value, n, name, minimum=None):
     return arr
 
 
+# 关节状态估计器：把电机反馈的 (q, q̇) 加工成控制器实际使用的状态。三段串联：
+#   1. LESO 更新，得到位置估计 z1、速度估计 z2、总扰动估计 z3（见 leso.py）
+#   2. 逐关节挑速度来源 —— motor 直通电机自报值；finite_difference 取位置后向差分
+#      q̇ = (q_k − q_{k−1})/dt；leso 取观测器的 z2
+#   3. Smith 预测，用已发出的指令加速度把状态推到当前时刻，补反馈链路延时
+#      （见 smith_predictor.py）
+# 位置默认取量测值，position_source = leso 时改用 z1。
+# 反馈含 NaN/Inf 时按 hold_on_invalid 保持上一拍输出，不把非有限值传给控制律。
 class JointStateEstimator:
 
     def __init__(
@@ -230,6 +238,8 @@ class JointStateEstimator:
         if self.predict_active and self.predict_source == "commanded_acceleration":
             self.predictor.push_command(a, d)
 
+    # LESO 的模型输入 u 要与「这条指令真正体现成关节加速度」的时刻对齐，否则 b0·u
+    # 加在了错误的时刻上。从指令缓冲末尾往回累计时长，取首次凑满 input_delay_sec 的那一拍。
     def _aligned_command(self):
         if not self._cmd_buf:
             return None
@@ -345,6 +355,11 @@ class EstimatorPlan:
         return self.estimator.enabled
 
 
+# 从 estimator 配置段构造估计器，同时把配置本身的隐患整理成 messages/warnings 返回，
+# 交给调用方在启动时打印。关键换算与约束：
+#   ω_o = 2π·bandwidth_hz，只有选了 leso 的关节非零，其余置零即关闭观测器；
+#   b0 仅在 input = commanded_acceleration 时生效，否则强制为 0（LESO 退化成纯微分器）；
+#   predict_*_sec ≤ 0 时把对应的 β 清零，杜绝「配了时域没配 β」的半开状态。
 def resolve_estimator(estimator_cfg, n_joints, control_period,
                       mode: str = "simulation",
                       feedback_delay_enabled: bool | None = None) -> EstimatorPlan:

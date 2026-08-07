@@ -1,3 +1,24 @@
+"""力矩通道标定（实物）：测各关节的静摩擦挣脱力矩与力矩指令标度。
+
+两步都在位置保持（kp = HOLD_P）之上叠加单关节力矩前馈 tau_ff 来做：
+
+1. 挣脱力矩（find_breakaway）
+   把 tau_ff 按 BREAK_INCR 逐级抬高，直到该关节位移超过 BREAK_MOVED。
+   此时的 tau_ff 即静摩擦力矩 f。正负两个方向各测一次。
+
+2. 力矩标度（measure_scale）
+   在挣脱值以上线性扫若干点。位置环稳态满足 kp·Δq = alpha·tau_ff，故对
+   (tau_ff, q) 做一元线性回归，斜率乘 kp 就是标度：
+
+       alpha = kp · dq/d(tau_ff)
+
+   alpha 是「实际输出力矩 / 指令力矩」，理想为 1；偏离说明力矩常数、
+   减速比或传动效率的取值不对。
+
+安全侧：位移超过 2·tau_ff/kp + 0.05 rad 即判为跑飞（该式是位置环在此前馈下
+应有的稳态位移的两倍加余量），越过桌面几何同样立即停。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -44,6 +65,8 @@ SETTLE_WIN = 0.6
 PUBLISH_RATE = 100.0
 
 
+# 力矩阶梯：0 → +base 各级 → 回 0 → −base 各级 → 回 0，正反对称往返一圈，
+# 用同一组幅值上下各走一遍才能看出迟滞。
 def ladder_levels(joint: int) -> list[float]:
     base = LADDER_DM if joint <= 3 else LADDER_RS
 
@@ -373,6 +396,8 @@ def find_breakaway(node: Probe, joint: int, sign: int) -> dict:
             if node.q is None:
                 continue
 
+            # 位置环在 tau_ff = c 下的稳态位移是 c/kp，取两倍再加 0.05 rad 余量
+            # 作为自限位；超过它说明关节已经跑飞，不是正常的稳态偏移。
             allow = 2.0 * c / kp + 0.05
             if abs(node.q[idx] - q0) > allow:
                 node.run_level(posture, [0.0] * N_ARM, 0.5)
@@ -421,6 +446,8 @@ def measure_scale(node: Probe, joint: int, t_break: float, sign: int,
     node.run_level(posture, [0.0] * N_ARM, 1.0)
     if len(pts) < 3:
         return dict(ok=False, reason=f"only {len(pts)} usable points")
+    # 回归 q = (alpha/kp)·tau_ff + b，斜率乘 kp 得标度 alpha；
+    # se_slope 是斜率的标准误，同样乘 kp 传播成 alpha 的标准误。
     cs = np.array([p[0] for p in pts])
     qs = np.array([p[1] for p in pts])
     A = np.column_stack([cs, np.ones_like(cs)])

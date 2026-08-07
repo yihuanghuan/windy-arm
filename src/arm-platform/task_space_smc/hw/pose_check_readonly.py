@@ -1,3 +1,12 @@
+"""只读读取当前关节位形（实物）。
+
+直接监听电机串口，按 motor_config / arm_config 里的坐标系约定把原始编码器读数
+换算成右手系角度：coord_system 不是 right_hand 的关节取符号为 −1。
+
+本脚本【只读】：串口对象上所有写方法都被 _forbid_writes 换成抛异常，任何试图下发
+的代码路径都会当场炸掉而不是悄悄发出去。用于在不惊动控制器的情况下核对臂的位形。
+"""
+
 from __future__ import annotations
 
 import argparse

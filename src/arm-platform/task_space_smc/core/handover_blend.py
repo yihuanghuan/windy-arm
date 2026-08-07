@@ -10,6 +10,8 @@ __all__ = [
 ]
 
 
+# 轨迹时钟。freeze 时在混合窗 [0, T) 内把时钟钉在 0，窗结束后减去 T，
+# 使轨迹在偏差消完之后才真正从头开始走。
 def trajectory_clock(t: float, blend_sec: float, freeze: bool) -> float:
     t = float(t)
     if not freeze:
@@ -23,6 +25,10 @@ def trajectory_clock(t: float, blend_sec: float, freeze: bool) -> float:
     return t - T
 
 
+# 位置偏差的衰减权重，用五次 smoothstep 的补：u = τ/T
+#   s(u) = 10u³ − 15u⁴ + 6u⁵,   返回 (1 − s, −ṡ, −s̈)  （对 τ 求导，故除 T、T²）
+# 取五次是因为 s 在 u=0 与 u=1 两端的一阶、二阶导都为零，位置、速度、加速度
+# 三条曲线在混合窗的首尾都连续，不会在切换瞬间甩出加速度阶跃。
 def smoothstep_decay(tau: float, duration: float) -> tuple[float, float, float]:
     T = float(duration)
     if T <= 0.0:
@@ -38,6 +44,10 @@ def smoothstep_decay(tau: float, duration: float) -> tuple[float, float, float]:
     return 1.0 - rise, -rise_d, -rise_dd
 
 
+# 速度偏差的衰减基函数，u = τ/T：
+#   b(τ) = (u − 6u³ + 8u⁴ − 3u⁵)·T,   返回 (b, ḃ, b̈)
+# 端点条件 b(0)=0、ḃ(0)=1、b(T)=ḃ(T)=b̈(T)=0：起始时刻正好抵消掉整个速度偏差，
+# 窗末位置、速度、加速度三项贡献同时归零。
 def velocity_decay(tau: float, duration: float) -> tuple[float, float, float]:
     T = float(duration)
     if T <= 0.0:
@@ -59,6 +69,10 @@ def _hat(w: np.ndarray) -> np.ndarray:
                      [-w[1], w[0], 0.0]])
 
 
+# SO(3) 对数映射，取旋转向量 ω = θ·n：
+#   θ = arccos((tr R − 1)/2),  ω = θ/(2 sinθ)·[R32−R23, R13−R31, R21−R12]
+# θ → 0 时上式 0/0，取极限退化为反对称部分的一半；
+# θ → π 时 sinθ → 0，改从 (R + I)/2 = n·nᵀ 取最大对角元开方定轴。
 def _log_so3(R: np.ndarray) -> np.ndarray:
     R = np.asarray(R, dtype=float).reshape(3, 3)
     cos = 0.5 * (np.trace(R) - 1.0)
@@ -83,6 +97,7 @@ def _log_so3(R: np.ndarray) -> np.ndarray:
         [R[2, 1] - R[1, 2], R[0, 2] - R[2, 0], R[1, 0] - R[0, 1]])
 
 
+# SO(3) 指数映射（Rodrigues）：R = I + sinθ·[n]× + (1 − cosθ)·[n]×²,  n = ω/θ
 def _exp_so3(w: np.ndarray) -> np.ndarray:
     w = np.asarray(w, dtype=float).reshape(3)
     theta = float(np.linalg.norm(w))
@@ -93,6 +108,9 @@ def _exp_so3(w: np.ndarray) -> np.ndarray:
             + (1.0 - np.cos(theta)) * (K @ K))
 
 
+# 把单位向量 s 转到 t 的最小旋转向量（绕轴自转不管）：
+#   θ = atan2(‖s × t‖, s·t),   n = (s × t)/‖s × t‖,   ω = θ·n
+# s 与 t 反平行时叉积为零、轴不唯一，任取一条与 s 垂直的轴转 π。
 def _minimal_rotvec(source: np.ndarray, target: np.ndarray) -> np.ndarray:
     s = np.asarray(source, dtype=float).reshape(3)
     t = np.asarray(target, dtype=float).reshape(3)
@@ -115,6 +133,13 @@ def _minimal_rotvec(source: np.ndarray, target: np.ndarray) -> np.ndarray:
     return np.arctan2(sin_theta, dot) * cross / sin_theta
 
 
+# 接管混合。切入轨迹跟踪的瞬间，实际位姿与参考轨迹之间存在阶跃偏差，直接跟随
+# 会甩出一个冲击。这里在接管时刻锁存偏差 Δp = p_act − p_ref、Δv、Δφ，再把它按
+# 上面两条权重在 T 秒内平滑抹掉，输出叠加到参考轨迹上：
+#   p = p_ref + s·Δp + b·Δv,   v = v_ref + ṡ·Δp + ḃ·Δv,   a = a_ref + s̈·Δp + b̈·Δv
+#   R = exp(s·Δφ)·R_ref
+#   ω = ṡ·Δφ + R_off·ω_ref
+#   ω̇ = s̈·Δφ + ṡ·(Δφ × R_off·ω_ref) + R_off·ω̇_ref    （最后一项来自 R_off 本身在转）
 class HandoverBlend:
 
     def __init__(self, duration_sec: float = 0.0) -> None:
@@ -200,11 +225,13 @@ class HandoverBlend:
                   + R_off @ wd)
         return p_out, R_out, v_out, w_out, a_out, wd_out
 
+    # 混合过程额外注入的最大加速度，用于事前判断会不会超力矩：
+    #   max|s̈| = (10√3/3)/T²  （s̈ 在 u = 1/2 ∓ √3/6 取极值）
+    #   max|b̈| = 3.9403/T     （b̈ 在 u ≈ 0.2427 取极值）
+    #   a_peak = max|s̈|·‖Δp‖ + max|b̈|·‖Δv‖
     def peak_extra_acceleration(self) -> float:
         if not self.enabled:
             return 0.0
-
-
         return (10.0 * np.sqrt(3.0) / 3.0
                 * float(np.linalg.norm(self.delta_position))
                 / (self.duration_sec ** 2)

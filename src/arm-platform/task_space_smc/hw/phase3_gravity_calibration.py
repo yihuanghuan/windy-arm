@@ -1,3 +1,18 @@
+"""重力模型标定（实物）：逐关节扫掠，解出零位偏置与一阶矩比例。
+
+单关节扫掠、其余关节锁死，实测力矩按 fk_gravity_verify.fit_sine 拟合成
+
+    tau(q) = A·sin(q − φ) + b
+
+与模型侧同样拟合的 (A_model, φ_model) 对比，得到两个标定量：
+
+    zero_offset  = −wrap(φ − φ_model)      编码器零位偏置
+    ratio        = A / A_model             一阶矩（质量×质心距）的比例修正
+
+零位偏置会反过来改变下一轮扫掠时模型算出的力矩，故迭代扫掠直到偏置变化小于
+tol_deg 为止。RATIO / STICTION 是前一阶段已标出的比例与静摩擦，扫掠时作为前馈使用。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -52,6 +67,8 @@ PUBLISH_RATE = 100.0
 DISPLACEMENT_ABORT = 0.15
 
 
+# 桌面余量：只看伸到桌面上方（x < DESK_EDGE_X）的连杆点，取它们离
+# 「桌面 + 安全间隙」最近的垂直距离，负值即已越界。
 def desk_margin(model: GravityModel, q: np.ndarray) -> float:
     m = np.inf
     for p in model.link_points(np.asarray(q, float)):
@@ -109,6 +126,7 @@ class Calibrator(Node):
         return self.q is not None and self.tau is not None
 
 
+    # 重力前馈 tau_ff = ratio ⊙ g(q)，ratio 是已标定的一阶矩比例修正
     def feedforward(self, q: np.ndarray) -> np.ndarray:
         g = self.model.gravity(np.asarray(q, float))
         return np.array([g[i] * RATIO[i + 1] for i in range(N_ARM)])
@@ -270,10 +288,11 @@ def run_sweep(node: Calibrator, joint: int, offsets: dict,
         return dict(joint=joint, ok=False, reason=f"only {len(rows)} points",
                     rows=rows)
 
+    # 拟合都用【实测】角度而不是指令角度：粘滑使实际停位与指令差一个 sag，
+    # 用指令角度会把这段差异算进相位，直接污染零位偏置。
     q_meas = np.array([r['q_meas'] for r in rows])
     tau = np.array([r['tau'] for r in rows])
     fit = fit_sine(q_meas, tau)
-
 
     ref = model_reference_measured(
         node.model, joint,

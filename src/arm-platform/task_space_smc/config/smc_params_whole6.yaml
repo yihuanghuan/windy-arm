@@ -1,114 +1,116 @@
-urdf: arm6
-
-ee_frame: link6
-
-control_rate_hz: 200.0
+# 6DOF 仿真配置（arm6，200 Hz）。limits 取实机额定的 2 倍，力矩变化率取 10 倍。
+# 位置通道：s_p = ė_p + Λ_p·e_p，a_cmd = a_d + Λ_p·ė_p + K_p·s_p + η_p·tanh(s_p/φ_p)
+urdf: arm6                  # 运动学/动力学模型来源，决定 M(q)、h(q,q̇)、J(q) 与关节限位
+ee_frame: link6             # 被控末端帧；换到更外的帧力臂变长，基座扰动经 ω×r 放大
+control_rate_hz: 200.0      # 控制频率 (Hz)，dt = 1/f。大→可上更高增益；小→(k+η/φ)·dt 逼近 2 会抖
 
 task:
-  characteristic_length: 0.2
+  characteristic_length: 0.2   # 姿态折成长度的特征长度 L (m)，scale = diag(1,1,1,L,L,L)。大→姿态更被优先；小→位置更被优先
 
   # `link7` 工具段移除后，将五个工作站沿各自工具轴回退 91 mm，
   # 使实际末端 `link6` 保持在原工作空间的可达范围内。
-  reference_offset_local_m: [-0.084, 0.0, 0.035]
+  reference_offset_local_m: [-0.084, 0.0, 0.035]   # 参考位姿在末端系下的偏移 (m)；null 表示不偏移
 
-  orientation_mode: pen_axis
-
-  pen_axis_local: [1.0, 0.0, 0.0]
+  orientation_mode: pen_axis        # 放开绕笔轴自转，6 维任务降成 5 维，多出 1 维零空间给回中/限位
+  pen_axis_local: [1.0, 0.0, 0.0]   # 末端系下的笔轴，P = I − a·aᵀ 投影掉绕它的自转
 
   limit_avoidance:
-    gain: 0.10
-    activate_rad: 0.5
+    gain: 0.10               # 限位排斥强度 (rad/s²)，q̈_null += gain·∇limit。大→更早被推离限位、挤占回中作用；小→易贴限位
+    activate_rad: 0.5        # 排斥项起作用的限位距离 (rad)。大→更早介入、可用行程变窄；小→来不及刹住
 
 position:
-  lambda: [72.0, 72.0, 72.0]
-  k: [102.0, 102.0, 102.0]
-  eta: [1.08, 1.08, 1.08]
-  phi: [0.003, 0.003, 0.003]
+  # 边界层内闭环为 (s+Λ_p)(s+K_p+η_p/φ_p) = 0，稳态误差 e_ss = d / [Λ_p·(K_p + η_p/φ_p)]
+  lambda: [72.0, 72.0, 72.0]      # 滑模面斜率 Λ_p (1/s)。大→收敛快但需更大加速度、易饱和；小→变软
+  k: [102.0, 102.0, 102.0]        # 趋近律线性项 K_p (1/s)。大→稳态误差小、抗扰强；小→趋近慢
+  eta: [1.08, 1.08, 1.08]         # 切换项幅值 η_p (m/s²)，能压住的扰动上限。大→抗扰强但易抖；小→压不住摩擦
+  phi: [0.003, 0.003, 0.003]      # 边界层宽度 φ_p (m/s)，tanh 斜率 1/φ_p。大→抖振小、误差带宽；小→接近 sign()、抖
 
 orientation:
-  lambda: [3.6, 3.6, 3.6]
-  k: [6.0, 6.0, 6.0]
-  eta: [0.018, 0.018, 0.018]
-  phi: [0.02, 0.02, 0.02]
+  # e_R = log(q_d ⊗ q⁻¹) (rad)，量纲是角度，数值不能与 position 段直接比较
+  lambda: [3.6, 3.6, 3.6]         # 姿态滑模面斜率 Λ_R (1/s)
+  k: [6.0, 6.0, 6.0]              # 姿态趋近律线性项 K_R (1/s)
+  eta: [0.018, 0.018, 0.018]      # 姿态切换项幅值 η_R (rad/s²)
+  phi: [0.02, 0.02, 0.02]         # 姿态边界层宽度 φ_R (rad/s)
 
 nullspace:
+  # q̈_null = −kp·(q − q_nom) − kd·q̇，经 N = I − J̄₀J 投影，不影响任务
   enabled: true
+  q_nominal: [-0.8351, -0.5495, -0.6212, -0.2422, 0.0380, 1.0538]   # 零空间目标位形 (rad)
+  kp: [2.0, 2.0, 2.0, 2.0, 2.0, 2.0]   # 回中刚度 (1/s²)。大→更快回标称位形；小→位形随机漂移
+  kd: [3.0, 3.0, 3.0, 3.0, 3.0, 3.0]   # 零空间阻尼 (1/s)。大→自运动不振荡；小→零空间内晃
 
-  q_nominal: [-0.8351, -0.5495, -0.6212, -0.2422, 0.0380, 1.0538]
-  kp: [2.0, 2.0, 2.0, 2.0, 2.0, 2.0]
-  kd: [3.0, 3.0, 3.0, 3.0, 3.0, 3.0]
-
-initial_pose_rad: [-0.0467, 1.3052, -1.0927, 0.0028, 0.0014, 0.0022]
+initial_pose_rad: [-0.0467, 1.3052, -1.0927, 0.0028, 0.0014, 0.0022]   # 就位起点位形 (rad)
 
 singularity:
-  sigma_warn: 0.04
-  sigma_critical: 0.012
-  damping_min: 0.00005
-  damping_max: 0.03
+  # J̄ = M⁻¹Jᵀ(J M⁻¹ Jᵀ + λ²I)⁻¹，阻尼 λ 按 σ_min 在 [critical, warn] 线性插值
+  sigma_warn: 0.04          # 开始加阻尼的最小奇异值阈值。大→更早保守、精度更早让步；小→近奇异处力矩尖峰
+  sigma_critical: 0.012     # 阻尼打满的阈值。大→提前进入最大阻尼、末端变钝；小→留给尖峰的余地更大
+  damping_min: 0.00005      # 远离奇异时的阻尼 λ_min。大→常态就有跟踪偏差；小→数值条件变差
+  damping_max: 0.03         # 奇异处的阻尼 λ_max。大→安全但任务误差更大；小→压不住 1/σ 放大
 
 limits:
-
-  torque: [18.0, 18.0, 18.0, 3.2, 3.2, 3.2]
-  torque_rate: [15000.0, 15000.0, 15000.0, 5000.0, 5000.0, 3500.0]
-  current: [18.0, 18.0, 18.0, 3.2, 3.2, 3.2]
-
-  joint_velocity: [3.0, 3.0, 3.0, 5.0, 5.0, 5.0]
-
-  joint_brake_safety: 0.5
+  torque: [18.0, 18.0, 18.0, 3.2, 3.2, 3.2]                          # 力矩上限 (N·m)，仿真放宽到实机额定的 2 倍
+  torque_rate: [15000.0, 15000.0, 15000.0, 5000.0, 5000.0, 3500.0]   # 力矩变化率上限 (N·m/s)，仿真放宽 10 倍。大→响应快；小→平滑、跟不上突变
+  current: [18.0, 18.0, 18.0, 3.2, 3.2, 3.2]                         # 电流上限 (A)
+  joint_velocity: [3.0, 3.0, 3.0, 5.0, 5.0, 5.0]   # 关节速度包线 (rad/s)，折成加速度盒 q̈ ∈ [(v_lo−q̇)/dt, (v_hi−q̇)/dt]。大→动作快、撞限位时刹车距离长；小→安全但跟不上轨迹
+  joint_brake_safety: 0.5   # 制动可用力矩比例，a_brake = safety·τ_max/M_ii，限位前速度上限 v ≤ √(2·a_brake·余量)。大→敢更快逼近限位；小→提早减速、行程利用率低
 
 safety:
-  command_timeout_sec: 0.03
-  joint_state_timeout_sec: 0.1
-  base_state_timeout_sec: 0.1
+  command_timeout_sec: 0.03        # 指令超时 (s)，超过则力矩变化率基准清零
+  joint_state_timeout_sec: 0.1     # 关节反馈陈旧阈值 (s)，超时输出零力矩。大→拿旧状态算力矩；小→抖动就停发
+  base_state_timeout_sec: 0.1      # 基座状态陈旧阈值 (s)
 
 approach:
-  initial_joint_offset_rad: [0.25, -0.20, 0.20, 0.25, -0.20, 0.15]
-  kp: [60.0, 60.0, 60.0, 50.0, 50.0, 40.0]
-  kd: [16.0, 16.0, 16.0, 14.0, 14.0, 12.0]
+  initial_joint_offset_rad: [0.25, -0.20, 0.20, 0.25, -0.20, 0.15]   # 就位起点相对轨迹起点的偏移 (rad)，制造一段真实的就位过程
+  kp: [60.0, 60.0, 60.0, 50.0, 50.0, 40.0]     # 就位段关节 PD 刚度 (1/s²)。大→跟随紧、易过冲；小→位置误差大
+  kd: [16.0, 16.0, 16.0, 14.0, 14.0, 12.0]     # 就位段阻尼 (1/s)，ζ = kd/(2√(kp·J))。大→不过冲；小→甩
 
+# 仿真扰动注入：基座估计误差、负载、摩擦、齿隙、电机与阵风
 simulation_injection:
-  enabled: false
-  seed: 20260730
+  enabled: false            # 总开关
+  seed: 20260730            # 随机种子，固定它才能复现同一组噪声
+  # 基座状态估计器的误差模型：动捕不是理想传感器
   base_estimator:
-    delay_sec: 0.020
-    position_noise_std_m: 0.0003
-    attitude_noise_std_deg: 0.03
-    linear_velocity_noise_std_m_s: 0.004
-    angular_velocity_noise_std_rad_s: 0.002
-    linear_acceleration_noise_std_m_s2: 0.04
-    angular_acceleration_noise_std_rad_s2: 0.015
-  translation_amplitude_m: [0.01, 0.008, 0.006]
-  translation_frequency_hz: [0.5, 0.7, 0.9]
-  translation_phase_rad: [0.0, 0.6, 1.2]
-  rpy_amplitude_deg: [3.0, 2.5, 2.0]
-  rpy_frequency_hz: [0.45, 0.65, 0.85]
-  rpy_phase_rad: [0.2, 1.0, 1.6]
+    delay_sec: 0.020                          # 基座状态延时 (s)。大→控制器看到的基座更旧、补偿更错；小→过于乐观
+    position_noise_std_m: 0.0003              # 基座位置噪声标准差 (m)
+    attitude_noise_std_deg: 0.03              # 基座姿态噪声标准差 (deg)
+    linear_velocity_noise_std_m_s: 0.004      # 基座线速度噪声 (m/s)
+    angular_velocity_noise_std_rad_s: 0.002   # 基座角速度噪声 (rad/s)，经杠杆 ω×r 放大到末端
+    linear_acceleration_noise_std_m_s2: 0.04  # 基座线加速度噪声 (m/s²)，直接进偏置加速度 b6
+    angular_acceleration_noise_std_rad_s2: 0.015  # 基座角加速度噪声 (rad/s²)，经 α×r 进 b6
+  # 基座运动：三轴独立正弦 x(t) = A·sin(2πf·t + φ)
+  translation_amplitude_m: [0.01, 0.008, 0.006]   # 平移幅值 A (m)。大→基座扰动强、任务更难；小→接近固定基座
+  translation_frequency_hz: [0.5, 0.7, 0.9]       # 平移频率 f (Hz)。大→加速度按 f² 增长，力矩需求陡增；小→准静态
+  translation_phase_rad: [0.0, 0.6, 1.2]          # 平移相位 φ (rad)，三轴错开才不是一条直线运动
+  rpy_amplitude_deg: [3.0, 2.5, 2.0]              # 姿态幅值 (deg)。大→末端经杠杆臂被甩得更远
+  rpy_frequency_hz: [0.45, 0.65, 0.85]            # 姿态频率 (Hz)，角加速度同样按 f² 增长
+  rpy_phase_rad: [0.2, 1.0, 1.6]                  # 姿态相位 (rad)
   payload:
-    mass_error_kg: 0.08
-    gravity_w_m_s2: [0.0, 0.0, -9.81]
+    mass_error_kg: 0.08                     # 末端负载的建模误差 (kg)，表现为控制器算不出的恒定力矩偏差。大→稳态误差大、更考验切换项 η
+    gravity_w_m_s2: [0.0, 0.0, -9.81]       # 世界系重力向量 (m/s²)
   friction:
-    viscous_nm_per_rad_s: [0.08, 0.08, 0.06, 0.045, 0.035, 0.025]
-
-    coulomb_nm: [0.725, 1.775, 0.625, 0.125, 0.100, 0.100]
-    stribeck_velocity_rad_s: 0.03
+    # 关节摩擦：τ_f = viscous·q̇ + coulomb·sign(q̇)，零速附近按 stribeck 速度过渡
+    viscous_nm_per_rad_s: [0.08, 0.08, 0.06, 0.045, 0.035, 0.025]   # 粘性系数 (N·m/(rad/s))。大→高速阻力大、等效增加阻尼
+    coulomb_nm: [0.725, 1.775, 0.625, 0.125, 0.100, 0.100]          # 库仑摩擦 (N·m)，取本机实测静摩擦。大→零速死区宽、更容易卡住
+    stribeck_velocity_rad_s: 0.03           # 过渡速度尺度 (rad/s)。大→过零平缓；小→接近硬切换，零速处易极限环
   backlash:
-    torque_deadband_nm: [0.05, 0.05, 0.04, 0.035, 0.025, 0.02]
+    torque_deadband_nm: [0.05, 0.05, 0.04, 0.035, 0.025, 0.02]      # 齿隙等效力矩死区 (N·m)。大→小力矩指令完全不起作用、微调失效
   motor:
-    drive_delay_sec: 0.012
-    torque_gain: [0.96, 1.04, 0.98, 1.03, 0.97, 1.02]
-    torque_bias_nm: [0.02, -0.02, 0.015, -0.01, 0.008, -0.006]
-    torque_noise_std_nm: [0.025, 0.025, 0.02, 0.015, 0.012, 0.01]
-    torque_ripple_amplitude_nm: [0.035, 0.035, 0.025, 0.02, 0.015, 0.012]
-    torque_ripple_frequency_hz: [12.0, 14.0, 11.0, 15.0, 13.0, 17.0]
-    torque_ripple_phase_rad: [0.0, 0.7, 1.3, 2.1, 2.8, 3.4]
+    drive_delay_sec: 0.012                  # 力矩指令到实际输出的延时 (s)。大→相位裕度被吃掉，同样增益更易失稳
+    torque_gain: [0.96, 1.04, 0.98, 1.03, 0.97, 1.02]               # 力矩标度误差（实际/指令）。偏离 1 越多→前馈越不准
+    torque_bias_nm: [0.02, -0.02, 0.015, -0.01, 0.008, -0.006]      # 力矩零漂 (N·m)，恒定偏置，直接转成稳态误差
+    torque_noise_std_nm: [0.025, 0.025, 0.02, 0.015, 0.012, 0.01]   # 力矩白噪声标准差 (N·m)
+    torque_ripple_amplitude_nm: [0.035, 0.035, 0.025, 0.02, 0.015, 0.012]  # 力矩纹波幅值 (N·m)，电机极对数引起的周期波动
+    torque_ripple_frequency_hz: [12.0, 14.0, 11.0, 15.0, 13.0, 17.0]       # 纹波频率 (Hz)。接近闭环带宽时最易激起共振
+    torque_ripple_phase_rad: [0.0, 0.7, 1.3, 2.1, 2.8, 3.4]                # 纹波相位 (rad)
   gust:
+    # 阵风：每 period_sec 来一次、持续 width_sec 的脉冲扰动，检验瞬态抗扰
     profile: gust
-    seed: 17
-    period_sec: 4.0
-    width_sec: 0.8
-    base_amplitude_m: 0.004
-    joint_torque_amplitude_nm: [0.18, 0.18, 0.14, 0.10, 0.08, 0.06]
-
+    seed: 17                                # 阵风的独立随机种子
+    period_sec: 4.0                         # 阵风间隔 (s)。小→扰动更频繁，系统来不及恢复
+    width_sec: 0.8                          # 单次阵风持续 (s)。大→更像持续外力；小→更像冲击
+    base_amplitude_m: 0.004                 # 阵风给基座的位移幅值 (m)
+    joint_torque_amplitude_nm: [0.18, 0.18, 0.14, 0.10, 0.08, 0.06]   # 阵风给各关节的力矩幅值 (N·m)。大→瞬态误差峰值大
 # 6DOF ROS 仿真入口的唯一场景选择表。它不是第二份配置文件：
 # task_space_smc_whole6_sim.launch.py 从这里取起点，并只在 simulation
 # mode 下叠加对应覆盖项。实物 launch 不读取这一段。
@@ -142,6 +144,41 @@ simulation_profiles:
       tracking:
         friction_feedforward:
           enabled: false
+
+  # hold：实物 Vicon 保持 demo（vicon_hold_demo.launch.py）的仿真干跑。
+  # 实物上基座由动捕给；这里改由 simulation_injection 的正弦 + 阵风驱动，
+  # 并保留基座估计器的噪声与延迟 —— 动捕不是理想传感器，干跑不该假装它是。
+  # 除基座之外的一切（起点位形、增益、限位）都与 hwtest 逐项相同。
+  hold:
+    initial_joint_positions_rad:
+      [-0.1280765898, 0.1642556210, -0.5104225615,
+       -1.3557324085, 0.4430858500, 0.9389441907]
+    controller_overrides:
+      task:
+        reference_offset_local_m: null
+        orientation_mode: full
+      nullspace:
+        q_nominal: track_start
+      initial_pose_rad: [-0.0635, 1.5558, -1.4086, -0.0002, 0.6938, 0.0033]
+      singularity:
+        sigma_warn: 0.03
+      limits:
+        torque: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6]
+        torque_rate: [1500.0, 1500.0, 1500.0, 500.0, 500.0, 350.0]
+        current: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6]
+        joint_velocity: null
+        joint_brake_safety: null
+      approach:
+        initial_joint_offset_rad: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      simulation:
+        transport_delay_sec: 0.0
+        velocity_extra_delay_sec: 0.0
+        position_quantum_rad: 0.0
+      tracking:
+        friction_feedforward:
+          enabled: false
+      simulation_injection:
+        enabled: true
 
   whole:
     initial_joint_positions_rad:

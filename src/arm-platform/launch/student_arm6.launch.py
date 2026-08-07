@@ -131,6 +131,14 @@ def generate_launch_description():
                 LaunchConfiguration('step_on_effort_command'),
                 value_type=bool),
             'command_timeout_sec': 1.0,
+            # 直驱力矩消息超时后的驱动兜底保位也叠加重力前馈。否则 joint2/3
+            # 会在任何控制器退出或 ROS 短暂抖动后仅靠 PD 下垂。
+            'gravity_hold_enabled': True,
+            'gravity_hold_zero_offset_rad': [
+                0.039576, -0.297745, -0.020218,
+                -0.192988, -0.111667, 0.0,
+            ],
+            'gravity_hold_torque_limit': [9.0, 9.0, 9.0, 1.6, 1.6, 1.6],
         }],
     )
 

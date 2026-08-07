@@ -1,3 +1,17 @@
+"""电机串口协议旁路抓包与伪板（实物调试）。
+
+在控制节点与电机板之间插一层转发，双向解析协议帧并统计各通道的指令与反馈，
+用来判断「指令到底有没有发出去、发的是什么、板子回了什么」。
+
+帧格式：HEAD(0xFE) | ADDR | CMD | LEN | PAYLOAD | SUM | ADD
+校验取 Fletcher-8：逐字节累加得 SUM，再把每一步的 SUM 累加得 ADD，
+两个校验字节都对才收帧，错了就丢弃并重新找帧头。ADDR 区分方向
+（0xAA 下行到板、0x55 上行到 PC），CMD 表见 DOWN_CMDS / UP_CMDS。
+
+三种运行模式：proxy 在真实串口上转发并抓包；fake_board 用伪终端假扮电机板，
+不接硬件也能验证上位机；selftest 只跑帧解析的自测用例。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -43,6 +57,8 @@ _DIR_DOWN = 0
 _DIR_UP = 1
 
 
+# Fletcher-8 校验：s 是逐字节累加和，a 是各步 s 的累加和，均取模 256。
+# 两个字节一起才能同时抓住「值错」和「顺序错」——只有 s 时字节交换检不出来。
 def checksum(body: bytes) -> tuple[int, int]:
     s = 0
     a = 0

@@ -46,7 +46,8 @@ EE_PERIOD_SEC = 4.0
 # default; the MPC node also exposes this as the ROS parameter
 # ``trajectory_shape``.
 SUPPORTED_EE_TRAJECTORIES = (
-    'circle', 'triangle', 'square', 'sine', 'windylab', 'whole', 'hwtest')
+    'circle', 'triangle', 'square', 'sine', 'windylab', 'whole', 'hwtest',
+    'hold')
 EE_TRAJECTORY_SHAPE = os.environ.get('MB_EE_SHAPE', 'circle').strip().lower()
 EE_DRAW_PLANE_Z = float(os.environ.get('MB_EE_DRAW_Z', EE_WORLD_CIRCLE_CENTER[2]))
 EE_PEN_LIFT_HEIGHT = float(os.environ.get('MB_EE_PEN_LIFT', 0.03))
@@ -213,6 +214,82 @@ def _hwtest_sample(t: float) -> EeTrajectorySample:
         position, True, int(math.floor(phase)), _HWTEST_ROTATION.copy())
 
 
+# ---------------------------------------------------------------------------
+# hold：基座浮动下的末端【世界系位姿保持】。【纯增量，不改动任何现有形状】
+# ---------------------------------------------------------------------------
+# 参考量与时间无关：位置、姿态都是常量，一阶二阶导恒为零。因此末端在世界系里
+# 的每一点偏差【全部】来自基座运动没补干净，没有轨迹跟踪误差混在里面 ——
+# 这正是动捕接入后最直接的验收场景。
+#
+# 目标位姿有两个来源，实机默认用第二个：
+#   1. 模块缺省 / MB_HOLD_POS 环境变量 —— 静态指定一个世界系目标点；
+#   2. set_hold_pose() —— 运行器在接管的第一拍用【实测】末端位姿调用它，
+#      语义是"保持你现在所在的位置"，因此不需要任何就位移动。
+#
+# 缺省值复用 hwtest 的圆心与笔轴：那组值是带约束搜索选出来的（σ 最差 0.181、
+# 限位余量 0.749 rad、连杆最低 z +10 mm），作为没人调 set_hold_pose() 时的兜底
+# 比零位安全得多。
+_HOLD_PERIOD_SEC = float(os.environ.get('MB_HOLD_PERIOD', 60.0))
+
+
+def _parse_hold_position(text: str) -> np.ndarray:
+    values = [float(v) for v in str(text).replace(' ', '').split(',') if v]
+    if len(values) != 3:
+        raise ValueError(
+            f"MB_HOLD_POS 需要三个逗号分隔的世界系坐标 (m)，收到 {text!r}")
+    return np.asarray(values, dtype=float)
+
+
+_HOLD_POSITION = (
+    _parse_hold_position(os.environ['MB_HOLD_POS'])
+    if os.environ.get('MB_HOLD_POS') else _HWTEST_CENTER.copy())
+_HOLD_ROTATION = _HWTEST_ROTATION.copy()
+
+
+def set_hold_pose(position, rotation=None) -> None:
+    """把 ``hold`` 形状的常量目标改成给定的世界系位姿。
+
+    运行器在接管的第一拍调用它，把【实测】末端位姿定为保持目标。模块级状态是
+    有意为之：轨迹模块是同进程内所有消费者（运行器、可视化、报告）的唯一真值
+    来源，改一处就够，不需要把目标沿调用链传一遍。
+    """
+    global _HOLD_POSITION, _HOLD_ROTATION
+    position = np.asarray(position, dtype=float).reshape(3)
+    if not np.all(np.isfinite(position)):
+        raise ValueError(f"保持目标位置非有限值: {position}")
+    if rotation is not None:
+        rotation = np.asarray(rotation, dtype=float).reshape(3, 3)
+        # 姿态必须是右手系正交阵。镜像阵（det=-1）能通过正交性检查却让姿态
+        # 左右翻转，交给控制律就是一个追不到的目标。
+        if not np.all(np.isfinite(rotation)):
+            raise ValueError('保持目标姿态非有限值')
+        if np.max(np.abs(rotation.T @ rotation - np.eye(3))) > 1e-6:
+            raise ValueError('保持目标姿态不是正交阵')
+        if abs(float(np.linalg.det(rotation)) - 1.0) > 1e-6:
+            raise ValueError(
+                f'保持目标姿态不是右手系: det={float(np.linalg.det(rotation))}')
+        _HOLD_ROTATION = rotation.copy()
+    _HOLD_POSITION = position.copy()
+
+
+def hold_pose() -> tuple:
+    """返回当前 ``hold`` 目标 (position, rotation) 的副本。"""
+    return _HOLD_POSITION.copy(), _HOLD_ROTATION.copy()
+
+
+def hold_period() -> float:
+    """``hold`` 的名义时长（秒）。保持没有周期，这只是缺省运行时长。"""
+    return float(_HOLD_PERIOD_SEC)
+
+
+def _hold_sample(t: float) -> EeTrajectorySample:
+    """常量位姿。``pen_down`` 取真，让 RViz 画出【实际】末端轨迹（红线）——
+    保持得好不好就看那团红点散成多大。"""
+    del t
+    return EeTrajectorySample(
+        _HOLD_POSITION.copy(), True, 0, _HOLD_ROTATION.copy())
+
+
 def _line_sample(start: np.ndarray, end: np.ndarray, phase: float) -> np.ndarray:
     return np.asarray(start, dtype=float) + _smoothstep(phase) * (
         np.asarray(end, dtype=float) - np.asarray(start, dtype=float))
@@ -369,6 +446,7 @@ def _local_trajectory_period(shape: str) -> float:
     return {
         'circle': EE_PERIOD_SEC,
         'hwtest': _HWTEST_PERIOD_SEC,
+        'hold': _HOLD_PERIOD_SEC,
         'triangle': _TRIANGLE_PERIOD_SEC,
         'square': _SQUARE_PERIOD_SEC,
         'sine': (
@@ -702,6 +780,8 @@ def ee_trajectory_sample(t: float, shape: str = None) -> EeTrajectorySample:
         return _whole_trajectory_sample(t)
     if shape == 'hwtest':
         return _hwtest_sample(t)
+    if shape == 'hold':
+        return _hold_sample(t)
     local = _local_trajectory_sample(t, shape)
     return EeTrajectorySample(
         local.position.copy(),
@@ -728,6 +808,10 @@ def sample_ee_drawing_segments(
     """
     shape = _validate_ee_shape(shape)
     sample_count = max(int(sample_count), 2)
+    if shape == 'hold':
+        # 一个不动的点没有路径可预览。返回空列表而不是一段长度为零的折线 ——
+        # 后者在 RViz 里是 4000 个重合点的退化 Marker，只会挡住实际轨迹。
+        return []
     if shape == 'windylab':
         sample_count = max(sample_count, 1000)
     elif shape == 'whole':

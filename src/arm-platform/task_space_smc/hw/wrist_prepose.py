@@ -1,3 +1,10 @@
+"""腕部单关节就位（实物）：只动 joint5，其余五关节原地保持。
+
+沿五次时间律 s(u) = 10u³ − 15u⁴ + 6u⁵ 从当前角度插到目标角度，起停速度与加速度均为零。
+目标角限制在 MIN_TARGET_DEG ~ MAX_TARGET_DEG，避免一次转过大角度。
+整臂就位前先单独挪 joint5，是实物流程规定的顺序。
+"""
+
 from __future__ import annotations
 
 import argparse

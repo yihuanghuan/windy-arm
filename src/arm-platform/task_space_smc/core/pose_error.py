@@ -33,6 +33,12 @@ class PoseError:
     omega_error: np.ndarray
 
 
+# 任务空间位姿误差。位置通道取直接差，姿态通道走 SO(3) 对数映射：
+#   e_p = p_d − p,                e_v = v_d − v
+#   q_err = q_d ⊗ q⁻¹,            R_err = R(q_err)
+#   e_R = log(q_err) ∈ R³         （对数映射，即等效轴角向量）
+#   e_ω = ω_d − R_err·ω           （把实际角速度先转到期望系再作差）
+#   ė_R = J_l⁻¹(e_R)·e_ω          （J_l 为 SO(3) 左雅可比，把角速度换算成 e_R 的导数）
 def compute_pose_error(desired: PoseState, actual: PoseState) -> PoseError:
     p_d = np.asarray(desired.position, dtype=float).reshape(3)
     p = np.asarray(actual.position, dtype=float).reshape(3)
@@ -58,6 +64,8 @@ def compute_pose_error(desired: PoseState, actual: PoseState) -> PoseError:
     )
 
 
+# 四元数双覆盖：q 与 −q 表示同一姿态。若与上一拍点积为负则取反，
+# 保证参考四元数序列连续，否则数值微分会在翻号处炸出一个尖峰。
 def enforce_quaternion_sign_continuity(q_ref_wxyz: np.ndarray, q_prev_wxyz: np.ndarray | None) -> np.ndarray:
     q = np.asarray(q_ref_wxyz, dtype=float).reshape(4).copy()
     if q_prev_wxyz is not None and float(np.dot(q, np.asarray(q_prev_wxyz).reshape(4))) < 0.0:

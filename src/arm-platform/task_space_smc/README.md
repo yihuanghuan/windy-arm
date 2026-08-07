@@ -3,17 +3,6 @@
 A-L1-GAMMA 机械臂的任务空间力矩控制。控制律在世界系里算末端位姿误差，经动力学一致伪逆
 映射成关节力矩；基座可以是运动的（浮动基座），臂在其上补偿。
 
-本文件讲**怎么跑**：文件结构、部署、仿真启动、实物启动。
-**当前真相、实测结论、过时说法和接手注意事项**统一在 [docs/HANDOFF.md](docs/HANDOFF.md)。
-若本文与 `HANDOFF.md` 冲突，以 `HANDOFF.md` 为准。
-
-| 我想…… | 去哪 |
-|---|---|
-| 知道某个文件是干什么的 | [1. 文件结构](#1-文件结构) |
-| 第一次把环境跑起来 | [2. 部署](#2-部署) |
-| 在 RViz 里看仿真 | [3. RViz 仿真](#3-rviz-仿真) |
-| 接实物跑 | [4. 实物启动](#4-实物启动) |
-| 理解控制律 / 标定 / 调参 / 排错 | [docs/HANDOFF.md](docs/HANDOFF.md) |
 
 ---
 
@@ -38,7 +27,7 @@ task_space_smc/
 
 | 文件 | 作用 |
 |---|---|
-| `task_space_smc.py` | **滑模控制律本体**。`ν = ẍ_r + Λė + K·s + η·tanh(s/φ)` |
+| `task_space_smc.py` | 滑模控制律本体。`ν = ẍ_r + Λė + K·s + η·tanh(s/φ)` |
 | `model.py` | Pinocchio 浮动基座模型封装（正运动学、雅可比、质量阵、重力） |
 | `pose_error.py` | 世界系位姿误差（位置差 + 姿态测地误差） |
 | `quaternion_math.py` | 四元数与 SO(3) 运算。被依赖 8 次，最底层 |
@@ -69,10 +58,11 @@ task_space_smc/
 
 | 文件 | 作用 |
 |---|---|
-| `whole_task_smc_ros_runner.py` | **主运行器**。同时支持 `mode:=simulation` 与 `mode:=hardware` |
+| `whole_task_smc_ros_runner.py` | 主运行器。同时支持 `mode:=simulation` 与 `mode:=hardware` |
 | `full_prepose.py` | 整臂位置模式就位（6 轴一起挪到指定位形） |
 | `wrist_prepose.py` | 只把 joint5 挪离腕部奇异 |
-| `pose_check_readonly.py` | 上机前**只读**位形核对，结构上不可能发字节 |
+| `pose_check_readonly.py` | 上机前只读位形核对，结构上不可能发字节 |
+| `vicon_floating_base_bridge.py` | VRPN 刚体 pose/twist/accel + `arm_ee` → `FloatingBaseState`，源时钟打戳、杠杆臂搬运、一致性对照 |
 | `fk_gravity_verify.py` | 阶段 1：正运动学 / 关节零位校验 |
 | `merge_fk_verify.py` | 合并多次阶段 1 结果，输出零位标定向量 |
 | `phase2_torque_probe.py` | 阶段 2：0x12 力矩通路验证 |
@@ -88,13 +78,14 @@ task_space_smc/
 
 ### 1.4 `config/` 与 `data/`
 
-`config/` **不跟着分层**，`core/config_loader.py` 按包根定位它。
+`config/` 不跟着分层，`core/config_loader.py` 按包根定位它。
 
 | 配置 | 用于 |
 |---|---|
 | `smc_params_whole.yaml` | 7 关节仿真 |
-| `smc_params_whole6.yaml` | 6 关节仿真；`simulation_profiles` 内区分 `hwtest` / `whole` |
-| `smc_params_hwtest.yaml` | 6 关节实物。**上机默认用这份** |
+| `smc_params_whole6.yaml` | 6 关节仿真；`simulation_profiles` 内区分 `hwtest` / `whole` / `hold` |
+| `smc_params_hwtest.yaml` | 6 关节实物。上机默认用这份 |
+| `smc_params_hold.yaml` | 6 关节实物 Vicon hold。只供 `vicon_hold_demo.launch.py` 使用 |
 
 `data/` 是每次运行的 CSV / JSON / PNG，已 gitignore，不入库。
 
@@ -109,7 +100,98 @@ python3 -m pytest src/arm-platform/test -q      # 应为 549 passed
 ```
 
 `conftest.py` 做两件事：把包父目录插进 `sys.path`；在任何测试模块导入前设好
-`MB_STATION_LAYOUT=horizontal`（轨迹模块在**模块级**读它，谁先 import 谁定布局）。
+`MB_STATION_LAYOUT=horizontal`（轨迹模块在模块级读它，谁先 import 谁定布局）。
+
+### 1.6 运行入口、ROS 话题与信息流
+
+下图中的 `runner` 都是 `whole_task_smc_ros_runner.py`。它输入关节状态和（按模式
+选择的）基座 / 末端状态，输出关节力矩；RViz 只订阅可视化信息，不参与控制。
+
+ROS 中以 `/` 开头的名字是**话题**，即节点之间传递数据的通道；
+`sensor_msgs/JointState`、`dummy_interface/MotorControl` 等是**消息类型**，即该通道中
+每条数据的字段格式，不是话题名。
+
+#### 1.6.1. RViz 仿真：6 关节与 7 关节
+
+| 入口 | 机械臂 | 控制频率 | 被控对象 |
+|---|---:|---:|---|
+| `task_space_smc_whole.launch.py` | 7 关节 | 500 Hz | `student_arm_node` 的 `torque_sim` |
+| `task_space_smc_whole6_sim.launch.py` | 6 关节 | 200 Hz | `student_arm_node` 的 `torque_sim` |
+
+两条仿真的实时闭环相同：
+
+```text
+runner -- /student/joint_effort_command --> student_arm_node (torque_sim)
+runner <-- /joint_states ------------------- student_arm_node
+
+/joint_states --> robot_state_publisher --> /tf, /tf_static --> RViz
+runner --> /task_space_smc/reference_markers --> RViz
+runner --> /task_space_smc/markers --> RViz
+runner --> /task_space_smc/tracking --> 终端记录与 CSV
+runner --> /task_space_smc/joint_torque --> 终端记录与 CSV
+```
+
+`/student/joint_effort_command` 是 runner 发给机械臂的关节力矩命令；它使用项目自定义的
+`dummy_interface/MotorControl`，字段包括各关节的目标位置、速度、电流（本控制器中为
+力矩命令）、P/D 增益和使能位。`/joint_states` 是机械臂反馈的关节名称、位置、速度和
+力矩；它使用 ROS 标准 `sensor_msgs/JointState`。
+
+`/tf` 和 `/tf_static` 是机器人各坐标系之间的实时 / 固定坐标变换。
+`/task_space_smc/reference_markers` 是期望轨迹标记，`/task_space_smc/markers` 是实际末端和
+误差标记，二者都供 RViz 显示；`/task_space_smc/tracking` 是记录跟踪量的数值数组，
+`/task_space_smc/joint_torque` 是记录计算关节力矩的数值数组，二者都使用
+`std_msgs/Float64MultiArray`。
+
+输入是 launch 选定的 URDF、SMC YAML、轨迹参数，以及仿真臂发布的
+`/joint_states`；输出是给仿真臂的 `MotorControl` 力矩、TF、RViz 标记和运行记录。
+仿真 launch 只启动 `torque_sim`，不启动实物驱动；`hardware_enabled:=false` 不会阻断
+`mode:=simulation` 下发给仿真臂的力矩。
+
+#### 1.6.2. demo1：固定基座的 6 关节实物轨迹跟踪
+
+demo1 的硬件驱动由 `student_arm6.launch.py` 单独启动，
+`task_space_smc_whole6.launch.py mode:=hardware` 只启动 runner 和可选 RViz：
+
+```text
+实物机械臂 --> student_arm_node --> /joint_states --> runner
+runner --> /student/joint_effort_command --> student_arm_node --> 实物机械臂
+
+/joint_states --> robot_state_publisher --> /tf, /tf_static --> RViz
+runner --> /task_space_smc/reference_markers, /task_space_smc/markers --> RViz
+runner --> /task_space_smc/tracking, /task_space_smc/joint_torque --> CSV
+```
+
+demo1 的基座状态来自固定基座 / 解析模型；末端实际位姿由关节状态经 FK 得到。
+轨迹参考由 YAML 和 `trajectory_shape` 在 runner 内生成，不通过 ROS 参考话题输入。
+
+#### 1.6.3. demo2：Vicon 基座浮动下的末端位置保持
+
+demo2 在 demo1 的关节力矩闭环外，再接入动捕状态链路：
+
+```text
+Vicon --> vrpn_listener --> /vrpn/arm_base/{pose,twist,accel} --┐
+                                                               ├--> vicon_floating_base_bridge
+Vicon --> vrpn_listener --> /vrpn/arm_ee/{pose,twist,accel} ---┘
+vicon_floating_base_bridge --> /floating_base/vicon --> runner
+vicon_floating_base_bridge --> /vicon/arm_ee -------> runner
+
+实物机械臂 --> /joint_states --> runner --> /student/joint_effort_command --> 实物机械臂
+runner --> /task_space_smc/reference_markers, /task_space_smc/markers --> RViz
+runner --> /task_space_smc/tracking, /task_space_smc/joint_torque --> CSV
+```
+
+`/vrpn/arm_base/pose`、`/vrpn/arm_base/twist`、`/vrpn/arm_base/accel` 分别是 Vicon 测得的
+基座刚体位姿、线 / 角速度、线 / 角加速度；`/vrpn/arm_ee/pose`、`/vrpn/arm_ee/twist`、
+`/vrpn/arm_ee/accel` 是末端刚体的同类原始数据。三者分别使用 ROS 标准的
+`geometry_msgs/PoseStamped`、`TwistStamped`、`AccelStamped`：`Stamped` 表示消息带有采样时间戳。
+
+`/floating_base/vicon` 是桥接后给控制器的基座完整状态；`/vicon/arm_ee` 是末端完整状态。
+二者使用项目自定义的 `dummy_interface/FloatingBaseState`，在同一条消息内放入位姿、速度和
+加速度，因此这三类量共享一个时间戳。
+
+在当前 demo2 配置中，基座使用 Vicon 位姿、线速度、角速度、线加速度和角加速度；
+末端使用 Vicon 位置与线速度，末端姿态及其导数仍由 FK 计算。保持目标在接管首帧
+由 runner 捕获，随后 runner 根据这些反馈计算力矩并发给实物驱动。
 
 ---
 
@@ -188,7 +270,7 @@ export ROS_DOMAIN_ID=77     # 仿真
 
 ## 3. RViz 仿真
 
-两条 launch。**7 关节和 6 关节是不同的机械臂构型，不是同一条链上的开关。**
+两条 launch。7 关节和 6 关节是不同的机械臂构型，不是同一条链上的开关。
 
 | | 7 关节 | 6 关节 |
 |---|---|---|
@@ -197,7 +279,7 @@ export ROS_DOMAIN_ID=77     # 仿真
 | URDF | `arm.urdf` | 配置决定；`hwtest` 当前为 `arm6.urdf` |
 | 末端 frame | 自动探测 | 配置决定；`hwtest` 当前为 `link6` |
 | 默认控制频率 | 500 Hz | 200 Hz |
-| 对应实物 | 无 | **有** |
+| 对应实物 | 无 | 有 |
 
 ### 3.1 7 关节
 
@@ -228,15 +310,19 @@ helper 脚本会清掉可能指向别处的旧 overlay，并确认 `ros2 pkg pre
 
 ### 3.2 6 关节
 
-这条 launch 有**两种轨迹**：
+这条 launch 有**三种轨迹**：
 
 | `trajectory_shape` | 内容 | 基座 | 力矩上限 | 周期 | 仿真 RMS |
 |---|---|---|---|---|---|
 | **`hwtest`（默认）** | +x 侧竖直小圆，半径 4 cm | **固定** | 额定 9 / 1.6 | 12.57 s | 0.0041 mm |
 | `whole` | 五工作站完整任务（`link6`） | 解析摆动 | 2× 额定 18 / 3.2 | 73.04 s | 0.0060 mm |
+| `hold` | 末端世界系**定点保持**（参考量恒定） | 注入正弦 + 阵风 | 额定 9 / 1.6 | 无（缺省 60 s） | 1.71 mm |
 
 `hwtest` 是上实机用的：幅度小、余量大、放在**无桌面的 +x 侧**。
 `whole` 是研发用的完整任务，基座带摆动、跨四个方位，难度高得多。
+`hold` 是[第 5 节](#5-实物-demo基座浮动下的末端位置保持)那条动捕 demo 的**仿真干跑**：
+实物上基座由动捕给，这里改由 `simulation_injection` 驱动，并保留基座估计器的
+噪声与延迟 —— 动捕不是理想传感器，干跑不该假装它是。
 
 ```bash
 cd /home/windylab/code/windylab_ws
@@ -250,11 +336,15 @@ ros2 launch manipulator task_space_smc_whole6_sim.launch.py \
 # 完整五工作站任务
 ros2 launch manipulator task_space_smc_whole6_sim.launch.py \
   trajectory_shape:=whole duration_sec:=0.0 rviz:=true
+
+# 保持 demo 的干跑：基座在动，末端参考量不动
+ros2 launch manipulator task_space_smc_whole6_sim.launch.py \
+  trajectory_shape:=hold duration_sec:=12 rviz:=true
 ```
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `trajectory_shape` | `hwtest` | `hwtest` / `whole` |
+| `trajectory_shape` | `hwtest` | `hwtest` / `whole` / `hold` |
 | `mode` | `simulation` | 见 [3.3](#33-三种-mode) |
 | `start_delay_sec` | `0.0` | 仿真从轨迹起点开始，不经过实物靠近段 |
 | `duration_sec` | `0.0` | `0` = **该形状的**一个完整周期（按形状查，不是写死值） |
@@ -277,7 +367,7 @@ ros2 launch manipulator task_space_smc_whole6_sim.launch.py \
 
 | 变量 | 生效默认 | 谁设的 | 说明 |
 |---|---|---|---|
-| `WINDYLAB_SMC_CONFIG` | 按 launch 选 | launch | 配置文件绝对路径。调参循环靠它给每个候选喂不同配置 |
+| `WINDYLAB_SMC_CONFIG` | 按 launch 选 | launch | 配置文件绝对路径。调参循环靠它给每个候选喂不同配置；**实物 hold 入口刻意忽略它** |
 | `MB_STATION_LAYOUT` | `horizontal` | 6 关节 launch | 书写面布局。6 关节水平、7 关节竖直板 |
 | `MB_BASE_RADIUS` | `0.0` | 6 关节 launch | 基座摆动半径。**实物基座固定在桌边，所以是 0** |
 | `MB_BASE_Z_AMP` | `0.0` | 6 关节 launch | 基座竖直摆幅 |
@@ -300,7 +390,7 @@ ros2 launch manipulator task_space_smc_whole6_sim.launch.py \
 
 ---
 
-## 4. 实物启动
+## 4. 实物demo1：基座稳定下的末端轨迹跟踪
 
 **只有 6 关节构型有实物。** 实物是 6 个关节，固件的第 7 通道是幽灵数据
 （position −6.5231 rad、velocity 27.9731 rad/s，超限位、超电机上限 5.6 倍），
@@ -309,12 +399,9 @@ ros2 launch manipulator task_space_smc_whole6_sim.launch.py \
 ### 4.0 三条不能绕的安全约束
 
 1. **协议里没有使能 / 失能帧。软件层没有急停通道，急停只能物理断电。**
-2. **驱动进程一停，电机立刻失去保持力矩，机械臂会软掉。** 起了就不要关。
-3. **上电即锁当前位姿，掰不动。** 起 SMC 后由同一条力矩控制路径从第一帧接管，
+2. **上电即锁当前位姿，掰不动。** 起 SMC 后由同一条力矩控制路径从第一帧接管，
    通过 handover 参考偏置衰减把当前位姿并入轨迹（[4.4](#44-起-smc从第一帧接管)）。
 
-工作台约束（本台）：桌面在 `z = 0`，与基座安装面同平面；**+x 方向无桌面**，−x 有；
-桌上围栏沿 −x 延伸、+y 到约 `y = 350 mm`、高度约"基座到 joint3"。
 
 ### 4.1 上机前检查
 
@@ -331,26 +418,17 @@ python3 src/arm-platform/task_space_smc/hw/pose_check_readonly.py --offline-self
 python3 src/arm-platform/task_space_smc/hw/pose_check_readonly.py --port /dev/ttyUSB0 --seconds 3
 ```
 
-`pose_check_readonly.py` **结构上不可能发字节**：打开串口后把 `write` / `flush` 全替换成
-抛异常的桩，任何代码路径想发送都会当场崩掉而不是悄悄发出去。它不 import `rclpy`、不发话题。
-判据是 0.05 rad（≈2.9°）—— 各关节摩擦死区 0.020~0.059 rad，小于死区的偏差本来就消不掉。
-
-> **读实物真值只信它。** `/joint_states` 可能有第二个发布者 —— 实测出现过间歇性的、
-> 相差 74° 的位姿读数。任何物理上不可能的跳变，**先查数据源，不要查动力学**。
-> 判断机械臂状态还要**看摄像头**：关节读数本身可能就是错的那一环。
-
-### 4.2 起驱动
-
-驱动和 SMC 是**两个终端、两条 launch**。先起驱动，**之后全程不关**。
+### 4.2 起驱动（起了全程不关）
 
 ```bash
+cd /home/windylab/code/windylab_ws
 source /opt/ros/humble/setup.bash && source install/setup.bash
 export ROS_DOMAIN_ID=42
-cd /home/windylab/code/windylab_ws/src/arm-platform
 
 ros2 launch manipulator student_arm6.launch.py arm_type:=a_l1 \
   port_name:=/dev/ttyUSB0 control_rate_hz:=200.0 \
   enable_direct_effort_command:=true max_velocity:=0.5 use_rviz:=false
+
 ```
 
 | 参数 | 默认 | 说明 |
@@ -370,60 +448,16 @@ ros2 launch manipulator student_arm6.launch.py arm_type:=a_l1 \
 > 力矩模式 ≤ 200 Hz   板子实测上报 200.6 Hz，再快就有周期拿不到新反馈
 > ```
 
-### 4.2.1 Vicon 基座反馈（先验收数据，再接 SMC）
-
-Vicon 接收单独安装在 `/home/windylab/code/vicon_perception_ws`；它不会启动串口或
-发送任何电机指令。先在 Vicon Tracker 中打开 VRPN 输出并创建基座刚体，然后启动：
-
-```bash
-source /opt/ros/humble/setup.bash
-source /home/windylab/code/windylab_ws/install/setup.bash
-source /home/windylab/code/vicon_perception_ws/install/ros/setup.bash
-export ROS_DOMAIN_ID=77  # 必须与驱动和 SMC 相同
-
-ros2 launch manipulator vicon_floating_base.launch.py \
-  server:=192.168.50.96 pose_topic:=/vrpn/<基座刚体名>/pose
-```
-
-刚体名中的空格在话题里会变成下划线。先用 `ros2 topic list | grep /vrpn/` 找到实际名称，
-并确认 `ros2 topic hz /floating_base/vicon` 稳定在约 100 Hz 以上。`zero_on_first_pose:=true`
-（默认）会把**启动时静止的基座**定义为控制器 `world` 原点；因此启动接收时基座必须不动。
-
-确认数据、Vicon 坐标轴和机械臂世界系完全对齐之后，才把 SMC 启动参数增加为：
-
-```bash
-base_state_mode:=vicon external_base_topic:=/floating_base/vicon
-```
-
-在 `vicon` 模式下，运行器会等待第一帧基座数据；任何超过配置时限的动捕数据都不会被
-用于继续输出力矩。
-
 ### 4.3 把 joint5 挪出腕部奇异
 
-**起驱动之后、起 SMC 之前必须做这一步。**
-
-上电或失力后机械臂落回休息位形，此时 **j5 ≈ 0，正是腕部奇异**：URDF 里 `joint4`
-与 `joint6` 都是 `axis="1 0 0"`，`joint5` 是 `axis="0 0 1"` 夹在中间；j5=0 时
-j4 与 j6 转轴共线，6D 雅可比掉秩。
-
-实测（本台，休息位形）：
-
-| j5 | σ_min | 条件数 |
-|---|---|---|
-| **0.17°（休息位形）** | **0.00019** | 9326 |
-| 10° | 0.01105 | 157 |
-| 20° | 0.02194 | 79 |
-| **40°（目标）** | **0.04246** | 41 |
-
-配置阈值是 `sigma_critical = 0.012`、`sigma_warn = 0.03`。休息位形比 critical
-还低 **63 倍**。
-
-**σ_min**（sigma-min，雅可比最小奇异值）衡量"末端还能不能在所有方向上自由运动"。
-它趋于零意味着某个方向的末端运动需要无穷大的关节速度。此时伪逆仍会给出一个数，
-但那个数与期望的末端运动无关 —— **机械臂会往任意方向窜**。
-
 ```bash
-python3 task_space_smc/hw/wrist_prepose.py --target-deg 40 --duration 20 --settle 3
+cd /home/windylab/code/windylab_ws
+source /opt/ros/humble/setup.bash && source install/setup.bash
+export ROS_DOMAIN_ID=42
+
+python3 src/arm-platform/task_space_smc/hw/wrist_prepose.py \
+  --target-deg 40 --duration 20 --settle 3
+
 ```
 
 | 参数 | 默认 | 说明 |
@@ -432,37 +466,23 @@ python3 task_space_smc/hw/wrist_prepose.py --target-deg 40 --duration 20 --settl
 | `--duration` | `10` | 移动时长 s |
 | `--settle` | `2` | 到位后保持时长 s |
 
-**这一步只能用位置模式，不能用 SMC** —— 任务空间 SMC 正是被这个奇异卡住的那一方，
-让它自己爬出来是循环论证。`wrist_prepose.py` 只动 j5，其余五轴按实测值锁住，
-非目标轴漂移超 2° 会报错退出。
-
-> 起 SMC 时代码会**再查一遍**：`sigma_min < sigma_critical` 就拒绝就位、
-> 一条力矩都不发，并在日志里直接给出上面这条命令。忘了做这一步不会酿成事故，
-> 但会白跑一趟。
 
 ### 4.4 起 SMC（从第一帧接管）
 
-**没有独立的位置模式就位步骤。** 当前主架构是：SMC 从第一帧开始发力矩，
-`handover` 用参考偏置衰减把实物当前位姿并入轨迹；参考轨迹在偏置衰减期间冻结，
-避免一边追初始偏差一边追运动目标。
-
-另开一个终端，**同一个 `ROS_DOMAIN_ID`**：
-
 ```bash
+cd /home/windylab/code/windylab_ws
 source /opt/ros/humble/setup.bash && source install/setup.bash
 export ROS_DOMAIN_ID=42
 export WINDYLAB_SMC_CONFIG=$PWD/src/arm-platform/task_space_smc/config/smc_params_hwtest.yaml
 export MB_HWTEST_SPEED=0.01
-cd /home/windylab/code/windylab_ws/src/arm-platform
+cd src/arm-platform
 
 ros2 launch manipulator task_space_smc_whole6.launch.py \
   mode:=hardware hardware_enabled:=true rviz:=false \
   trajectory_shape:=hwtest duration_sec:=60 start_delay_sec:=0 \
-  data_dir:=/path/to/run
-```
+  data_dir:=/home/windylab/code/windylab_ws/src/arm-platform/task_space_smc/data/demo1_manual
 
-实物入口与 [3.2](#32-6-关节) 的仿真入口有意分离：前者读取实物就位和
-`handover` 配置，后者从解析轨迹起点直接开始。
+```
 
 | 参数 | 实物取值 | 为什么 |
 |---|---|---|
@@ -473,11 +493,7 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
 `smc_params_hwtest.yaml` 里仍保留 `approach` 段，作为回退和历史对照。当前主线看
 `handover.reference_blend_sec = 30.0` 与 `freeze_trajectory_during_blend = true`。
 
-`full_prepose.py` 不在正常实验流程里：它是位置模式工具，不经过 SMC，而且会被静摩擦卡住。
-已知位置模式下 j3 在 `kp=80` 仍差约 **2°**、j2 差约 **10°**；它的落点不能当作
-跨天实验起点真值。
-
-#### 工作台护栏
+#### 工作台护栏【demo1需要有，demo2忽略】
 
 工作台护栏按配置检查，任一条不过就**一条力矩都不发**，并在日志里打 ERROR：
 
@@ -495,18 +511,17 @@ ros2 launch manipulator task_space_smc_whole6.launch.py \
 
 #### 手动就位工具（不在正常流程里）
 
-`hw/full_prepose.py`（整臂位置模式）与 `hw/wrist_prepose.py`（只动 j5）保留，
-用于 SMC 起不来时把机械臂挪到安全位形，或者做位置模式的对照实验。
-
 ```bash
-python3 task_space_smc/hw/full_prepose.py \
-  --target-rad="-0.1081,0.2375,-0.7410,-1.3375,0.6976,1.5400" \
-  --duration 20 --settle 3 --kp="30,30,80,30,30,30"
-```
+cd /home/windylab/code/windylab_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=42
 
-内置校验：目标越限拒绝、单轴行程 > 2 rad 拒绝、峰值速度 > 0.5 rad/s 拒绝、
-到位后读回残差 > 3° 报错。**它有上面说的 2°/10° 到不了位的问题**，
-不要拿它的落点当实验起点。
+python3 src/arm-platform/task_space_smc/hw/full_prepose.py \
+  --target-rad="0.4571,-0.1430,-0.9966,0.7027,-0.6168,0.0178" \
+  --duration 30 --settle 3
+
+```
 
 ### 4.5 安全看门狗
 
@@ -523,16 +538,177 @@ python3 task_space_smc/hw/full_prepose.py \
 ### 4.6 收工
 
 ```bash
-# 1) 先把机械臂挪到安全位形（位置模式）
-python3 task_space_smc/hw/full_prepose.py --target-rad="<安全位形>" --duration 25
-
-# 2) 再停驱动（Ctrl-C）。顺序不能反 —— 驱动一停就失去保持力矩
+# 1) Ctrl-C 停 SMC（终端 B）
+# 2) 最后 Ctrl-C 停驱动（终端 A）
 ```
 
 ---
 
-## 更多
+## 5. 实物 demo2：基座浮动下的末端位置保持
 
-| 内容 | 位置 |
-|---|---|
-| 当前真相、已推翻旧说法、硬件事实、标定值、调查中事项 | [docs/HANDOFF.md](docs/HANDOFF.md) |
+场景：基座随便动，末端不动。
+
+动捕坐标系：y向上，joint1的转轴是x
+
+### 5.1 基座固定偏置标定
+
+#### 5.1.1 数据收集
+
+用圆弧标定脚本 vicon_base_extrinsic_calibrate.py。确保没有任何 SMC/hold 控制器在发布 /student/joint_effort_command，只保留驱动和 Vicon。
+
+终端 1：驱动（若已经在运行，不要重复启动）
+```bash
+cd /home/windylab/code/windylab_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=42
+
+ros2 launch manipulator student_arm6.launch.py \
+  arm_type:=a_l1 port_name:=/dev/ttyUSB0 \
+  control_rate_hz:=200.0 \
+  enable_direct_effort_command:=true \
+  max_velocity:=0.5 use_rviz:=false
+```
+
+终端 2：Vicon（若已有 vrpn_listener 正在发布 /vrpn/arm_base/pose 和 /vrpn/arm_ee/pose，不用重复启动）
+```bash
+cd /home/windylab/code/windylab_ws
+source /opt/ros/humble/setup.bash
+source /home/windylab/code/vicon_perception_ws/install/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=42
+
+ros2 launch manipulator vicon_floating_base.launch.py \
+  server:=172.16.20.21 port:=3883 zero_on_first_pose:=false
+```
+
+启动后，在另一个同样完成上述 source 的终端确认两路数据：
+```bash
+ros2 topic hz /vrpn/arm_base/pose
+ros2 topic hz /vrpn/arm_ee/pose
+```
+两者稳定有频率后，可以继续执行命令
+
+终端 3：先只读检查轨迹，不运动：
+```bash
+cd /home/windylab/code/windylab_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=42
+
+python3 src/arm-platform/task_space_smc/hw/vicon_base_extrinsic_calibrate.py \
+  --points 16 --plan-only
+```
+
+确认计划正常后，执行标定：
+```bash
+python3 src/arm-platform/task_space_smc/hw/vicon_base_extrinsic_calibrate.py \
+  --points 16
+```
+
+它会低速扫 16 个静止位姿、每点采集 arm_base、arm_ee 和编码器数据，结束时回到起始姿态。结果保存在：
+```bash
+src/arm-platform/task_space_smc/hw/data/vicon_base_extrinsic/base_extrinsic_时间戳.json
+```
+运行中如发现姿态异常或人靠近机械臂，直接 Ctrl-C；脚本会停止扫轨迹并交回驱动的重力保位。
+
+#### 5.1.2 标定
+
+
+
+
+
+### 5.3 实物流程
+
+#### 5.3.1 先清残留 + 查串口
+
+断电会让原来的 student_arm_node 抛 SerialException 死掉，但 launch 空壳和孤儿 robot_state_publisher 会留着，必须先清干净（否则 /joint_states 上出现第二个发布者会给出物理上不可能的读数）。
+
+```bash
+
+pkill -f "ros2 launch manipulator"
+pkill -f student_arm_node
+pkill -f robot_state_publisher
+pkill -f vrpn_listener
+pkill -f vicon_floating_base_bridge
+sleep 2
+ps -ef | grep -E 'ros2 launch|student_arm_node|robot_state_publisher|vrpn' | grep -v grep    # 应为空
+
+```
+
+#### 5.3.2 只读核对位形
+
+```bash
+cd /home/windylab/code/windylab_ws
+source /opt/ros/humble/setup.bash
+python3 src/arm-platform/task_space_smc/hw/pose_check_readonly.py --port /dev/ttyUSB0 --seconds 3
+
+```
+
+#### 5.3.3 起驱动（终端 A）
+```bash
+cd /home/windylab/code/windylab_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=42
+
+ros2 launch manipulator student_arm6.launch.py arm_type:=a_l1 \
+  port_name:=/dev/ttyUSB0 control_rate_hz:=200.0 \
+  enable_direct_effort_command:=true max_velocity:=0.5 use_rviz:=false
+
+```
+
+#### 5.3.4 joint5 出腕部奇异（终端 B）
+```bash
+cd /home/windylab/code/windylab_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=42
+
+python3 src/arm-platform/task_space_smc/hw/wrist_prepose.py \
+  --target-deg 40 --duration 20 --settle 3
+
+```
+
+#### 5.3.5 Vicon（终端 B）
+```bash
+# source /home/windylab/code/vicon_perception_ws/install/ros/setup.bash
+
+# ros2 launch manipulator vicon_floating_base.launch.py \
+#   server:=172.16.20.21 port:=3883 pose_topic:=/vrpn/arm_base/pose
+
+cd /home/windylab/code/windylab_ws
+source /opt/ros/humble/setup.bash
+source /home/windylab/code/vicon_perception_ws/install/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=42
+
+ros2 launch manipulator vicon_floating_base.launch.py \
+  server:=192.168.200.78 port:=3883 \
+  zero_on_first_pose:=true \
+  prefer_vicon_angular_accel:=true
+
+
+```
+
+#### 5.3.6 demo（终端 C）
+```bash
+cd /home/windylab/code/windylab_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=42
+
+ros2 launch manipulator vicon_hold_demo.launch.py \
+  hardware_enabled:=true \
+  duration_sec:=86400 \
+  data_dir:=/home/windylab/code/windylab_ws/src/arm-platform/task_space_smc/data/vicon_hold_manual
+
+```
+
+#### 5.3.6 收工（顺序不能反）
+```bash
+# 1) Ctrl-C 停 demo（终端 C）
+# 2) Ctrl-C 停 Vicon（终端 B）
+# 3) 最后 Ctrl-C 停驱动（终端 A）
+
+```

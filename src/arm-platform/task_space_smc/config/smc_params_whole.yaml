@@ -1,86 +1,96 @@
-control_rate_hz: 500.0
+# 7DOF 仿真配置（7 关节，500 Hz）。
+# 位置通道：s_p = ė_p + Λ_p·e_p，a_cmd = a_d + Λ_p·ė_p + K_p·s_p + η_p·tanh(s_p/φ_p)
+control_rate_hz: 500.0      # 控制频率 (Hz)，dt = 1/f。大→离散更接近连续、可上更高增益；小→(k+η/φ)·dt 逼近 2 会抖
 
 task:
-  characteristic_length: 0.2
+  characteristic_length: 0.2   # 姿态折成长度的特征长度 L (m)，scale = diag(1,1,1,L,L,L)。大→姿态更被优先；小→位置更被优先
 
 position:
-  lambda: [120.0, 120.0, 120.0]
-  k: [170.0, 170.0, 170.0]
-  eta: [1.8, 1.8, 1.8]
-  phi: [0.003, 0.003, 0.003]
+  # 边界层内闭环为 (s+Λ_p)(s+K_p+η_p/φ_p) = 0，稳态误差 e_ss = d / [Λ_p·(K_p + η_p/φ_p)]
+  lambda: [120.0, 120.0, 120.0]   # 滑模面斜率 Λ_p (1/s)。大→收敛快但需更大加速度、易饱和；小→变软
+  k: [170.0, 170.0, 170.0]        # 趋近律线性项 K_p (1/s)。大→稳态误差小、抗扰强；小→趋近慢
+  eta: [1.8, 1.8, 1.8]            # 切换项幅值 η_p (m/s²)，能压住的扰动上限。大→抗扰强但易抖；小→压不住摩擦
+  phi: [0.003, 0.003, 0.003]      # 边界层宽度 φ_p (m/s)，tanh 斜率 1/φ_p。大→抖振小、误差带宽；小→接近 sign()、抖
 
 orientation:
-  lambda: [6.0, 6.0, 6.0]
-  k: [10.0, 10.0, 10.0]
-  eta: [0.03, 0.03, 0.03]
-  phi: [0.02, 0.02, 0.02]
+  # e_R = log(q_d ⊗ q⁻¹) (rad)，量纲是角度，数值不能与 position 段直接比较
+  lambda: [6.0, 6.0, 6.0]         # 姿态滑模面斜率 Λ_R (1/s)
+  k: [10.0, 10.0, 10.0]           # 姿态趋近律线性项 K_R (1/s)
+  eta: [0.03, 0.03, 0.03]         # 姿态切换项幅值 η_R (rad/s²)
+  phi: [0.02, 0.02, 0.02]         # 姿态边界层宽度 φ_R (rad/s)
 
 nullspace:
-  q_nominal: [0.168, -0.026, -0.564, -1.772, 0.989, -0.082, 0.192]
-  kp: [0.4, 0.4, 0.4, 0.15, 0.15, 0.08, 0.08]
-  kd: [0.08, 0.08, 0.08, 0.04, 0.04, 0.025, 0.025]
-  joint_acceleration_weight: [0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.1]
+  # q̈_null = −kp·(q − q_nom) − kd·q̇，经 N = I − J̄₀J 投影，不影响任务
+  q_nominal: [0.168, -0.026, -0.564, -1.772, 0.989, -0.082, 0.192]   # 零空间目标位形 (rad)
+  kp: [0.4, 0.4, 0.4, 0.15, 0.15, 0.08, 0.08]        # 回中刚度 (1/s²)。大→更快回标称位形；小→位形随机漂移
+  kd: [0.08, 0.08, 0.08, 0.04, 0.04, 0.025, 0.025]   # 零空间阻尼 (1/s)。大→自运动不振荡；小→零空间内晃
+  joint_acceleration_weight: [0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.1]   # 加在 M 对角上的额外惩罚，等价于在最小动能目标里罚该关节的加速度。大→该关节更少参与任务、担子转给其他关节；小→照常参与
 
 singularity:
-  sigma_warn: 0.04
-  sigma_critical: 0.012
-  damping_min: 0.00005
-  damping_max: 0.03
+  # J̄ = M⁻¹Jᵀ(J M⁻¹ Jᵀ + λ²I)⁻¹，阻尼 λ 按 σ_min 在 [critical, warn] 线性插值
+  sigma_warn: 0.04          # 开始加阻尼的最小奇异值阈值。大→更早保守、精度更早让步；小→近奇异处力矩尖峰
+  sigma_critical: 0.012     # 阻尼打满的阈值。大→提前进入最大阻尼、末端变钝；小→留给尖峰的余地更大
+  damping_min: 0.00005      # 远离奇异时的阻尼 λ_min。大→常态就有跟踪偏差；小→数值条件变差
+  damping_max: 0.03         # 奇异处的阻尼 λ_max。大→安全但任务误差更大；小→压不住 1/σ 放大
 
 limits:
-
-  torque: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6, 1.6]
-  torque_rate: [1500.0, 1500.0, 1500.0, 500.0, 500.0, 350.0, 250.0]
-  current: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6, 1.6]
+  torque: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6, 1.6]                        # 关节力矩上限 (N·m)
+  torque_rate: [1500.0, 1500.0, 1500.0, 500.0, 500.0, 350.0, 250.0]  # 力矩变化率上限 (N·m/s)，窗口 τ_prev ± rate·dt。大→响应快、电流冲击大；小→平滑、跟不上突变
+  current: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6, 1.6]                       # 电流上限 (A)
 
 safety:
-  command_timeout_sec: 0.03
-  joint_state_timeout_sec: 0.1
-  base_state_timeout_sec: 0.1
+  command_timeout_sec: 0.03        # 指令超时 (s)，超过则力矩变化率基准清零
+  joint_state_timeout_sec: 0.1     # 关节反馈陈旧阈值 (s)，超时输出零力矩。大→拿旧状态算力矩；小→抖动就停发
+  base_state_timeout_sec: 0.1      # 基座状态陈旧阈值 (s)
 
 approach:
-  initial_joint_offset_rad: [0.25, -0.20, 0.20, 0.25, -0.20, 0.15, -0.15]
-  kp: [60.0, 60.0, 60.0, 50.0, 50.0, 40.0, 40.0]
-  kd: [16.0, 16.0, 16.0, 14.0, 14.0, 12.0, 12.0]
+  initial_joint_offset_rad: [0.25, -0.20, 0.20, 0.25, -0.20, 0.15, -0.15]   # 就位起点相对轨迹起点的偏移 (rad)
+  kp: [60.0, 60.0, 60.0, 50.0, 50.0, 40.0, 40.0]     # 就位段关节 PD 刚度 (1/s²)。大→跟随紧、易过冲；小→位置误差大
+  kd: [16.0, 16.0, 16.0, 14.0, 14.0, 12.0, 12.0]     # 就位段阻尼 (1/s)，ζ = kd/(2√(kp·J))。大→不过冲；小→甩
 
+# 仿真扰动注入：基座估计误差、负载、摩擦、齿隙、电机与阵风
 simulation_injection:
-  enabled: false
-  seed: 20260730
+  enabled: false            # 总开关
+  seed: 20260730            # 随机种子，固定它才能复现同一组噪声
+  # 基座状态估计器的误差模型：动捕不是理想传感器
   base_estimator:
-    delay_sec: 0.020
-    position_noise_std_m: 0.0003
-    attitude_noise_std_deg: 0.03
-    linear_velocity_noise_std_m_s: 0.004
-    angular_velocity_noise_std_rad_s: 0.002
-    linear_acceleration_noise_std_m_s2: 0.04
-    angular_acceleration_noise_std_rad_s2: 0.015
-  translation_amplitude_m: [0.01, 0.008, 0.006]
-  translation_frequency_hz: [0.5, 0.7, 0.9]
-  translation_phase_rad: [0.0, 0.6, 1.2]
-  rpy_amplitude_deg: [3.0, 2.5, 2.0]
-  rpy_frequency_hz: [0.45, 0.65, 0.85]
-  rpy_phase_rad: [0.2, 1.0, 1.6]
+    delay_sec: 0.020                          # 基座状态延时 (s)。大→控制器看到的基座更旧、补偿更错；小→过于乐观
+    position_noise_std_m: 0.0003              # 基座位置噪声标准差 (m)
+    attitude_noise_std_deg: 0.03              # 基座姿态噪声标准差 (deg)
+    linear_velocity_noise_std_m_s: 0.004      # 基座线速度噪声 (m/s)
+    angular_velocity_noise_std_rad_s: 0.002   # 基座角速度噪声 (rad/s)，经杠杆 ω×r 放大到末端
+    linear_acceleration_noise_std_m_s2: 0.04  # 基座线加速度噪声 (m/s²)，直接进偏置加速度 b6
+    angular_acceleration_noise_std_rad_s2: 0.015  # 基座角加速度噪声 (rad/s²)，经 α×r 进 b6
+  # 基座运动：三轴独立正弦 x(t) = A·sin(2πf·t + φ)
+  translation_amplitude_m: [0.01, 0.008, 0.006]   # 平移幅值 A (m)。大→基座扰动强、任务更难；小→接近固定基座
+  translation_frequency_hz: [0.5, 0.7, 0.9]       # 平移频率 f (Hz)。大→加速度按 f² 增长，力矩需求陡增；小→准静态
+  translation_phase_rad: [0.0, 0.6, 1.2]          # 平移相位 φ (rad)，三轴错开才不是一条直线运动
+  rpy_amplitude_deg: [3.0, 2.5, 2.0]              # 姿态幅值 (deg)。大→末端经杠杆臂被甩得更远
+  rpy_frequency_hz: [0.45, 0.65, 0.85]            # 姿态频率 (Hz)，角加速度同样按 f² 增长
+  rpy_phase_rad: [0.2, 1.0, 1.6]                  # 姿态相位 (rad)
   payload:
-    mass_error_kg: 0.08
-    gravity_w_m_s2: [0.0, 0.0, -9.81]
+    mass_error_kg: 0.08                     # 末端负载的建模误差 (kg)，表现为控制器算不出的恒定力矩偏差。大→稳态误差大、更考验切换项 η
+    gravity_w_m_s2: [0.0, 0.0, -9.81]       # 世界系重力向量 (m/s²)
   friction:
-    viscous_nm_per_rad_s: [0.08, 0.08, 0.06, 0.045, 0.035, 0.025, 0.02]
-    coulomb_nm: [0.10, 0.10, 0.08, 0.06, 0.045, 0.035, 0.03]
-    stribeck_velocity_rad_s: 0.03
+    # 关节摩擦模型：τ_f = viscous·q̇ + coulomb·sign(q̇)，零速附近按 stribeck 速度过渡
+    viscous_nm_per_rad_s: [0.08, 0.08, 0.06, 0.045, 0.035, 0.025, 0.02]   # 粘性系数 (N·m/(rad/s))。大→高速阻力大、等效增加阻尼
+    coulomb_nm: [0.10, 0.10, 0.08, 0.06, 0.045, 0.035, 0.03]              # 库仑摩擦 (N·m)。大→零速附近死区宽、更容易卡住
+    stribeck_velocity_rad_s: 0.03           # 过渡速度尺度 (rad/s)。大→过零平缓；小→接近硬切换，零速处易极限环
   backlash:
-    torque_deadband_nm: [0.05, 0.05, 0.04, 0.035, 0.025, 0.02, 0.018]
+    torque_deadband_nm: [0.05, 0.05, 0.04, 0.035, 0.025, 0.02, 0.018]     # 齿隙等效力矩死区 (N·m)。大→小力矩指令完全不起作用、微调失效
   motor:
-    drive_delay_sec: 0.012
-    torque_gain: [0.96, 1.04, 0.98, 1.03, 0.97, 1.02, 0.99]
-    torque_bias_nm: [0.02, -0.02, 0.015, -0.01, 0.008, -0.006, 0.004]
-    torque_noise_std_nm: [0.025, 0.025, 0.02, 0.015, 0.012, 0.01, 0.008]
-    torque_ripple_amplitude_nm: [0.035, 0.035, 0.025, 0.02, 0.015, 0.012, 0.010]
-    torque_ripple_frequency_hz: [12.0, 14.0, 11.0, 15.0, 13.0, 17.0, 19.0]
-    torque_ripple_phase_rad: [0.0, 0.7, 1.3, 2.1, 2.8, 3.4, 4.0]
+    drive_delay_sec: 0.012                  # 力矩指令到实际输出的延时 (s)。大→相位裕度被吃掉，同样增益更容易失稳
+    torque_gain: [0.96, 1.04, 0.98, 1.03, 0.97, 1.02, 0.99]               # 力矩标度误差（实际/指令）。偏离 1 越多→前馈越不准
+    torque_bias_nm: [0.02, -0.02, 0.015, -0.01, 0.008, -0.006, 0.004]     # 力矩零漂 (N·m)，恒定偏置，直接转成稳态误差
+    torque_noise_std_nm: [0.025, 0.025, 0.02, 0.015, 0.012, 0.01, 0.008]  # 力矩白噪声标准差 (N·m)
+    torque_ripple_amplitude_nm: [0.035, 0.035, 0.025, 0.02, 0.015, 0.012, 0.010]  # 力矩纹波幅值 (N·m)，电机极对数引起的周期性波动
+    torque_ripple_frequency_hz: [12.0, 14.0, 11.0, 15.0, 13.0, 17.0, 19.0]        # 纹波频率 (Hz)。接近闭环带宽时最容易被激起共振
+    torque_ripple_phase_rad: [0.0, 0.7, 1.3, 2.1, 2.8, 3.4, 4.0]                  # 纹波相位 (rad)
   gust:
+    # 阵风：每 period_sec 来一次、持续 width_sec 的脉冲扰动，检验瞬态抗扰
     profile: gust
-    seed: 17
-    period_sec: 4.0
-    width_sec: 0.8
-    base_amplitude_m: 0.004
-    joint_torque_amplitude_nm: [0.18, 0.18, 0.14, 0.10, 0.08, 0.06, 0.05]
+    seed: 17                                # 阵风的独立随机种子
+    period_sec: 4.0                         # 阵风间隔 (s)。小→扰动更频繁，系统来不及恢复
+    width_sec: 0.8                          # 单次阵风持续 (s)。大→更像持续外力；小→更像冲击
+    base_amplitude_m: 0.004                 # 阵风给基座的位移幅值 (m)
+    joint_torque_amplitude_nm: [0.18, 0.18, 0.14, 0.10, 0.08, 0.06, 0.05]   # 阵风给各关节的力矩幅值 (N·m)。大→瞬态误差峰值大

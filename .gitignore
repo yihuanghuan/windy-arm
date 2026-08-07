@@ -14,3 +14,8 @@ __pycache__/
 
 .colcon/
 .claude/
+
+# Local calibration captures and transient artifacts
+*.bak
+*.log
+/src/arm-platform/task_space_smc/hw/data/

@@ -11,6 +11,7 @@
 #include <dummy_interface/msg/motor_state.hpp>
 #include <manipulator/robotics/arm_data_subscriber.h>
 #include <manipulator/robotics/arm_platform.h>
+#include <manipulator/controller/gravity_controller.h>
 
 namespace manipulator {
 
@@ -53,7 +54,9 @@ class StudentArmNode : public rclcpp::Node, public IArmDataSubscriber {
       const dummy_interface::msg::FloatingBaseState::ConstSharedPtr& msg);
   void ControlLoop();
   bool ValidateEffortCommand(const dummy_interface::msg::MotorControl& msg);
-  dummy_interface::msg::MotorControl MakeHoldPositionCommand();
+  dummy_interface::msg::MotorControl MakeHoldPositionCommand(
+      bool include_gravity = true);
+  std::vector<double> ComputeHoldGravityCurrent();
   void ExecuteEffortGuarded(const dummy_interface::msg::MotorControl& cmd);
 
  public:
@@ -148,6 +151,13 @@ class StudentArmNode : public rclcpp::Node, public IArmDataSubscriber {
   // 兜底保持所用增益，取自 p_gain/d_gain 参数（与位置模式一致）
   std::vector<double> hold_p_gain_;
   std::vector<double> hold_d_gain_;
+  // 直驱力矩通道的兜底保持不能只有 PD：承载关节会在命令超时后下垂。
+  // 重力模型只用于串口心跳正常、已有实测反馈时的保持；链路陈旧时严格退回
+  // 零前馈位置保持，避免以陈旧姿态施加错误力矩。
+  bool gravity_hold_enabled_ = false;
+  std::unique_ptr<controller::GravityController> hold_gravity_controller_;
+  std::vector<double> gravity_hold_zero_offset_rad_;
+  std::vector<double> gravity_hold_torque_limit_;
 };
 
 }  // namespace manipulator

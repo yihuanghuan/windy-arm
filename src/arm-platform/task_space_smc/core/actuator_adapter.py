@@ -22,6 +22,10 @@ class ActuatorLimits:
     current: np.ndarray
 
 
+# 力矩由「与加速度无关的偏置项」和「与加速度成正比的项」两部分组成：
+#   τ(s) = τ_bias + s·τ_accel
+# 求使所有关节都满足 |τ| ≤ τ_lim 的最大 s ∈ [0, 1]。统一缩放加速度而不是逐关节
+# 截断力矩，末端加速度只降幅度、方向不变。
 def uniform_acceleration_torque_scale(tau_bias, tau_accel, torque_limit):
     bias = np.asarray(tau_bias, dtype=float).ravel()
     accel = np.asarray(tau_accel, dtype=float).ravel()
@@ -37,6 +41,11 @@ def uniform_acceleration_torque_scale(tau_bias, tau_accel, torque_limit):
     return float(np.clip(s, 0.0, 1.0))
 
 
+# 关节力矩 → 电机指令。依次做力矩限幅、力矩变化率限幅，再按协议换算：
+#   电流协议  i = τ / (Kt·N·η)     Kt 力矩常数(N·m/A)，N 减速比，η 传动效率
+#   力矩协议  直接下发 τ
+# 急停、指令含 NaN/Inf、关节或基座状态超时，任一条成立都输出零力矩：这些情况下
+# 控制律的输入已经不可信，继续下发的是基于陈旧状态算出的力矩。
 class ActuatorAdapter:
 
     def __init__(

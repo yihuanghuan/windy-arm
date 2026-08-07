@@ -22,6 +22,11 @@ StudentArmNode::StudentArmNode() : Node("student_arm_node") {
   step_on_effort_command_ =
       GetParam<bool>("step_on_effort_command", false);
   publish_joint_feedback_ = GetParam<bool>("publish_joint_feedback", false);
+  gravity_hold_enabled_ = GetParam<bool>("gravity_hold_enabled", false);
+  gravity_hold_zero_offset_rad_ = GetParam<std::vector<double>>(
+      "gravity_hold_zero_offset_rad", {});
+  gravity_hold_torque_limit_ = GetParam<std::vector<double>>(
+      "gravity_hold_torque_limit", {});
   heartbeat_timeout_sec_ = GetParam<double>("heartbeat_timeout_sec", 0.2);
   joint_lower_limits_ = GetParam<std::vector<double>>(
       "joint_lower_limits", {-4.0, -3.1415, -1.5708, -4.0, -2.0, -4.0, -4.0});
@@ -124,6 +129,19 @@ void StudentArmNode::SetArmPlatform() {
   // 力矩通道的兜底保持使用与位置模式相同的增益
   hold_p_gain_ = p_gain;
   hold_d_gain_ = d_gain;
+  if (gravity_hold_enabled_) {
+    hold_gravity_controller_ = std::make_unique<controller::GravityController>();
+    if (!hold_gravity_controller_->LoadModel(urdf_path)) {
+      RCLCPP_ERROR(this->get_logger(),
+          "gravity_hold_enabled requested but URDF gravity model failed to load; "
+          "falling back to PD-only hold");
+      hold_gravity_controller_.reset();
+      gravity_hold_enabled_ = false;
+    } else {
+      RCLCPP_INFO(this->get_logger(),
+          "Direct-effort fallback hold: gravity feedforward enabled");
+    }
+  }
   RCLCPP_INFO(
       this->get_logger(),
       "SmoothPositionController: max_velocity=%.3f, velocity_feedforward=%s, "
@@ -243,12 +261,48 @@ bool StudentArmNode::ValidateEffortCommand(const dummy_interface::msg::MotorCont
   return true;
 }
 
-dummy_interface::msg::MotorControl StudentArmNode::MakeHoldPositionCommand() {
+std::vector<double> StudentArmNode::ComputeHoldGravityCurrent() {
+  std::vector<double> current(joint_count_, 0.0);
+  if (!gravity_hold_enabled_ || !hold_gravity_controller_ ||
+      last_known_position_.size() != joint_count_) {
+    return current;
+  }
+  arm::JointState state;
+  state.position = last_known_position_;
+  state.velocity.assign(joint_count_, 0.0);
+  for (size_t i = 0; i < state.position.size() && i < gravity_hold_zero_offset_rad_.size(); ++i) {
+    state.position[i] += gravity_hold_zero_offset_rad_[i];
+  }
+  planning::JointSetpoint unused_setpoint;
+  try {
+    const auto gravity = hold_gravity_controller_->Compute(state, unused_setpoint, 0.0);
+    for (size_t i = 0; i < current.size() && i < gravity.current.size(); ++i) {
+      const double limit = (i < gravity_hold_torque_limit_.size() &&
+                            gravity_hold_torque_limit_[i] > 0.0)
+          ? gravity_hold_torque_limit_[i] : 0.0;
+      current[i] = limit > 0.0
+          ? std::clamp(gravity.current[i], -limit, limit) : gravity.current[i];
+    }
+  } catch (const std::exception& exc) {
+    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        "gravity fallback calculation failed: %s", exc.what());
+  }
+  return current;
+}
+
+dummy_interface::msg::MotorControl StudentArmNode::MakeHoldPositionCommand(
+    bool include_gravity) {
   std::vector<double> positions(joint_count_, 0.0);
   for (size_t i = 0; i < joint_count_; ++i) {
     positions[i] = (i < last_known_position_.size()) ? last_known_position_[i] : 0.0;
   }
   auto cmd = BuildHoldCommand(positions, hold_p_gain_, hold_d_gain_);
+  if (include_gravity) {
+    cmd.current = ComputeHoldGravityCurrent();
+    // Hardware ignores enable, but keeping it asserted documents that this is
+    // an active MIT hold rather than a user-requested torque disable.
+    cmd.enable = 1;
+  }
   cmd.header.stamp = this->now();
   return cmd;
 }
@@ -261,7 +315,7 @@ void StudentArmNode::ExecuteEffortGuarded(
         "serial heartbeat stale (> %.2fs): blocking torque feedforward, "
         "holding position instead", heartbeat_timeout_sec_);
     arm_platform_->ExecuteDirectMotorCommand(
-        MakeHoldPositionCommand(), effort_control_period_sec_);
+        MakeHoldPositionCommand(false), effort_control_period_sec_);
     return;
   }
   arm_platform_->ExecuteDirectMotorCommand(cmd, effort_control_period_sec_);

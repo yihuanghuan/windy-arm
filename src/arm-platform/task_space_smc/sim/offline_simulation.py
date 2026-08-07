@@ -1,3 +1,12 @@
+"""离线仿真：不启 ROS，直接把控制器接在动力学模型上跑一段轨迹。
+
+基座运动由 SimulationInjectedBase 解析注入（逐轴正弦），末端参考按 mode 给定，
+每拍走「SMC → 冗余分解 → RNEA → 正向动力学积分」的闭环，输出逐拍 CSV。
+
+用于快速验证公式改动是否自洽。注意它【不能】用于定参数：这里的被控对象是理想的，
+没有延迟、摩擦、量化与噪声，优化器会钻这些空子。参数必须在 ROS 仿真里定。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -54,6 +63,12 @@ def make_base(profile: str) -> SimulationInjectedBase:
     return SimulationInjectedBase(translation, rpy)
 
 
+# 末端参考位姿。circle 模式在初始位姿的 xy 平面上画半径 r = 0.015 m、
+# 频率 0.2 Hz 的圆，位置/速度/加速度解析给出（ω = 2π·0.2）：
+#   p = p0 + r·[sin ωt, 1 − cos ωt, 0]
+#   v = r·ω·[cos ωt, sin ωt, 0]
+#   a = r·ω²·[−sin ωt, cos ωt, 0]
+# 减 1 使 t = 0 时偏移为零，轨迹从初始位姿起步而不是跳一个半径过去。姿态保持不变。
 def desired_pose(t: float, initial: PoseState, mode: str) -> PoseState:
     if mode == "circle":
         radius = 0.015

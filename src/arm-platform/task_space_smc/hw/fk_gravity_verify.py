@@ -1,3 +1,19 @@
+"""正运动学与重力模型的实物校验，并由此标出各关节的零位偏置。
+
+单关节扫掠时，其余关节锁住不动，则该关节的重力力矩随自身角度作正弦变化：
+
+    tau(q) = a1·sin(q) + a2·cos(q) + b = A·sin(q − φ) + b
+    A = hypot(a1, a2),   φ = atan2(−a2, a1)
+
+对实测力矩与模型力矩各拟合一次，A 之比检验一阶矩（连杆质量×质心距）的比例误差，
+相位差给出编码器零位偏置：
+
+    zero_offset = −wrap(φ_measured − φ_model)
+
+安全侧由 check_setpoint 统一把关：限位余量、重力力矩占额定的比例、桌面与围栏的
+几何越界、单步幅度上限。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -131,6 +147,7 @@ class GravityModel:
         self.data = self.model.createData()
         self.ee_frame_id = self.model.getFrameId("link6")
 
+    # 广义重力力矩 g(q) = ∂U/∂q，即静止时各关节为撑住重力必须出的力矩
     def gravity(self, q: np.ndarray) -> np.ndarray:
         return pin.computeGeneralizedGravity(
             self.model, self.data, np.asarray(q, dtype=float)).copy()
@@ -169,6 +186,8 @@ class SafetyReport:
     reasons: list[str] = field(default_factory=list)
 
 
+# 目标位形的安全闸，四条依次检查：距关节限位的余量、重力力矩占额定的比例是否
+# 超过 TORQUE_BUDGET、各连杆点是否越过桌面/围栏几何、单步幅度是否超过 MAX_STEP。
 def check_setpoint(q: np.ndarray, model: GravityModel,
                    q_from: np.ndarray | None = None) -> SafetyReport:
     rep = SafetyReport(ok=True)
@@ -229,6 +248,7 @@ class FlushingWriter:
         os.fsync(self._handle.fileno())
 
 
+# 朝目标走一步，最大分量不超过 MAX_STEP：整体按 MAX_STEP/span 缩放，方向不变
 def plan_next_step(q_now: np.ndarray, q_target: np.ndarray) -> np.ndarray:
     q_now = np.asarray(q_now, dtype=float)
     q_target = np.asarray(q_target, dtype=float)
@@ -246,6 +266,11 @@ def interpolate(q_from: np.ndarray, q_to: np.ndarray) -> list[np.ndarray]:
     return [q_from + (q_to - q_from) * (k + 1) / n for k in range(n)]
 
 
+# 把力矩-角度曲线拟合成正弦。对 [sin q, cos q, 1] 做线性最小二乘（关于系数线性，
+# 无需迭代），再还原成幅值与相位：
+#   tau(q) = a1·sin(q) + a2·cos(q) + b = A·sin(q − φ) + b
+#   A = hypot(a1, a2),   φ = atan2(−a2, a1)
+# A 是该关节的一阶矩（质量 × 质心距 × g），φ 是重力力矩过零的角度，b 是力矩零漂。
 def fit_sine(q: np.ndarray, tau: np.ndarray) -> dict:
     q = np.asarray(q, dtype=float)
     tau = np.asarray(tau, dtype=float)
@@ -269,6 +294,8 @@ def fit_sine(q: np.ndarray, tau: np.ndarray) -> dict:
     )
 
 
+# 模型侧参考：按计划位形逐点算模型重力力矩，用同一个 fit_sine 拟合，
+# 与实测拟合结果对比才有可比性。
 def model_reference(model: GravityModel, joint: int,
                     posture: list[float], qs: np.ndarray) -> dict:
     j = joint - 1
@@ -280,6 +307,8 @@ def model_reference(model: GravityModel, joint: int,
     return fit_sine(qs, np.array(taus))
 
 
+# 同上，但用【实测到的】整臂位形算模型力矩：其余关节的实际停位与计划值有差，
+# 用计划位形算出来的参考会把这部分差异记到相位上。
 def model_reference_measured(model: GravityModel, joint: int,
                              q_full: np.ndarray) -> dict:
     q_full = np.asarray(q_full, dtype=float)
@@ -592,6 +621,8 @@ def run_sweep(node: FkGravityVerifier, joint: int, n_points: int | None,
     return out
 
 
+# 编码器零位偏置 = −wrap(φ_measured − φ_model)。用 atan2(sin Δ, cos Δ) 把差值
+# 卷回 (−π, π]，避免 ±2π 的分支跳变；取负号是因为它要作为「加到读数上」的修正量。
 def zero_offset(phi_measured: float, phi_model: float) -> float:
     wrapped = np.arctan2(np.sin(phi_measured - phi_model),
                          np.cos(phi_measured - phi_model))

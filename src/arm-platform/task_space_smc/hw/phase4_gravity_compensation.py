@@ -1,3 +1,18 @@
+"""重力补偿验收（实物）：逐级抽掉位置反馈，看重力前馈能否独自撑住位姿。
+
+每一级把位置环增益按比例缩小
+
+    kp = kp_frac · BASE_P,   kd = kd_frac · BASE_D
+
+前馈始终为 tau_ff = ratio ⊙ g(q)。kp_frac 从 1.00 一路降到 0（L4「悬浮」级，
+位置比例项完全撤掉，只留阻尼），记录各级的稳态残差
+
+    residual = mean(q_measured) − q_hold
+
+前馈准确时残差不随 kp_frac 下降而放大；若在低增益级发散，说明前馈的一阶矩或
+零位偏置还不对。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -49,6 +64,8 @@ DESK_MARGIN_MIN = 0.10
 FENCE_MARGIN_MIN = 0.05
 
 
+# 工作空间余量：对伸到桌面上方（x < DESK_EDGE_X）的连杆点，同时取它离桌面的
+# 垂直余量和离围栏的水平余量，返回其中最小的一个，负值即已越界。
 def desk_margin(model: GravityModel, q: np.ndarray) -> float:
     m = np.inf
     for p in model.link_points(np.asarray(q, float)):
@@ -60,13 +77,16 @@ def desk_margin(model: GravityModel, q: np.ndarray) -> float:
 
 
 class Compensator(Node):
-    def __init__(self):
+    def __init__(self, *, ignore_workspace_guard: bool = False):
         super().__init__("phase4_gravity_compensation")
         self.model = GravityModel()
         cal = load_arm6_calibration()
         self.offset = np.array(cal["zero_offset_rad"], dtype=float)
         self.ratio = np.array(cal["first_moment_ratio"], dtype=float)
         self.cal_source = cal["source"]
+        # 仅供动捕标定场地（确认四周无桌面/围栏）使用。关节限位、速度和
+        # 漂移保护绝不因此关闭。
+        self.ignore_workspace_guard = bool(ignore_workspace_guard)
         self.q = None
         self.v = None
         self.tau = None
@@ -130,9 +150,10 @@ class Compensator(Node):
             return f"joint{j} drifted {drift:.3f} rad (limit {DRIFT_ABORT})"
         if self.v is not None and np.max(np.abs(self.v)) > SPEED_ABORT:
             return f"speed {np.max(np.abs(self.v)):.2f} rad/s exceeded"
-        mg = desk_margin(self.model, self.q)
-        if mg < 0.0:
-            return f"desk/fence margin {mg:+.4f} m"
+        if not self.ignore_workspace_guard:
+            mg = desk_margin(self.model, self.q)
+            if mg < 0.0:
+                return f"desk/fence margin {mg:+.4f} m"
         lim = np.minimum(self.q - JOINT_LOWER, JOINT_UPPER - self.q)
         if lim.min() < 0.05:
             return f"joint{int(np.argmin(lim)) + 1} within 0.05 rad of a limit"
@@ -172,6 +193,9 @@ class Compensator(Node):
                     n=len(samples)), None
 
 
+# 随机搜一个适合做本验收的起始位形：过安全闸、桌面与围栏余量够、离限位有 0.30 rad
+# 空间，并且大臂三轴的最大重力力矩尽量接近 2.5 N·m —— 太小则前馈误差被淹没，
+# 太大则低增益级本身就不安全。固定随机种子保证每次选到同一个位形。
 def pick_start_posture(model: GravityModel) -> tuple[np.ndarray, dict]:
     rng = np.random.default_rng(11)
     lo = np.maximum(JOINT_LOWER, -1.4)
@@ -228,6 +252,9 @@ def main() -> int:
     ap.add_argument('--max-level', type=int, default=len(LEVELS) - 1,
                     help='最高执行到第几级（0-4）。默认全程到 kp=0')
     ap.add_argument('--posture', default=None, help='逗号分隔的 6 个角度')
+    ap.add_argument('--ignore-workspace-guard', action='store_true',
+                    help='仅在确认四周无桌面/围栏的动捕标定场地使用；'
+                         '不关闭关节限位、速度或漂移保护')
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()
 
@@ -241,7 +268,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime('%Y%m%d_%H%M%S')
     rclpy.init()
-    node = Compensator()
+    node = Compensator(ignore_workspace_guard=args.ignore_workspace_guard)
     results = []
     try:
         if not node.wait_state():
@@ -259,10 +286,17 @@ def main() -> int:
         q_hold = node.q.copy()
         rep = check_setpoint(q_hold, node.model)
         mg = desk_margin(node.model, q_hold)
+        reasons = list(rep.reasons)
+        if args.ignore_workspace_guard:
+            # check_setpoint 的桌面/围栏项是场地相关的软约束；保留所有
+            # 关节限位项。实际硬限位余量仍由 guard() 的 0.05 rad 强制执行。
+            reasons = [r for r in reasons if 'desk' not in r and 'fence' not in r]
+            reasons = [r for r in reasons if 'within 0.15 rad' not in r]
+        posture_ok = not reasons
         node.get_logger().info(
             f"起始位姿 {np.round(q_hold, 4).tolist()}  "
-            f"余量 {mg:+.4f} m  安全检查 {'通过' if rep.ok else '未通过'}")
-        if not rep.ok or mg < DESK_MARGIN_MIN:
+            f"余量 {mg:+.4f} m  安全检查 {'通过' if posture_ok else '未通过'}")
+        if not posture_ok or (not args.ignore_workspace_guard and mg < DESK_MARGIN_MIN):
             print(f"REFUSED: 当前位姿不适合悬浮测试 "
                   f"(margin {mg:+.4f}, 要求 >= {DESK_MARGIN_MIN})", file=sys.stderr)
             return 6

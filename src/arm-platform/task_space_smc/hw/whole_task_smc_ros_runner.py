@@ -1,5 +1,25 @@
 #!/usr/bin/env python3
-"""ROS/RViz whole-task runner for the floating-base task-space SMC."""
+"""浮动基座任务空间 SMC 的整任务运行器（ROS / RViz）。
+
+每个控制拍的链路：
+
+    反馈 (q, q̇)  --估计器-->  (q̂, q̇̂)                 见 core/state_estimator.py
+    基座位姿      --FK-->      末端位姿与雅可比 J        见 core/model.py
+    (期望, 实际)  --SMC-->     任务加速度 ν = [a, α]     见 core/task_space_smc.py
+    ν            --分配-->    关节加速度 q̈             两条通路，见下
+    q̈            --RNEA-->   关节力矩 τ               见 core/model.py
+    τ            --适配器-->  电机指令                  见 core/actuator_adapter.py
+
+由 ``task.solver`` 选择加速度分配通路：
+
+* ``qp``（_task_space_torque_qp）：以力矩为决策变量解带约束 QP，力矩上限与
+  变化率是求解器内的硬约束，后端 clamp 只当通信兜底。见 core/task_qp.py。
+* 缺省（_task_space_torque）：动力学一致伪逆 + 零空间投影，力矩在后端统一
+  缩放。见 core/redundancy_resolution.py。
+
+两条通路共有的两个换算：末端偏置加速度 b6 要从任务加速度里扣掉（y = ν − b6），
+控制点是 arm_ee 标记原点而非 link6，故 J 与 b6 都要沿力臂搬点。
+"""
 
 from __future__ import annotations
 
@@ -10,6 +30,7 @@ import sys
 from collections import deque
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import pinocchio as pin
@@ -45,8 +66,35 @@ from task_space_smc.core.quaternion_math import (
     quat_to_rotation,
     quaternion_log_error,
     rotation_to_quat,
+    ros_xyzw_to_wxyz,
     wxyz_to_ros_xyzw,
 )
+from task_space_smc.core.ee_estimator import (
+    EeExtrinsic, EeFeedbackConfig, EeFeedbackEstimator)
+
+# CSV 只能存数字，所以把状态字符串编码成整数。0 永远是"正常"。
+_QP_STATUS_CODES = {"optimal": 0.0, "max_iter": 1.0,
+                    "infeasible": 2.0, "numerical": 3.0}
+_EE_MODE_CODES = {"fk_only": 0.0, "vicon_direct": 1.0,
+                  "vicon_bias_corrected": 2.0}
+# 速度来源在 CSV 里存成码而不是字符串（DictWriter 那一行全是数）。
+# fk 与 fk_stale/fk_rejected 分开编码：三者都是"这一拍走了 FK"，但成因不同 ——
+# 配置就是 fk / 配了 vicon 但没数据 / 配了 vicon 但对照没过。
+_EE_VELOCITY_SOURCE_CODES = {"fk": 0.0, "vicon": 1.0,
+                             "fk_stale": 2.0, "fk_rejected": 3.0}
+
+
+class _EeSample(NamedTuple):
+    """``/vicon/arm_ee`` 最新一帧。全部字段同一个 ``stamp``。"""
+
+    position: np.ndarray
+    stamp: float
+    rotation: np.ndarray | None
+    linear_velocity: np.ndarray | None
+    angular_velocity: np.ndarray | None
+    angular_accel: np.ndarray | None
+from task_space_smc.core.task_qp import (
+    HoldQPLimits, HoldQPWeights, saturate_task_acceleration, solve_hold_qp)
 from task_space_smc.core.redundancy_resolution import (
     FeasibilityLimits, LimitAvoidance, pen_axis_task, resolve_acceleration)
 from task_space_smc.core.trajectory_reference import (
@@ -54,6 +102,7 @@ from task_space_smc.core.trajectory_reference import (
     base_sample,
     drawing_segments,
     reference_sample,
+    set_hold_reference,
     traj,
     whole_period,
 )
@@ -104,7 +153,7 @@ def trajectory_period(shape: str) -> float:
 try:
     import rclpy
     from dummy_interface.msg import FloatingBaseState, MotorControl
-    from geometry_msgs.msg import Point, TransformStamped
+    from geometry_msgs.msg import Point, PoseStamped, TransformStamped
     from rclpy.node import Node
     from rclpy.qos import DurabilityPolicy, QoSProfile
     from sensor_msgs.msg import JointState
@@ -138,6 +187,8 @@ class WholeTaskSmcRosRunner(Node):
         self.declare_parameter("initial_joint_positions", [0.0] * 6)
         self.declare_parameter("base_state_mode", "analytic")
         self.declare_parameter("external_base_topic", "/floating_base/vicon")
+        self.declare_parameter("hold_capture_measured", True)
+        self.declare_parameter("hold_target_position_m", [0.0, 0.0, 0.0])
         self.declare_parameter("simulation_handover_enabled", True)
         self.declare_parameter("simulation_profile_name", "")
 
@@ -173,10 +224,41 @@ class WholeTaskSmcRosRunner(Node):
             timeout_sec=float(self.config.get("safety", {}).get(
                 "base_state_timeout_sec", 0.1)))
         self._external_base_initialized = not self.uses_external_base
+
+
+        # hold：末端在世界系里定点保持。目标位姿要么在这里静态给定，要么在
+        # 接管的第一拍由实测末端位姿捕获（缺省，见 _capture_hold_reference）。
+        self.is_hold_shape = self.shape == "hold"
+        _hold_target = np.asarray(
+            self.get_parameter("hold_target_position_m").value,
+            dtype=float).reshape(-1)
+        self.hold_capture_measured = (
+            self.is_hold_shape
+            and bool(self.get_parameter("hold_capture_measured").value))
+        if self.is_hold_shape and not self.hold_capture_measured:
+            if _hold_target.size != 3 or not np.any(_hold_target):
+                raise RuntimeError(
+                    "hold_capture_measured=false 时必须给出非零的 "
+                    "hold_target_position_m（世界系 x,y,z，单位 m）")
+            set_hold_reference(_hold_target)
+            self.get_logger().info(
+                "保持目标（静态指定）: %s m"
+                % np.round(_hold_target, 4).tolist())
+        self._hold_captured = not self.hold_capture_measured
         self.derivative_dt = float(self.get_parameter("derivative_dt_sec").value)
         self.duration_sec = float(self.get_parameter("duration_sec").value)
         self.start_delay_sec = max(
             0.0, float(self.get_parameter("start_delay_sec").value))
+
+
+        # 保持目标 = 当前位姿时，就位段无事可做：它要走的直线长度恒为零。
+        # 更要紧的是就位段会在目标【捕获之前】读参考量，读到的是兜底缺省值，
+        # 于是机械臂会先跑向一个谁也没要求的点。直接取消它。
+        if self.hold_capture_measured and self.start_delay_sec > 0.0:
+            self.get_logger().warning(
+                "hold + 捕获实测位姿：忽略 start_delay_sec=%.2f，就位段取消"
+                "（目标就是当前位姿，没有要走的距离）" % self.start_delay_sec)
+            self.start_delay_sec = 0.0
         if self.duration_sec <= 0.0:
 
 
@@ -221,8 +303,39 @@ class WholeTaskSmcRosRunner(Node):
 
         self.q_lower = self.model.model.lowerPositionLimit[7:].copy()
         self.q_upper = self.model.model.upperPositionLimit[7:].copy()
+        self._setup_ee_feedback()
         _task = self.config.get("task", {})
         self.orientation_mode = str(_task.get("orientation_mode", "full"))
+        # 只有 task.solver == "qp" 才走受约束 QP。其余四份配置（whole6 /
+        # whole6_hw / hwtest / whole）没有这个键，继续走 resolve_acceleration，
+        # 一行不改，既有测试也不动。
+        self.use_task_qp = str(_task.get("solver", "")).lower() == "qp"
+        self.max_linear_task_accel = float(_task.get("max_linear_task_accel", 0.0))
+        self.max_angular_task_accel = float(_task.get("max_angular_task_accel", 0.0))
+        _qp = self.config.get("qp", {}) or {}
+        _qw = _qp.get("weights", {}) or {}
+        self.qp_weights = HoldQPWeights(
+            position=float(_qw.get("position", 1.0e4)),
+            orientation=float(_qw.get("orientation", 1.0)),
+            joint_centering=float(_qw.get("joint_centering", 1.0e-2)),
+            smoothness=float(_qw.get("smoothness", 1.0e-2)),
+            regularization=float(_qw.get("regularization", 1.0e-6)),
+            qdd_box_slack=float(_qw.get("qdd_box_slack", 1.0e8)),
+            characteristic_length=float(_task.get("characteristic_length", 0.2)),
+        )
+        self.qp_qdd_max = np.asarray(
+            _qp.get("qdd_max", [40.0] * self.n_arm), dtype=float).reshape(self.n_arm)
+        self.qp_max_iterations = int(_qp.get("max_iterations", 40))
+        self.qp_fallback_hold_ticks = int(_qp.get("fallback_hold_ticks", 5))
+        self._qdd_prev = np.zeros(self.n_arm)
+        self._tau_prev_sent = np.zeros(self.n_arm)
+        self._tau_prev_stamp = None
+        self._qp_fail_streak = 0
+        self._qp_fallback_ticks = 0
+        self._backend_clamp_hits = 0
+        self._ee_residuals = []
+        self._ee_orientation_residuals = []
+        self._ee_degraded_ticks = 0
         self.pen_axis_local = np.asarray(
             _task.get("pen_axis_local", [1.0, 0.0, 0.0]), dtype=float)
         self.reference_offset_local = np.asarray(
@@ -401,6 +514,18 @@ class WholeTaskSmcRosRunner(Node):
                 and not bool(self.get_parameter(
                     "simulation_handover_enabled").value)):
             handover_cfg = {}
+        if self.hold_capture_measured:
+
+
+            # 捕获实测位姿后位置与姿态偏置【构造上】就是零，没有要拉的量。
+            # 但 handover 还会把交接瞬间的末端速度偏差积分进参考量
+            # （bv 峰值约 0.1·T，T=30 s 时是 3 s 的位移当量）——
+            # 而保持段捕获时基座往往正在动，末端速度并不为零。
+            # 留着它等于让"保持"的目标先顺着捕获瞬间的速度漂出去几十厘米。
+            handover_cfg = {}
+            self.get_logger().info(
+                "hold + 捕获实测位姿：交接混合已关闭"
+                "（位姿偏置恒为零，速度偏置不该积分进保持目标）")
         self.handover_blend = HandoverBlend(
             float(handover_cfg.get("reference_blend_sec", 0.0)))
 
@@ -408,7 +533,7 @@ class WholeTaskSmcRosRunner(Node):
         self.freeze_trajectory_during_blend = bool(
             handover_cfg.get("freeze_trajectory_during_blend", False))
         if self.simulated_base:
-            self.track_start_q = self._solve_initial_pose(self.q)
+            self.track_start_q = self._track_start_pose(self.q)
             initial_joint_positions = np.asarray(
                 self.get_parameter("initial_joint_positions").value,
                 dtype=float,
@@ -430,12 +555,13 @@ class WholeTaskSmcRosRunner(Node):
         else:
 
 
-            self.track_start_q = self._solve_initial_pose(self.q)
+            self.track_start_q = self._track_start_pose(self.q)
             self.approach_initial_q = self.q.copy()
             jump = float(np.max(np.abs(self.track_start_q - self.approach_initial_q)))
-            self.get_logger().info(
-                f"approach: 需移动 {np.degrees(jump):.1f}° "
-                f"(峰值速度约 {1.875 * jump / max(self.start_delay_sec, 1e-3):.2f} rad/s)")
+            if not self.hold_capture_measured:
+                self.get_logger().info(
+                    f"approach: 需移动 {np.degrees(jump):.1f}° "
+                    f"(峰值速度约 {1.875 * jump / max(self.start_delay_sec, 1e-3):.2f} rad/s)")
         self._resolve_track_start_nullspace_nominal()
 
         self.command_pub = self.create_publisher(MotorControl, "/student/joint_effort_command", 10)
@@ -455,6 +581,14 @@ class WholeTaskSmcRosRunner(Node):
             Float64MultiArray, "/task_space_smc/joint_torque", 10)
         self.tf_broadcaster = TransformBroadcaster(self)
         self.create_subscription(JointState, "/joint_states", self._joint_state_cb, 10)
+        if self.ee_estimator.config.mode != "fk_only":
+            # 深队列同 QA_record 的教训：这条流与基座位姿走同一条 WiFi，
+            # 会被压成串投递，浅队列会在节点内部丢掉已经送达的帧。
+            #
+            # 类型是 FloatingBaseState 而不是 PoseStamped：位姿/速度/加速度
+            # 共用一个时间戳，下游就不必再做跨话题时间对齐。
+            self.create_subscription(
+                FloatingBaseState, self.ee_topic, self._ee_state_cb, 200)
         if self.uses_external_base:
             self.create_subscription(
                 FloatingBaseState,
@@ -470,6 +604,14 @@ class WholeTaskSmcRosRunner(Node):
             [f"desired_{axis}_m" for axis in "xyz"]
             + [f"actual_{axis}_m" for axis in "xyz"]
             + [f"error_{axis}_m" for axis in "xyz"]
+            # 验收要能把"Vicon 说的末端"和"FK 说的末端"逐拍摆在一起看。
+            + [f"ee_vicon_{axis}_m" for axis in "xyz"]
+            + [f"ee_fk_{axis}_m" for axis in "xyz"]
+            + [f"ee_bias_{axis}_m" for axis in "xyz"]
+            # 速度也要能逐拍对照。Vicon 速度的尺度和坐标系在有真实运动的数据
+            # 出现之前无法验证，这两组列就是那份数据。
+            + [f"ee_vicon_vel_{axis}" for axis in "xyz"]
+            + [f"ee_fk_vel_{axis}" for axis in "xyz"]
             + [f"base_{axis}_m" for axis in "xyz"]
             + [f"base_q_{name}" for name in ("w", "x", "y", "z")]
             + [f"base_est_{axis}_m" for axis in "xyz"]
@@ -496,6 +638,19 @@ class WholeTaskSmcRosRunner(Node):
                 "t", "phase", "pos_error_m", "rot_error_rad", "tau_max_abs",
                 "sigma_min", "damping", "nullspace_leakage",
                 "feasibility_scale", "nullspace_scale", "torque_scale",
+                # QP 路径的可观测量。qp_fallback 与 backend_clamp_hits 在正常
+                # 运行中必须恒为 0；非零就说明求解器没在真正管住力矩。
+                "qp_status", "qp_iterations", "qp_fallback",
+                "qp_position_residual_m_s2", "qp_orientation_residual_rad_s2",
+                "qp_qdd_slack_max", "task_accel_saturation",
+                "backend_clamp_hits",
+                # 末端反馈：Vicon 与 FK 各自的值、二者残差、数据年龄、是否降级。
+                "ee_mode", "ee_residual_norm_m", "ee_orientation_residual_rad",
+                "ee_vicon_age_s", "ee_degraded",
+                # 这一拍的线速度/角速度实际取自谁（编码见
+                # _EE_VELOCITY_SOURCE_CODES）。配了 vicon 却整段是 2/3，就说明
+                # 要么链路没通、要么对照没过 —— 从数据上直接看得出来。
+                "ee_vel_source", "ee_omega_source",
                 "enabled",
                 "pen_down", "stroke_id", "simulation_injection_enabled",
                 "gust_active", "gust_envelope", "tau_actual_max_abs",
@@ -631,6 +786,55 @@ class WholeTaskSmcRosRunner(Node):
             + np.cross(omega_w, np.cross(omega_w, offset_w)))
         return ref
 
+    def _track_start_pose(self, q_seed: np.ndarray,
+                          base_state: BaseState | None = None) -> np.ndarray:
+        """跟踪段起点位形。
+
+        保持目标 = 当前位姿时不解 IK：目标位姿【就是】当前位形正解出来的那个，
+        当前位形本身就是解，再去搜一遍只会因为"限位余量更大"而挑到另一个解，
+        凭空给出一段不该存在的位移。
+        """
+        if self.hold_capture_measured:
+            return np.asarray(q_seed, dtype=float).reshape(self.n_arm).copy()
+        return self._solve_initial_pose(q_seed, base_state)
+
+    def _capture_hold_reference(self, kin_ctrl) -> None:
+        """把控制器当前看到的末端位姿定为世界系保持目标。
+
+        用 ``kin_ctrl``（估计器/动捕视角）而不是真值，是为了让参考量与反馈量在
+        同一个视角下相减 —— 这样第一拍的任务空间误差【严格为零】，交接不产生
+        任何跳变，之后所有偏差都只来自基座运动。
+        """
+        rotation = np.asarray(kin_ctrl.ee_rotation, dtype=float).reshape(3, 3)
+
+
+        # _reference_sample 会把 reference_offset_local 加回去。这里先减掉，
+        # 保证 _reference_sample(0) 正好落在实测末端上。
+        position = (np.asarray(kin_ctrl.ee_position, dtype=float).reshape(3)
+                    - rotation @ self.reference_offset_local)
+        set_hold_reference(position, rotation)
+        self._hold_captured = True
+        self.track_start_q = np.asarray(self.q_ctrl, dtype=float).copy()
+        self._resolve_track_start_nullspace_nominal()
+        self.get_logger().info(
+            "保持目标（实测捕获）: 位置 [%.4f, %.4f, %.4f] m，"
+            "关节 %s°"
+            % (*np.asarray(kin_ctrl.ee_position, dtype=float).reshape(3),
+               np.round(np.degrees(self.track_start_q), 2).tolist()))
+
+    def _reject_start_configuration(self, now: float, reason: str) -> None:
+        """拒绝起跑：不发 SMC 力矩，改为原地位置保持，保位后收尾退出。
+
+        复用看门狗那条通路，因为"停止跟踪并原地保持"这件事只该有一个实现。
+        注意【不能】发零力矩：协议没有失能帧，零力矩等于失力，实测 joint2
+        失力后下沉 14.6°。
+        """
+        self._watchdog_tripped = True
+        self._watchdog_trip_time = now
+        self.watchdog_reason = reason
+        self._watchdog_hold_q = np.asarray(self._q_meas, dtype=float).copy()
+        self.get_logger().error("⚠️ 起点位形被拒绝，原地保持位置：" + reason)
+
     def _solve_initial_pose(self, q_seed: np.ndarray,
                             base_state: BaseState | None = None) -> np.ndarray:
         if base_state is not None:
@@ -758,7 +962,7 @@ class WholeTaskSmcRosRunner(Node):
     def _initialize_external_base(self, base: BaseState) -> None:
         if self._external_base_initialized:
             return
-        self.track_start_q = self._solve_initial_pose(self.q, base)
+        self.track_start_q = self._track_start_pose(self.q, base)
         self.approach_initial_q = self.q.copy()
         jump = float(np.max(np.abs(self.track_start_q - self.approach_initial_q)))
         self._resolve_track_start_nullspace_nominal()
@@ -858,6 +1062,11 @@ class WholeTaskSmcRosRunner(Node):
 
     def _drawing_segments(self):
         sample_count = int(self.get_parameter("marker_sample_count").value)
+        if self.is_hold_shape:
+
+
+            # 保持目标是一个点，没有静态路径可画；它由运行期的绿球标出。
+            return []
         if not np.any(self.reference_offset_local):
             return drawing_segments(self.shape, sample_count)
 
@@ -1418,6 +1627,23 @@ class WholeTaskSmcRosRunner(Node):
             "feasibility_scale": float("nan"),
             "nullspace_scale": float("nan"),
             "torque_scale": float("nan"),
+            # 就位段不跑 QP、也不用 Vicon 末端；这些列必须显式补 NaN，
+            # 否则 csv.DictWriter 直接抛 ValueError。
+            "qp_status": float("nan"),
+            "qp_iterations": float("nan"),
+            "qp_fallback": float("nan"),
+            "qp_position_residual_m_s2": float("nan"),
+            "qp_orientation_residual_rad_s2": float("nan"),
+            "qp_qdd_slack_max": float("nan"),
+            "task_accel_saturation": float("nan"),
+            "backend_clamp_hits": float(self._backend_clamp_hits),
+            "ee_mode": float("nan"),
+            "ee_residual_norm_m": float("nan"),
+            "ee_orientation_residual_rad": float("nan"),
+            "ee_vicon_age_s": float("nan"),
+            "ee_degraded": float("nan"),
+            "ee_vel_source": float("nan"),
+            "ee_omega_source": float("nan"),
             "enabled": int(motor.enabled),
             "pen_down": 0,
             "stroke_id": -1,
@@ -1440,6 +1666,12 @@ class WholeTaskSmcRosRunner(Node):
             row[f"actual_{axis}_m"] = float(value)
         for axis, value in zip("xyz", error_xyz):
             row[f"error_{axis}_m"] = float(value)
+        for axis in "xyz":
+            row[f"ee_vicon_{axis}_m"] = float("nan")
+            row[f"ee_fk_{axis}_m"] = float("nan")
+            row[f"ee_bias_{axis}_m"] = float("nan")
+            row[f"ee_vicon_vel_{axis}"] = float("nan")
+            row[f"ee_fk_vel_{axis}"] = float("nan")
         for axis, value in zip("xyz", bs.position_w):
             row[f"base_{axis}_m"] = float(value)
         for name, value in zip(("w", "x", "y", "z"), bs.quaternion_wxyz):
@@ -1467,9 +1699,12 @@ class WholeTaskSmcRosRunner(Node):
         if self.approach_rows_written % METRICS_FLUSH_INTERVAL == 0:
             self.metrics_file.flush()
 
-    def _plan_task_space_approach(self, kin_ctrl) -> bool:
+    def _start_singularity_reason(self, kin_ctrl) -> str:
+        """起点位形奇异门。返回拒绝理由；空串表示放行（可能带 warn 日志）。
 
-
+        任务空间 SMC 正是被腕部奇异卡住的那一方：sigma_min 趋零时伪逆照样给
+        得出一个数，但那个数与期望的末端运动无关，机械臂会往任意方向窜。
+        """
         J_chk = kin_ctrl.J_arm_lwa
         if self.orientation_mode == "pen_axis":
             J_chk, _, _ = pen_axis_task(
@@ -1478,22 +1713,28 @@ class WholeTaskSmcRosRunner(Node):
         sigma_min = float(np.linalg.svd(J_chk, compute_uv=False)[-1])
         sigma_crit = float(self.config["singularity"]["sigma_critical"])
         sigma_warn = float(self.config["singularity"]["sigma_warn"])
+        j5_deg = (np.degrees(self.q_ctrl[4]) if self.n_arm >= 5
+                  else float("nan"))
         if sigma_min < sigma_crit:
-            self.get_logger().error(
-                "起点位形奇异，拒绝就位（不发任何力矩）：sigma_min = %.5f < "
-                "sigma_critical %.5f。当前 j5 = %.2f°。\n"
+            return (
+                "sigma_min = %.5f < sigma_critical %.5f。当前 j5 = %.2f°。\n"
                 "  先用位置模式把 joint5 挪出腕部奇异，再起 SMC：\n"
                 "    python3 task_space_smc/hw/wrist_prepose.py --target-deg 40"
-                % (sigma_min, sigma_crit, np.degrees(self.q_ctrl[4])
-                   if self.n_arm >= 5 else float("nan")))
-            self.task_approach_rejected = True
-            return False
+                % (sigma_min, sigma_crit, j5_deg))
         if sigma_min < sigma_warn:
             self.get_logger().warning(
                 "起点位形接近奇异：sigma_min = %.5f < sigma_warn %.5f"
                 "（当前 j5 = %.2f°，建议 >= 40°）"
-                % (sigma_min, sigma_warn,
-                   np.degrees(self.q_ctrl[4]) if self.n_arm >= 5 else float("nan")))
+                % (sigma_min, sigma_warn, j5_deg))
+        return ""
+
+    def _plan_task_space_approach(self, kin_ctrl) -> bool:
+        reason = self._start_singularity_reason(kin_ctrl)
+        if reason:
+            self.get_logger().error(
+                "起点位形奇异，拒绝就位（不发任何力矩）：" + reason)
+            self.task_approach_rejected = True
+            return False
         ref0 = self._reference_sample(0.0)
         self.task_approach = TaskSpaceApproach(
             kin_ctrl.ee_position, kin_ctrl.ee_rotation,
@@ -1727,12 +1968,224 @@ class WholeTaskSmcRosRunner(Node):
             brake_safety=self.feasibility_brake_safety,
         )
 
+    @staticmethod
+    def _load_ee_extrinsic(config_path):
+        """``arm_ee_from_link6`` from ``vicon_extrinsics.yaml``, or ``None``.
+
+        Rotation is deliberately *not* read into control.  arm_ee sits 114.39
+        deg (run 1) / 113.54 deg (run 2) from link6, and the residual after
+        removing that constant is 9.97 deg in one run and 43.55 deg in the
+        other, so no single fixed rotation explains the channel.  The key is
+        parsed only so the logged orientation residual can use it.
+        """
+        base = Path(config_path).resolve().parent
+        path = base / "vicon_extrinsics.yaml"
+        if not path.exists():
+            return None
+        with open(path, "r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+        block = data.get("arm_ee_from_link6") or {}
+        translation = block.get("translation_m")
+        if not isinstance(translation, list) or len(translation) != 3:
+            return None
+        return EeExtrinsic(np.asarray(translation, dtype=float))
+
+    def _setup_ee_feedback(self):
+        cfg = self.config.get("ee_feedback", {}) or {}
+        mode = str(cfg.get("mode", "fk_only"))
+        extrinsic = self._load_ee_extrinsic(self.config_path)
+        if mode != "fk_only" and extrinsic is None:
+            # 与 launch 的 load_base_extrinsic 同一条原则：外参缺失是硬错误，
+            # 绝不静默退化成单位阵。
+            raise RuntimeError(
+                "ee_feedback.mode=%s 需要 vicon_extrinsics.yaml 的 "
+                "arm_ee_from_link6.translation_m，但没读到" % mode)
+        self.ee_estimator = EeFeedbackEstimator(
+            EeFeedbackConfig(
+                mode=mode,
+                apply_control_point_offset=bool(
+                    cfg.get("apply_control_point_offset", True)),
+                velocity_source=str(cfg.get("velocity_source", "fk")),
+                angular_velocity_source=str(
+                    cfg.get("angular_velocity_source", "fk")),
+                velocity_cross_check_tol=float(
+                    cfg.get("velocity_cross_check_tol", 0.5)),
+                velocity_cross_check_floor_m_s=float(
+                    cfg.get("velocity_cross_check_floor_m_s", 0.05)),
+                angular_cross_check_tol=float(
+                    cfg.get("angular_cross_check_tol", 0.5)),
+                angular_cross_check_floor_rad_s=float(
+                    cfg.get("angular_cross_check_floor_rad_s", 0.2)),
+                bias_bandwidth_hz=float(cfg.get("bias_bandwidth_hz", 0.2)),
+                bias_init=str(cfg.get("bias_init", "first_sample")),
+                max_bias_m=float(cfg.get("max_bias_m", 0.02)),
+                max_bias_rate_m_s=float(cfg.get("max_bias_rate_m_s", 0.01)),
+                innovation_reject_m=float(cfg.get("innovation_reject_m", 0.05)),
+                innovation_reject_hold_sec=float(
+                    cfg.get("innovation_reject_hold_sec", 0.5)),
+                max_age_sec=float(cfg.get("max_age_sec", 0.15)),
+                hold_after_sec=float(cfg.get("hold_after_sec", 1.0)),
+                require_vicon_at_capture=bool(
+                    cfg.get("require_vicon_at_capture", True)),
+            ),
+            extrinsic)
+        self.ee_topic = str(cfg.get("topic", "/vicon/arm_ee"))
+        self._ee_sample = None          # _EeSample
+        self._ee_estimate = None
+
+    def _ee_state_cb(self, msg):
+        """``/vicon/arm_ee``（FloatingBaseState）：一条消息一个时间戳带三样。
+
+        速度/加速度绝不单独取时间戳 —— 它们与位姿同帧，这正是选这个消息类型
+        而不是拆三个话题的理由。
+        """
+        position = np.array([msg.pose.position.x, msg.pose.position.y,
+                             msg.pose.position.z])
+        if not np.all(np.isfinite(position)):
+            return
+        stamp = msg.header.stamp.sec + 1e-9 * msg.header.stamp.nanosec
+        quaternion = np.array([msg.pose.orientation.x, msg.pose.orientation.y,
+                               msg.pose.orientation.z, msg.pose.orientation.w])
+        norm = float(np.linalg.norm(quaternion))
+        rotation = None
+        if np.isfinite(norm) and norm > 1e-6:
+            rotation = quat_to_rotation(ros_xyzw_to_wxyz(quaternion / norm))
+        if self._ee_sample is not None and stamp < self._ee_sample.stamp:
+            return                      # 与 RosFeedbackBaseState 同规则：丢乱序样本
+
+        def _vec3(v):
+            out = np.array([v.x, v.y, v.z], dtype=float)
+            # 非有限值整条置 None 而不是补零：0 是估计器的对照闸识别不出来的
+            # 合法值，None 会走"没数据"分支并被计数。
+            return out if np.all(np.isfinite(out)) else None
+
+        self._ee_sample = _EeSample(
+            position=position,
+            stamp=stamp,
+            rotation=rotation,
+            linear_velocity=_vec3(msg.twist.linear),
+            angular_velocity=_vec3(msg.twist.angular),
+            angular_accel=_vec3(msg.acceleration.angular),
+        )
+
+    def _update_ee_feedback(self, now, kin_ctrl, dt):
+        """把 Vicon arm_ee 与编码器 FK 融合成本拍使用的末端状态。
+
+        ``fk_only`` 模式下返回 ``None``，调用点原样使用 kin_ctrl —— 于是这条
+        改动对其余四份配置完全透明。
+        """
+        if self.ee_estimator.config.mode == "fk_only":
+            return None
+        sample = self._ee_sample
+        estimate = self.ee_estimator.update(
+            now,
+            kin_ctrl.ee_position, kin_ctrl.ee_rotation,
+            kin_ctrl.ee_velocity_lwa[:3], kin_ctrl.ee_velocity_lwa[3:],
+            dt,
+            vicon_position=(sample.position if sample else None),
+            vicon_stamp=(sample.stamp if sample else None),
+            vicon_rotation=(sample.rotation if sample else None),
+            vicon_linear_velocity=(sample.linear_velocity if sample else None),
+            vicon_angular_velocity=(sample.angular_velocity if sample else None),
+            vicon_angular_accel=(sample.angular_accel if sample else None),
+        )
+        self._ee_estimate = estimate
+        if estimate.vicon_position is not None:
+            self._ee_residuals.append(
+                float(np.linalg.norm(estimate.position_residual)))
+        if np.isfinite(estimate.orientation_residual_rad):
+            self._ee_orientation_residuals.append(
+                float(estimate.orientation_residual_rad))
+        if estimate.degraded:
+            self._ee_degraded_ticks += 1
+        return estimate
+
+    def _hold_qp_limits(self, dt):
+        return HoldQPLimits(
+            torque=self.feasibility_torque,
+            torque_rate=np.asarray(
+                self.config["limits"]["torque_rate"], dtype=float).reshape(self.n_arm),
+            qdd_max=self.qp_qdd_max,
+            dt=float(dt),
+            q_lower=self.q_lower,
+            q_upper=self.q_upper,
+            velocity=self.feasibility_velocity,
+            brake_safety=self.feasibility_brake_safety,
+        )
+
+    def _torque_slew_reference(self, now):
+        """上一拍【实际发出】的力矩，作为力矩变化率箱的中心。
+
+        必须镜像 adapter 的归零规则（actuator_adapter.py:103-104）：停拍超过
+        command_timeout_sec 后 adapter 把 _last_tau 归零。两边基准一旦错开，
+        adapter 就会削掉一条 QP 认为合法的指令 —— 后端裁剪又回到控制策略里。
+        """
+        if (self._tau_prev_stamp is None
+                or now - self._tau_prev_stamp > self.adapter.command_timeout_sec):
+            return np.zeros(self.n_arm)
+        return self._tau_prev_sent
+
+    def _task_space_torque_qp(self, desired, actual, kin_ctrl,
+                              q_full_ctrl, v_full_ctrl, bs_est, dt, now):
+        """受约束 QP 版本：力矩硬约束在求解器内，后端 clamp 只当通信兜底。
+
+        与 ``_task_space_torque`` 并存，由 ``task.solver: qp`` 选择；其余四份
+        配置仍走原来的伪逆 + 后端 clip 路径，一行不改。
+        """
+        smc = self.controller.compute(desired, actual)
+        b6 = self.model.compute_task_bias_acceleration(
+            q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa)
+
+        # 控制点是 arm_ee 标记原点，不是 link6：Jacobian 与偏置加速度都要跟着搬。
+        J_task = self.ee_estimator.jacobian(kin_ctrl.J_arm_lwa, kin_ctrl.ee_rotation)
+        b6 = self.ee_estimator.bias_acceleration(
+            b6, kin_ctrl.ee_velocity_lwa[3:], kin_ctrl.ee_rotation)
+
+        nu, task_scale = saturate_task_acceleration(
+            smc.nu, self.max_linear_task_accel, self.max_angular_task_accel)
+        y_task = nu - b6
+
+        M_aa = self.model.compute_arm_mass_block(q_full_ctrl)
+        tau_bias = self.model.compute_rnea_arm_torque(
+            q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa, np.zeros(self.n_arm))
+
+        # 摩擦前馈必须并进仿射常数项 c，而不是等力矩算完再加：加在外面会顶破
+        # QP 保证的上限，后端再削一刀 —— 那正是要消灭的抖振源。
+        tau_track_friction = np.zeros(self.n_arm)
+        if self.tracking_friction.enabled:
+            J6 = kin_ctrl.J_arm_lwa
+            twist_ref = np.concatenate([
+                desired.linear_velocity, desired.angular_velocity])
+            err_task = np.concatenate([
+                smc.position_error, smc.orientation_error])
+            qd_ref = np.linalg.lstsq(J6, twist_ref, rcond=None)[0]
+            dq_err = np.linalg.lstsq(J6, err_task, rcond=None)[0]
+            tau_track_friction = stiction_feedforward(
+                self.tracking_friction, qd_ref, dq_err)
+        c_affine = tau_bias + tau_track_friction
+
+        result = solve_hold_qp(
+            J_task, M_aa, c_affine, y_task,
+            self.q_ctrl, self.qd_ctrl, self._qdd_prev,
+            self._torque_slew_reference(now),
+            self.ns_q_nominal, self.ns_kp, self.ns_kd,
+            self.qp_weights, self._hold_qp_limits(dt),
+            limit_avoidance=self.limit_avoidance,
+            max_iterations=self.qp_max_iterations,
+            sigma_warn=float(self.config["singularity"]["sigma_warn"]),
+            sigma_critical=float(self.config["singularity"]["sigma_critical"]),
+            damping_min=float(self.config["singularity"]["damping_min"]),
+            damping_max=float(self.config["singularity"]["damping_max"]),
+        )
+        result.task_accel_scale = task_scale
+        return result, smc, tau_bias, tau_track_friction
+
     def _task_space_torque(self, desired, actual, kin_ctrl,
                            q_full_ctrl, v_full_ctrl, bs_est):
         smc = self.controller.compute(desired, actual)
         b6 = self.model.compute_task_bias_acceleration(q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa)
 
-
+        # 任务右端 y = ν − b6：末端加速度 ẍ = J·q̈ + b6，要求 ẍ = ν 即得该式。
         J_task = kin_ctrl.J_arm_lwa
         rhs_task = smc.nu - b6
         if self.orientation_mode == "pen_axis":
@@ -1896,11 +2349,38 @@ class WholeTaskSmcRosRunner(Node):
         v_full_true = self.model.make_v_full(bs_true.velocity_lwa, self.qd)
         kin_true = self.model.compute_kinematics(q_full_true, v_full_true)
 
-
+        # true 用真值基座与原始关节反馈，仅供记录与画图；ctrl 用估计出来的基座与
+        # 经估计器处理过的关节量，是控制律实际看到的那一份，两者不可混用。
         q_full_ctrl = self.model.make_q_full(bs_est.position_w, bs_est.quaternion_wxyz, self.q_ctrl)
         v_full_ctrl = self.model.make_v_full(bs_est.velocity_lwa, self.qd_ctrl)
         kin_ctrl = self.model.compute_kinematics(q_full_ctrl, v_full_ctrl)
 
+
+        # hold 从第一帧接管，没有就位段，所以起点奇异门在这里查。
+        # 保持段的起点位形是【操作员摆出来的】，不是配置里挑好的，更不能不查。
+        if not self._hold_captured:
+            self._update_ee_feedback(now, kin_ctrl, dt)
+            reason = ("" if self._watchdog_tripped
+                      else self._start_singularity_reason(kin_ctrl))
+            if reason or self._watchdog_tripped:
+                if reason:
+                    self._reject_start_configuration(
+                        now, "起点位形奇异：" + reason)
+                self._publish_motor_command(None)
+                return
+            if not self.ee_estimator.ready_for_capture():
+                # 还没收到过有效 arm_ee 就捕获，等于静默退化成 fk_only 并把
+                # 保持目标钉在一个错的地方。宁可等，也不要悄悄换数据源。
+                #
+                # 这【不是】故障，所以不触发看门狗、也不发指令 —— 与顶部
+                # "还没有 /joint_states" 那道门同一种处理：本拍直接跳过，
+                # 由驱动自己的指令超时保位。调用 _publish_motor_command(None)
+                # 在这里是错的：它只在看门狗已latch时才有 None 分支。
+                self.get_logger().warning(
+                    "等待 %s 的第一帧有效数据后再捕获保持目标" % self.ee_topic,
+                    throttle_duration_sec=1.0)
+                return
+            self._capture_hold_reference(kin_ctrl)
 
         traj_t = self._trajectory_clock(t)
         ref = self._reference_sample(traj_t)
@@ -1943,15 +2423,59 @@ class WholeTaskSmcRosRunner(Node):
             linear_acceleration=blend_a,
             angular_acceleration=blend_wd,
         )
+        ee = self._update_ee_feedback(now, kin_ctrl, dt)
+        if ee is not None and ee.hold_required:
+            self._reject_start_configuration(
+                now, "末端反馈降级：" + ee.degrade_reason)
+            self._publish_motor_command(None)
+            return
         actual = PoseState(
-            position=kin_ctrl.ee_position,
+            position=(ee.position if ee is not None else kin_ctrl.ee_position),
+            # 姿态永远来自 FK。ee.rotation 也等于 FK，这里直接用 kin_ctrl 的
+            # 四元数是为了不多做一次矩阵->四元数转换。
             quaternion_wxyz=kin_ctrl.ee_quaternion_wxyz,
-            linear_velocity=kin_ctrl.ee_velocity_lwa[:3],
-            angular_velocity=kin_ctrl.ee_velocity_lwa[3:],
+            # 两条速度由估计器选源（fk / vicon，各自可配、各自有对照闸）。
+            # fk_only 模式下 ee 是 None，仍旧原样用 kin_ctrl。
+            linear_velocity=(ee.linear_velocity if ee is not None
+                             else kin_ctrl.ee_velocity_lwa[:3]),
+            angular_velocity=(ee.angular_velocity if ee is not None
+                              else kin_ctrl.ee_velocity_lwa[3:]),
         )
-        (tau, tau_bias, smc, rr, torque_scale,
-         tau_track_friction) = self._task_space_torque(
-            desired, actual, kin_ctrl, q_full_ctrl, v_full_ctrl, bs_est)
+        qp_result = None
+        if self.use_task_qp:
+            qp_result, smc, tau_bias, tau_track_friction = \
+                self._task_space_torque_qp(
+                    desired, actual, kin_ctrl, q_full_ctrl, v_full_ctrl,
+                    bs_est, dt, now)
+            if qp_result.ok:
+                self._qp_fail_streak = 0
+                tau, rr, torque_scale = qp_result.tau, None, 1.0
+                self._qdd_prev = qp_result.qdd.copy()
+            else:
+                # Tier 1：回落到既有且已测的伪逆路径，这次把 feasibility 真正传
+                # 进去，再夹回 QP 用的同一个力矩箱 —— 不同算法，所以 QP 的 bug
+                # 不会同时打掉两条路；夹到以 tau_prev ± rate*dt 为心的箱子里，
+                # 输出与上一拍连续。
+                self._qp_fail_streak += 1
+                self._qp_fallback_ticks += 1
+                self.get_logger().warning(
+                    "QP 未收敛（%s），本拍回落到伪逆路径" % qp_result.status)
+                (tau, tau_bias, smc, rr, torque_scale,
+                 tau_track_friction) = self._task_space_torque(
+                    desired, actual, kin_ctrl, q_full_ctrl, v_full_ctrl, bs_est)
+                lo, hi = qp_result.tau_box
+                tau = np.clip(tau, lo, hi)
+                if self._qp_fail_streak >= self.qp_fallback_hold_ticks:
+                    # Tier 2：连续失败转位置保持。【绝不】发零力矩 ——
+                    # 实测 joint2 失力后下沉 14.6°。
+                    self._reject_start_configuration(
+                        now, "QP 连续 %d 拍未收敛" % self._qp_fail_streak)
+                    self._publish_motor_command(None)
+                    return
+        else:
+            (tau, tau_bias, smc, rr, torque_scale,
+             tau_track_friction) = self._task_space_torque(
+                desired, actual, kin_ctrl, q_full_ctrl, v_full_ctrl, bs_est)
 
 
         if self._watchdog_hold_q is None:
@@ -1961,6 +2485,21 @@ class WholeTaskSmcRosRunner(Node):
         motor = self.adapter.torque_to_motor_command(
             tau, now, self.last_joint_stamp or now,
             getattr(bs_est, "stamp", now), dt)
+
+        # 后端 clamp 只是【通信兜底】，正常运行必须恒为 0。真削到了就说明
+        # 求解器的力矩箱与 adapter 的不一致（多半是 tau_prev 基准错开），
+        # 那正是后端裁剪重新变成控制策略的第一征兆。
+        if motor.enabled and self.use_task_qp:
+            clamped = float(np.max(np.abs(np.asarray(motor.command) - tau)))
+            if clamped > 1e-6:
+                self._backend_clamp_hits += 1
+                self.get_logger().warning(
+                    "后端 clamp 被触发（最大 %.4f N*m）：QP 与 adapter 的力矩箱"
+                    "不一致，正常运行不该出现" % clamped,
+                    throttle_duration_sec=2.0)
+        if motor.enabled:
+            self._tau_prev_sent = np.asarray(motor.command, dtype=float).copy()
+            self._tau_prev_stamp = now
 
 
         recorded_q = self.q_ctrl.copy()
@@ -2010,11 +2549,52 @@ class WholeTaskSmcRosRunner(Node):
             "pos_error_m": pos_error,
             "rot_error_rad": rot_error,
             "tau_max_abs": float(np.max(np.abs(motor.command))),
-            "sigma_min": rr.sigma_min,
-            "damping": rr.damping,
-            "nullspace_leakage": rr.nullspace_leakage_norm,
-            "feasibility_scale": rr.feasibility_scale,
-            "nullspace_scale": rr.nullspace_scale,
+            # QP 路径没有伪逆那套量（阻尼逆、零空间投影泄漏、缩放系数），
+            # 用 NaN 明确表示"这一路不产生这个量"，而不是填 0 冒充测量值。
+            "sigma_min": (rr.sigma_min if rr is not None
+                          else (qp_result.sigma_min if qp_result else float("nan"))),
+            "damping": (rr.damping if rr is not None
+                        else (qp_result.damping if qp_result else float("nan"))),
+            "nullspace_leakage": (rr.nullspace_leakage_norm if rr is not None
+                                  else float("nan")),
+            "feasibility_scale": (rr.feasibility_scale if rr is not None
+                                  else float("nan")),
+            "nullspace_scale": (rr.nullspace_scale if rr is not None
+                                else float("nan")),
+            "qp_status": _QP_STATUS_CODES.get(
+                qp_result.status if qp_result else "", float("nan")),
+            "qp_iterations": (qp_result.iterations if qp_result else float("nan")),
+            "qp_fallback": (0.0 if (qp_result is None or qp_result.ok) else 1.0),
+            "qp_position_residual_m_s2": (
+                float(np.linalg.norm(qp_result.position_residual))
+                if qp_result else float("nan")),
+            "qp_orientation_residual_rad_s2": (
+                float(np.linalg.norm(qp_result.orientation_residual))
+                if qp_result else float("nan")),
+            "qp_qdd_slack_max": (float(np.max(qp_result.qdd_slack))
+                                 if qp_result else float("nan")),
+            "task_accel_saturation": (float(min(qp_result.task_accel_scale))
+                                      if qp_result else float("nan")),
+            "backend_clamp_hits": float(self._backend_clamp_hits),
+            "ee_mode": _EE_MODE_CODES.get(self.ee_estimator.config.mode, float("nan")),
+            "ee_residual_norm_m": (
+                float(np.linalg.norm(self._ee_estimate.position_residual))
+                if self._ee_estimate is not None else float("nan")),
+            "ee_orientation_residual_rad": (
+                self._ee_estimate.orientation_residual_rad
+                if self._ee_estimate is not None else float("nan")),
+            "ee_vicon_age_s": (self._ee_estimate.vicon_age
+                               if self._ee_estimate is not None else float("nan")),
+            "ee_degraded": (1.0 if (self._ee_estimate is not None
+                                    and self._ee_estimate.degraded) else 0.0),
+            "ee_vel_source": (
+                _EE_VELOCITY_SOURCE_CODES.get(
+                    self._ee_estimate.linear_velocity_source, float("nan"))
+                if self._ee_estimate is not None else float("nan")),
+            "ee_omega_source": (
+                _EE_VELOCITY_SOURCE_CODES.get(
+                    self._ee_estimate.angular_velocity_source, float("nan"))
+                if self._ee_estimate is not None else float("nan")),
             "torque_scale": torque_scale,
             "enabled": int(motor.enabled),
             "pen_down": int(ref.pen_down),
@@ -2047,6 +2627,24 @@ class WholeTaskSmcRosRunner(Node):
             row[f"base_est_q_{name}"] = float(value)
         for axis, value in zip("xyz", self.last_injection["base_gust_offset"]):
             row[f"base_gust_{axis}_m"] = float(value)
+        _ee = self._ee_estimate
+        for i, axis in enumerate("xyz"):
+            row[f"ee_vicon_{axis}_m"] = (
+                float(_ee.vicon_position[i])
+                if (_ee is not None and _ee.vicon_position is not None)
+                else float("nan"))
+            row[f"ee_fk_{axis}_m"] = (float(_ee.fk_position[i])
+                                      if _ee is not None else float("nan"))
+            row[f"ee_bias_{axis}_m"] = (float(_ee.bias[i])
+                                        if _ee is not None else float("nan"))
+            row[f"ee_vicon_vel_{axis}"] = (
+                float(_ee.vicon_linear_velocity[i])
+                if (_ee is not None and _ee.vicon_linear_velocity is not None)
+                else float("nan"))
+            row[f"ee_fk_vel_{axis}"] = (
+                float(_ee.fk_linear_velocity[i])
+                if (_ee is not None and _ee.fk_linear_velocity is not None)
+                else float("nan"))
         for i in range(self.n_arm):
             row[f"joint_{i + 1}_rad"] = float(recorded_q[i])
             row[f"joint_{i + 1}_velocity_rad_s"] = float(recorded_qd[i])
@@ -2087,6 +2685,35 @@ class WholeTaskSmcRosRunner(Node):
             "orientation_rms_rad": float(np.sqrt(np.mean(rots * rots))) if rots.size else float("nan"),
             "orientation_peak_rad": float(np.max(rots)) if rots.size else float("nan"),
             "pass_1mm_rms_2mm_peak": bool(errors.size and np.sqrt(np.mean(errors * errors)) < 0.001 and np.max(errors) < 0.002),
+            # 验收硬指标：这两个数不为 0，就说明后端裁剪重新参与了控制策略、
+            # 或者求解器根本没在正常工作。它们比位置 RMS 更早暴露问题。
+            "backend_clamp_total": int(self._backend_clamp_hits),
+            "qp_enabled": bool(self.use_task_qp),
+            "qp_fallback_ticks": int(self._qp_fallback_ticks),
+            "ee_mode": self.ee_estimator.config.mode,
+            "ee_bias_final_m": (
+                [float(v) for v in self._ee_estimate.bias]
+                if self._ee_estimate is not None else None),
+            "ee_residual_rms_m": (
+                float(np.sqrt(np.mean(np.square(self._ee_residuals))))
+                if self._ee_residuals else None),
+            "ee_orientation_residual_deg_p95": (
+                float(np.degrees(np.percentile(self._ee_orientation_residuals, 95)))
+                if self._ee_orientation_residuals else None),
+            "ee_degraded_ticks": int(self._ee_degraded_ticks),
+            # 速度选源的成绩单。配了 vicon 但 rejects/stale 高，说明这一路
+            # 没真的在用 —— 不看这几个数就无法判断"接上了"是不是错觉。
+            "ee_velocity_source": self.ee_estimator.config.velocity_source,
+            "ee_angular_velocity_source":
+                self.ee_estimator.config.angular_velocity_source,
+            "ee_velocity_reject_ticks": int(
+                self.ee_estimator.linear_velocity_rejects),
+            "ee_velocity_stale_ticks": int(
+                self.ee_estimator.linear_velocity_stale),
+            "ee_angular_velocity_reject_ticks": int(
+                self.ee_estimator.angular_velocity_rejects),
+            "ee_angular_velocity_stale_ticks": int(
+                self.ee_estimator.angular_velocity_stale),
             "metrics_csv": str(self.metrics_path),
 
 
@@ -2155,8 +2782,15 @@ def main(args=None):
         while rclpy.ok() and not node.done:
             rclpy.spin_once(node, timeout_sec=0.1)
     finally:
-        if rclpy.ok() and not node.done:
-            node._write_summary()
+        # Ctrl-C 是结束不定时长保持运行的正常方式，汇总必须在它之后仍能写出。
+        # 这里不能用 rclpy.ok() 作条件：SIGINT 先让 context 失效，走到这里时
+        # ok() 已经是 False，汇总 JSON 与报告图会全部丢失。
+        # _write_summary 只碰文件和 numpy，context 已死也能跑完。
+        if not node.done:
+            try:
+                node._write_summary()
+            except Exception as exc:  # never mask the shutdown itself
+                print("could not write the summary: %s" % exc, file=sys.stderr)
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

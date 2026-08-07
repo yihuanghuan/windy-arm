@@ -35,6 +35,24 @@ class SMCCommand:
     omega_error: np.ndarray
 
 
+# 任务空间滑模控制。位置与姿态两个通道各自定义滑模面，输出 6 维期望加速度
+# ν = [a_cmd, α_cmd]，交给下游的动力学求逆映射成关节力矩。
+#
+# 位置通道（误差 e_p = p_d − p，ė_p = v_d − v）：
+#   s_p   = ė_p + Λ_p·e_p
+#   a_cmd = a_d + Λ_p·ė_p + K_p·s_p + η_p·tanh(s_p/φ_p)
+#   代回 ṡ_p = ë_p + Λ_p·ė_p 得 ṡ_p = −K_p·s_p − η_p·tanh(s_p/φ_p)，s_p → 0 后
+#   e_p 按 Λ_p 指数收敛。
+#
+# 姿态通道（误差 e_R = log(q_d ⊗ q⁻¹)，ė_R = J_l⁻¹(e_R)·e_ω）：
+#   s_R    = ė_R + Λ_R·e_R
+#   ë_R*   = −Λ_R·ė_R − K_R·s_R − η_R·tanh(s_R/φ_R)      （同样给出 ṡ_R = −K_R·s_R − …）
+#   由 ė_R = J_l⁻¹·e_ω 求导得 ë_R = J̇_l⁻¹·e_ω + J_l⁻¹·ė_ω，反解出期望的误差角加速度
+#   ė_ω = J_l·(ë_R* − J̇_l⁻¹·e_ω)
+#   再由 e_ω = ω_d − R_err·ω 求导得 ė_ω = α_d − e_ω × (R_err·ω) − R_err·α，反解
+#   α_cmd = R_errᵀ·[ α_d − e_ω × (R_err·ω) − J_l·(ë_R* − J̇_l⁻¹·e_ω) ]
+#
+# 切换项用 tanh(s/φ) 代替 sign(s)：φ 是边界层宽度，避免有限采样率下的抖振。
 class TaskSpaceSMC:
     def __init__(self, gains: SMCGains):
         self.gains = gains

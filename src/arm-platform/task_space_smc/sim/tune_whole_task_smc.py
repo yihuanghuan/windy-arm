@@ -1,3 +1,18 @@
+"""整任务 SMC 的参数扫描（离线代理模型）。
+
+evaluate() 跑一遍闭环并给出评分，分数越低越好：
+
+    score = 1000·RMS(位置误差) + 250·峰值(位置误差) + 0.03·max|tau|
+          + 50·力矩饱和拍占比 + 100·关节限位触碰拍占比
+    若 RMS >= 1 mm 或峰值 >= 2 mm，再罚 1000（把不达标的解整体推到达标解之后）
+
+相对离线仿真，这里的被控对象额外注入了基座噪声与延迟、负载扰动、阵风力矩和
+电机响应，目的是让代理模型别离实物太远。
+
+即便如此，扫出来的参数仍必须在 ROS 仿真里复跑确认：离线代理与实测曾差出两个数量级，
+优化器会精确地钻代理模型的空子。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -407,6 +422,8 @@ def evaluate(config, duration_sec, dt, derivative_dt=0.005):
     peak = float(np.max(errors))
     saturation_ratio = saturated_steps / max(steps, 1)
     limit_hit_ratio = limit_hits / max(steps, 1)
+    # 评分见模块头部。加权项的量纲各不相同，权重的作用是把它们折算到可比的量级：
+    # 1 mm 的 RMS 与 4% 的力矩饱和占比在分数上大致等价。
     score = (
         1000.0 * rms
         + 250.0 * peak

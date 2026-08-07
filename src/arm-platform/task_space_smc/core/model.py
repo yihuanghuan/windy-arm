@@ -117,6 +117,14 @@ class Kinematics:
     J_arm_lwa: np.ndarray
 
 
+# 浮动基座 + n 自由度机械臂的运动学/动力学模型（pinocchio 后端）。
+# 广义坐标 q = [p_w(3), q_xyzw(4), q_arm(n)]，nq = 7 + n
+# 广义速度 v = [v_base(6), q̇_arm(n)]，nv = 6 + n。注意两处用的是不同的参考系：
+#   v_base 按 pinocchio 自由飞行关节的惯例，表达在基座体坐标系（LOCAL）；
+#   末端的雅可比与速度显式指定 LOCAL_WORLD_ALIGNED（原点在末端、轴与世界系对齐）。
+# 动力学按基座 b / 手臂 a 分块：
+#   [M_bb M_ba][a_base]   [h_b]   [f_ext]
+#   [M_ab M_aa][ q̈  ] + [h_a] = [ τ  ]
 class FloatingBaseArmModel:
 
     def __init__(
@@ -134,6 +142,7 @@ class FloatingBaseArmModel:
         self.n_arm = self.model.nv - 6
 
 
+        # 电机转子惯量经减速比折算到关节侧，加在质量阵对角：M_aa ← M_aa + diag(armature)
         if apply_armature:
             cal = load_arm6_calibration()
             arm = cal.get("armature_kgm2")
@@ -189,6 +198,7 @@ class FloatingBaseArmModel:
         q_xyzw = np.array([q_wxyz[1], q_wxyz[2], q_wxyz[3], q_wxyz[0]])
         return np.concatenate([p, q_xyzw, q_arm])
 
+    # base_velocity 表达在【基座体系】，不是世界系
     def make_v_full(self, base_velocity_lwa: np.ndarray, qd_arm: np.ndarray) -> np.ndarray:
         return np.concatenate([
             np.asarray(base_velocity_lwa, dtype=float).reshape(6),
@@ -207,6 +217,8 @@ class FloatingBaseArmModel:
     def split_arm_q(self, q_full: np.ndarray) -> np.ndarray:
         return np.asarray(q_full, dtype=float).reshape(self.model.nq)[7:].copy()
 
+    # 末端位姿、速度与雅可比，全部在 LOCAL_WORLD_ALIGNED 系下：
+    #   ẋ = J_full·v = J_base·v_base + J_arm·q̇     （J_full 为 6×(6+n)）
     def compute_kinematics(self, q_full: np.ndarray, v_full: np.ndarray | None = None) -> Kinematics:
         q_full = np.asarray(q_full, dtype=float).reshape(self.model.nq)
         if v_full is None:
@@ -236,6 +248,8 @@ class FloatingBaseArmModel:
             J_arm_lwa=J_full[:, 6:].copy(),
         )
 
+    # 全模型质量阵 M(q)（CRBA）。取 (M + Mᵀ)/2 是因为 CRBA 只填上三角，
+    # 数值上的微小不对称会让后续 Cholesky/求解失败。
     def compute_mass_matrix(self, q_full: np.ndarray) -> np.ndarray:
         q_full = np.asarray(q_full, dtype=float).reshape(self.model.nq)
         M = pin.crba(self.model, self.data, q_full)
@@ -254,6 +268,8 @@ class FloatingBaseArmModel:
             pin.LOCAL_WORLD_ALIGNED,
         )
 
+    # 任务空间偏置加速度。末端加速度 ẍ = J_arm·q̈ + (J_base·a_base + J̇·v)，
+    # 令 q̈ = 0 调用一次正向运动学，返回的就是括号里那一项，供下游解 q̈ 时移到右端。
     def compute_task_bias_acceleration(self, q_full: np.ndarray, v_full: np.ndarray, a_base_lwa: np.ndarray) -> np.ndarray:
         q_full = np.asarray(q_full, dtype=float).reshape(self.model.nq)
         v_full = np.asarray(v_full, dtype=float).reshape(self.model.nv)
@@ -267,6 +283,8 @@ class FloatingBaseArmModel:
             pin.LOCAL_WORLD_ALIGNED,
         ).vector.copy()
 
+    # 逆动力学取手臂分量（RNEA），基座加速度当作已知外部激励：
+    #   τ_arm = M_aa·q̈_cmd + M_ab·a_base + h_a(q, v)
     def compute_rnea_arm_torque(
         self,
         q_full: np.ndarray,
@@ -280,6 +298,8 @@ class FloatingBaseArmModel:
         tau_full = pin.rnea(self.model, self.data, q_full, v_full, a_full)
         return np.asarray(tau_full[6:]).reshape(self.n_arm).copy()
 
+    # 手臂正向动力学，上式反解 q̈：
+    #   q̈ = M_aa⁻¹·(τ_arm − M_ab·a_base − h_a),  h = RNEA(q, v, 0) 取手臂分量
     def compute_arm_forward_dynamics(
         self,
         q_full: np.ndarray,

@@ -10,13 +10,20 @@ import moving_base_trajectory_config as trajectory
 
 class MovingBaseTrajectoryShapesTest(unittest.TestCase):
 
+    # `hold` 是一个不动的点（末端世界系定点保持），没有笔画可画。
+    # 它照样要满足下面所有【采样】判据，只是不能要求它有可见折线。
+    _SHAPES_WITHOUT_STROKES = ('hold',)
+
     def test_all_startup_tasks_are_finite_and_have_visible_strokes(self):
         for shape in trajectory.SUPPORTED_EE_TRAJECTORIES:
             with self.subTest(shape=shape):
                 period = trajectory.ee_trajectory_period(shape)
                 self.assertGreater(period, 0.0)
                 segments = trajectory.sample_ee_drawing_segments(shape, 240)
-                self.assertTrue(segments)
+                if shape in self._SHAPES_WITHOUT_STROKES:
+                    self.assertEqual(segments, [])
+                else:
+                    self.assertTrue(segments)
                 for segment in segments:
                     self.assertGreaterEqual(len(segment), 2)
                     self.assertTrue(np.all(np.isfinite(segment)))

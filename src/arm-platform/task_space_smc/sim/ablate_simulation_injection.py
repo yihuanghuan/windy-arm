@@ -1,3 +1,13 @@
+"""注入项消融：逐项开关仿真扰动，看每一项各自贡献了多少误差。
+
+两种模式：
+* 单项开启 —— 从「全部关掉」出发，一次只打开一项，量该项单独造成的影响；
+* 留一法（leave-one-out）—— 从「全部打开」出发，一次只关掉一项，量该项与其余项
+  耦合之后的边际影响。
+
+两者都调用 tune_whole_task_smc.evaluate 打分，差值即该项的贡献。
+"""
+
 from __future__ import annotations
 
 import argparse

@@ -5,17 +5,23 @@ import numpy as np
 __all__ = ["JointLESO"]
 
 
+# 关节速度的三阶线性扩张状态观测器（LESO）。把每个关节视为双积分链
+#   q̈ = b0·u + f,   f 为总扰动（未建模动力学、摩擦、外力）
+# 状态 z = [q̂, q̇̂, f̂]，取 q̇̂ 作为速度估计，替代对编码器角度做差分。
+# 结构为「零阶保持预测 + 当前观测器校正」，每步用当前时刻的位置量测校正：
+#   预测  p = Φ·z + [dt²/2, dt, 0]ᵀ·b0·u,  Φ = [[1, dt, dt²/2], [0, 1, dt], [0, 0, 1]]
+#   校正  z⁺ = p + L·(q_meas − p[0])
 class JointLESO:
 
     def __init__(
         self,
         omega_o,
         n_joints: int,
-        nominal_dt: float = 0.005,
-        dt_min_ratio: float = 0.2,
-        dt_max_ratio: float = 4.0,
-        resync_sec: float = 0.05,
-        b0=0.0,
+        nominal_dt: float = 0.005,   # 名义控制周期 (s)，dt 缺失或非法时的兜底值
+        dt_min_ratio: float = 0.2,   # 实际 dt 相对名义值的下限比。大→抖动的 dt 被夹得更狠、增益更贴名义值；小→放任极小 dt，l3 = (1−β)³/dt² 会爆
+        dt_max_ratio: float = 4.0,   # 上限比。大→放任大 dt，一拍推进过多、观测器发散；小→丢拍时推进不足，估计滞后
+        resync_sec: float = 0.05,    # 超过此间隔判为断流，只对齐位置不推进状态 (s)。大→拿超长间隔硬积分；小→轻微丢拍就重置、估计被反复打断
+        b0=0.0,                      # 输入增益 b0，q̈ = b0·u + f 里的 b0。为 0 即不用模型输入，三阶 LESO 退化成纯微分器
     ) -> None:
         w = np.asarray(omega_o, dtype=float).ravel()
         if w.size == 1:
@@ -75,6 +81,11 @@ class JointLESO:
     def disturbance_estimate(self) -> np.ndarray:
         return self._z[2].copy()
 
+    # 观测器增益 L，由估计误差动力学的三重离散极点配在 z = β = e^(−ω_o·dt) 解出：
+    #   l1 = 1 − β³
+    #   l2 = 1.5/dt · (1 − β)² · (1 + β)
+    #   l3 = (1 − β)³ / dt²
+    # 三个增益只由带宽 ω_o 一个量决定（带宽参数化）。
     def gains(self, dt: float) -> np.ndarray:
         dt = float(dt)
         if not np.isfinite(dt) or dt <= 0.0:
@@ -90,6 +101,10 @@ class JointLESO:
     def discrete_pole(self, dt: float) -> np.ndarray:
         return np.exp(-self.omega_o * float(dt))
 
+    # 位置量测 → 速度估计的离散频响，并按理想微分 j2πf 归一（理想微分处结果为 1）：
+    #   A = (I − L·e1ᵀ)·Φ
+    #   G(z) = z · e2ᵀ · (zI − A)⁻¹ · L
+    #   H(f) = G(e^(j2πf·dt)) / (j2πf)
     def response(self, frequency_hz, dt: float | None = None) -> np.ndarray:
         dt = self.nominal_dt if dt is None else float(dt)
         f = float(frequency_hz)

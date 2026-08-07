@@ -24,6 +24,7 @@ SEGMENTED_KEYS = (
 )
 
 
+# 把延时折成整数控制拍：N = round(τ / T)
 def _steps_for(delay_sec: float, control_period: float) -> int:
     delay_sec = float(delay_sec)
     control_period = float(control_period)
@@ -34,6 +35,7 @@ def _steps_for(delay_sec: float, control_period: float) -> int:
     return int(delay_sec / control_period + 0.5)
 
 
+# 编码器分辨率量化：x_q = round(x/Δ)·Δ，Δ ≤ 0 时直通
 def quantize(value, quantum: float):
     quantum = float(quantum)
     if not np.isfinite(quantum):
@@ -44,6 +46,9 @@ def quantize(value, quantum: float):
     return np.floor(arr / quantum + 0.5) * quantum
 
 
+# 指令侧纯延迟 z^(−N)：仿真中模拟指令从控制器发出到执行器生效之间的延时。
+# 缓冲未满时输出零（执行器还没收到任何指令）。
+# 纯延迟的相位滞后 φ(f) = 360·f·N·T (deg)，幅值不衰减。
 class CommandDelayBuffer:
 
     def __init__(self, delay_steps: int) -> None:
@@ -77,6 +82,8 @@ class CommandDelayBuffer:
         return 360.0 * float(frequency_hz) * self.delay_steps * float(control_period)
 
 
+# 反馈侧纯延迟 z^(−N)。与指令侧的区别是缓冲未满时输出最早的那个样本而不是零：
+# 反馈通路一上电就有真实读数，补零会在启动瞬间造出一个假的巨大误差。
 class FeedbackDelayLine:
 
     def __init__(self, delay_steps: int) -> None:
@@ -104,6 +111,11 @@ class FeedbackDelayLine:
         return self._buf.popleft()
 
 
+# 反馈通路的分段延迟模型。位置与速度的延时不同，必须分开建：
+#   位置路延时 = transport                      （总线传输）
+#   速度路延时 = transport + velocity_extra      （多出电机内部速度估计器那一段）
+#   相位滞后 φ(f) = 360·f·N·T (deg)
+# 位置先按编码器分辨率 Δ 量化再进延迟线；量化折算到速度上的噪声幅度为 Δ/T。
 @dataclass
 class FeedbackDelayModel:
 
@@ -213,6 +225,9 @@ class DelayPlan:
         return self.command_delay.enabled or self.feedback.enabled
 
 
+# 从 simulation 配置段解析出延迟方案。分段模型（transport/velocity_extra/quantum）
+# 与旧的单块 loop_delay_sec 同时存在时以分段模型为准，不相加。
+# hardware 模式一律返回零延迟：实物本身就带这些延时，再注入等于双重计入。
 def resolve_simulation_delay(simulation_cfg, control_period, mode="simulation"):
     cfg = dict(simulation_cfg or {})
     control_period = float(control_period)

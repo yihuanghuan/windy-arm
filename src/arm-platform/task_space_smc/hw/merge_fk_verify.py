@@ -1,3 +1,14 @@
+"""汇总多次 fk_verify 运行结果，给出各关节零位偏置的合并结论。
+
+对每次运行的实测正弦拟合与模型参考重新求一次
+
+    zero_offset = −wrap(φ_measured − φ_model)
+
+再跨运行比较：偏置一致（差值在 offset_threshold_deg 以内）且形状残差
+resid/A 小于 SHAPE_RESIDUAL_LIMIT，才认为该关节的标定收敛。
+也能直接从运行日志文本里回收数据（ingest_log），用于 JSON 缺失的那几次。
+"""
+
 from __future__ import annotations
 
 import argparse

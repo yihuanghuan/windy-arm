@@ -1,87 +1,83 @@
-urdf: arm6
-ee_frame: link6
-control_rate_hz: 200.0
+# 实物小圆测试配置（arm6，6 关节，200 Hz）。
+# 位置通道：s_p = ė_p + Λ_p·e_p，a_cmd = a_d + Λ_p·ė_p + K_p·s_p + η_p·tanh(s_p/φ_p)
+# 姿态通道同构，把 e_p(m) 换成 e_R = log(q_d⊗q⁻¹)(rad)。
+urdf: arm6                  # 运动学/动力学模型来源，决定 M(q)、h(q,q̇)、J(q) 与关节限位
+ee_frame: link6             # 被控末端帧；换到更外的帧力臂变长，基座扰动经 ω×r 放大
+control_rate_hz: 200.0      # 控制频率 (Hz)，dt = 1/f。大→离散更接近连续、可上更高增益，但每拍算力更紧；小→(k+η/φ)·dt 逼近 2 会抖
 
 task:
-  characteristic_length: 0.2
-
-  orientation_mode: full
-
-  pen_axis_local: [1.0, 0.0, 0.0]
+  characteristic_length: 0.2   # 姿态折成长度的特征长度 L (m)，scale = diag(1,1,1,L,L,L)。大→姿态更被优先、位置让位；小→反之
+  orientation_mode: full       # full=姿态 3 维全约束；weak=姿态弱约束腾出零空间；pen_axis=放开绕笔轴自转
+  pen_axis_local: [1.0, 0.0, 0.0]   # 末端系下的笔轴，仅 orientation_mode=pen_axis 时用
   limit_avoidance:
-    gain: 0.10
-    activate_rad: 0.5
+    gain: 0.10               # 限位排斥强度 (rad/s²)，q̈_null += gain·∇limit。大→更早被推离限位，但挤占零空间里的回中作用；小→易贴限位
+    activate_rad: 0.5        # 排斥项起作用的限位距离 (rad)。大→更早介入、可用行程变窄；小→介入太晚来不及刹住
 
 position:
-
-  lambda: [18.0, 18.0, 18.0]
-  k: [8.0, 8.0, 8.0]
-  eta: [0.08, 0.08, 0.08]
-
-  phi: [0.02, 0.02, 0.02]
+  # e_p = p_d − p (m)。边界层内闭环为 (s+Λ_p)(s+K_p+η_p/φ_p) = 0，
+  # 常值加速度扰动 d 的稳态误差 e_ss = d / [Λ_p·(K_p + η_p/φ_p)]
+  lambda: [18.0, 18.0, 18.0]   # 滑模面斜率 Λ_p (1/s)，滑模面上 e_p ∝ exp(−Λ_p·t)。大→收敛快但要更大加速度、易饱和；小→变软、跟不上
+  k: [8.0, 8.0, 8.0]           # 趋近律线性项 K_p (1/s)。大→更快压到滑模面、稳态误差更小；小→趋近慢、抗扰差
+  eta: [0.08, 0.08, 0.08]      # 切换项幅值 η_p (m/s²)，能压住的扰动上限。大→抗扰强但边界层外是硬切换、易抖；小→压不住摩擦
+  phi: [0.02, 0.02, 0.02]      # 边界层宽度 φ_p (m/s)，tanh 斜率为 1/φ_p。大→切换平缓、抖振小但误差带变宽；小→接近 sign()、抖振加剧
 
 orientation:
-  lambda: [3.6, 3.6, 3.6]
-  k: [6.0, 6.0, 6.0]
-  eta: [0.018, 0.018, 0.018]
-  phi: [0.02, 0.02, 0.02]
+  # e_R = log(q_d ⊗ q⁻¹) (rad)，量纲是角度，故各项数值与 position 段不可直接比较
+  lambda: [3.6, 3.6, 3.6]      # 姿态滑模面斜率 Λ_R (1/s)，同上
+  k: [6.0, 6.0, 6.0]           # 姿态趋近律线性项 K_R (1/s)
+  eta: [0.018, 0.018, 0.018]   # 姿态切换项幅值 η_R (rad/s²)
+  phi: [0.02, 0.02, 0.02]      # 姿态边界层宽度 φ_R (rad/s)
 
 nullspace:
+  # q̈_null = −kp·(q − q_nom) − kd·q̇，经 N = I − J̄₀J 投影后不影响任务
   enabled: true
+  q_nominal: track_start       # 零空间目标位形；track_start = 用轨迹起点位形，不另解 IK
+  kp: [2.0, 2.0, 2.0, 2.0, 2.0, 2.0]   # 回中刚度 (1/s²)。大→更快回标称位形、更远离限位，但自运动幅度大；小→位形随机漂移
+  kd: [3.0, 3.0, 3.0, 3.0, 3.0, 3.0]   # 零空间阻尼 (1/s)。大→自运动更黏、不振荡；小→零空间内来回晃
 
-  q_nominal: track_start
-  kp: [2.0, 2.0, 2.0, 2.0, 2.0, 2.0]
-  kd: [3.0, 3.0, 3.0, 3.0, 3.0, 3.0]
-
-initial_pose_rad: [-0.0635, 1.5558, -1.4086, -0.0002, 0.6938, 0.0033]
+initial_pose_rad: [-0.0635, 1.5558, -1.4086, -0.0002, 0.6938, 0.0033]   # 启动时的模型完整性检查用位形 (rad)
 
 singularity:
-
-  sigma_warn: 0.03
-  sigma_critical: 0.012
-  damping_min: 0.00005
-  damping_max: 0.03
+  # J̄ = M⁻¹Jᵀ(J M⁻¹ Jᵀ + λ²I)⁻¹，阻尼 λ 按 σ_min 在 [critical, warn] 区间线性插值
+  sigma_warn: 0.03          # 开始加阻尼的最小奇异值阈值。大→更早保守、任务精度更早让步；小→更晚介入、近奇异处力矩尖峰
+  sigma_critical: 0.012     # 阻尼打满的阈值。大→提前进入最大阻尼、末端明显变钝；小→留给尖峰的余地更大
+  damping_min: 0.00005      # 远离奇异时的阻尼 λ_min。大→常态就有跟踪偏差；小→数值条件变差
+  damping_max: 0.03         # 奇异处的阻尼 λ_max。大→更安全但任务误差更大；小→压不住 σ_min→0 时的 1/σ 放大
 
 limits:
-
-  torque: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6]
-  torque_rate: [1500.0, 1500.0, 1500.0, 500.0, 500.0, 350.0]
-  current: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6]
+  torque: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6]              # 关节额定力矩上限 (N·m)
+  torque_rate: [1500.0, 1500.0, 1500.0, 500.0, 500.0, 350.0]   # 力矩变化率上限 (N·m/s)，一拍窗口 τ_prev ± rate·dt。大→响应快但电流冲击大；小→力矩平滑、跟不上突变
+  current: [9.0, 9.0, 9.0, 1.6, 1.6, 1.6]             # 电流上限 (A)
 
 safety:
-  command_timeout_sec: 0.03
-  joint_state_timeout_sec: 0.1
-  base_state_timeout_sec: 0.1
+  command_timeout_sec: 0.03        # 指令超时 (s)，超过则把力矩变化率基准清零。大→丢拍后仍按旧基准；小→轻微抖动就重置
+  joint_state_timeout_sec: 0.1     # 关节反馈陈旧阈值 (s)，超时输出零力矩。大→拿旧状态算力矩；小→链路抖动就停发
+  base_state_timeout_sec: 0.1      # 基座状态陈旧阈值 (s)，同上
 
 approach:
-
-  mode: task_space
-
+  mode: task_space               # 就位轨迹类型：任务空间五次测地线
   workspace_guard:
     enabled: true
-    desk_plane_z: 0.0
-    desk_edge_x: 0.02
-    desk_clearance: 0.08
-    fence_y: 0.40
-    fence_height: 0.331
-    fence_clearance: 0.03
-    max_linear_speed: 0.15
-    max_linear_accel: 0.60
-
-  initial_joint_offset_rad: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-
-  kp: [60.0, 60.0, 60.0, 250.0, 250.0, 200.0]
-  kd: [16.0, 16.0, 16.0, 31.6, 31.6, 28.3]
-
+    desk_plane_z: 0.0            # 桌面高度 (m，世界系 z)
+    desk_edge_x: 0.02            # 桌沿位置 (m)，x 小于它才算伸到桌面上方
+    desk_clearance: 0.08         # 桌面上方最小离空 (m)。大→更安全、可用空间小；小→贴桌风险
+    fence_y: 0.40                # 围栏位置 (m，世界系 y)
+    fence_height: 0.331          # 围栏高度 (m)，低于此高度才检查 y 向越界
+    fence_clearance: 0.03        # 围栏留白 (m)。大→更早拦、行程变窄；小→擦栏风险
+    max_linear_speed: 0.15       # 就位段末端线速度上限 (m/s)。大→就位快、撞击动能大；小→安全但耗时
+    max_linear_accel: 0.60       # 就位段末端线加速度上限 (m/s²)。大→起停急、力矩需求高；小→起停柔和
+  initial_joint_offset_rad: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   # 就位起点相对当前位形的偏移 (rad)，全零即从原地起步
+  kp: [60.0, 60.0, 60.0, 250.0, 250.0, 200.0]    # 就位段关节 PD 刚度 (1/s²)。大→跟随紧、摩擦死区 f_s/kp 变窄，但易过冲；小→位置误差大
+  kd: [16.0, 16.0, 16.0, 31.6, 31.6, 28.3]       # 就位段关节阻尼 (1/s)，阻尼比 ζ = kd/(2√(kp·J))。大→静摩擦释放不过冲；小→每次挣脱都甩
   friction_feedforward:
+    # τ_ff = scale·f_s·tanh( (q̇_ref + error_gain·e_q) / velocity_epsilon )
     enabled: true
-    scale: 0.8
-    velocity_epsilon: 0.02
-
-    error_gain: 1.0
+    scale: 0.8                   # 静摩擦补偿比例，必须 < 1。大→残留死区小，趋近 1 时零误差处即可自行挣脱、自激成极限环；小→补不动、卡在死区
+    velocity_epsilon: 0.02       # tanh 的速度尺度 ε (rad/s)。大→过零平缓、零速附近补得少；小→接近 sign()，零速处换向抖
+    error_gain: 1.0              # 位置误差折成等效速度的系数 k_e (1/s)。大→静止时也肯补、死区更窄但易越过；小→只在真动起来时才补
 
 tracking:
-
+  # 跟踪段的摩擦前馈，参数含义同 approach.friction_feedforward
   friction_feedforward:
     enabled: true
     scale: 0.8
@@ -89,26 +85,22 @@ tracking:
     error_gain: 1.0
 
 feedback:
-
-  velocity_lowpass_hz: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  # 关节速度一阶低通：τ = 1/(2π·f_c)，α = dt/(τ+dt)，相位滞后 arctan(f/f_c)
+  velocity_lowpass_hz: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   # 截止频率 f_c (Hz)，0 = 直通。大→噪声压得少、滞后小；小→更干净但相位滞后大，等效降低阻尼
 
 estimator:
-
-  source: motor
+  source: motor               # 速度来源：motor 直通电机自报 / finite_difference 位置后向差分 / leso 观测器
 
 simulation:
-
-  transport_delay_sec: 0.010
-
-  velocity_extra_delay_sec: 0.015
-
-  position_quantum_rad: 0.000381
+  # 仿真专用的反馈通路延迟模型，实物模式下不生效
+  transport_delay_sec: 0.010        # 位置路传输延时 (s)，折成 N = round(τ/dt) 拍，相位滞后 360·f·N·dt 度。大→更逼近实机、控制更难；小→过于乐观
+  velocity_extra_delay_sec: 0.015   # 速度路在传输之外多出的延时 (s)，来自电机内部速度估计器
+  position_quantum_rad: 0.000381    # 编码器分辨率 Δ (rad)，量化折算到速度的噪声为 Δ/dt。大→差分噪声大；小→过于理想
 
 simulation_injection:
-  enabled: false
+  enabled: false              # 仿真扰动注入总开关：基座正弦、负载、摩擦、齿隙、电机、阵风
 
 handover:
-
-  reference_blend_sec: 30.0
-
-  freeze_trajectory_during_blend: true
+  # 接管时锁存实际与参考的偏差，按五次 smoothstep 在 T 秒内抹掉
+  reference_blend_sec: 30.0            # 混合窗长 T (s)，峰值额外加速度 ∝ 1/T²。大→过渡柔和但久占轨迹时间；小→冲击大、易饱和
+  freeze_trajectory_during_blend: true # true = 混合期间轨迹时钟冻在 0，偏差抹完才起步；false = 一边消偏差一边走轨迹

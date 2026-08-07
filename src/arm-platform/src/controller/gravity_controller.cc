@@ -100,19 +100,21 @@ JointCommand GravityController::Compute(const JointStates& joint_states,
   cmd.p.resize(num_joints);
   cmd.d.resize(num_joints);
   try {
-    Eigen::VectorXd q(model_.nq);
-    for (int i = 0; i < std::min(7, static_cast<int>(model_.nq)); ++i) {
+    Eigen::VectorXd q = Eigen::VectorXd::Zero(model_.nq);
+    const int n = std::min(static_cast<int>(num_joints),
+                           static_cast<int>(model_.nq));
+    for (int i = 0; i < n; ++i) {
       q(i) = joint_states.position[i];
     }
 
     pinocchio::computeGeneralizedGravity(model_, data_, q);
 
     std::array<double, 7> tau_gravity = {0, 0, 0, 0, 0, 0, 0};
-    for (int i = 0; i < std::min(7, static_cast<int>(model_.nv)); ++i) {
+    for (int i = 0; i < std::min(n, static_cast<int>(model_.nv)); ++i) {
       tau_gravity[i] = data_.g(i);
     }
 
-    for (int i = 0; i < 7; ++i) {
+    for (int i = 0; i < n; ++i) {
       tau_comp[i] = tau_gravity[i];
     }
 
@@ -123,7 +125,7 @@ JointCommand GravityController::Compute(const JointStates& joint_states,
     // tau_comp = apply_soft_limit(tau_comp, joint_states.position, joint_states.velocity);
     // tau_comp = clamp_torque(tau_comp);
 
-    for (int i = 0; i < 7; ++i) {
+    for (int i = 0; i < n; ++i) {
       cmd.current[i] = tau_comp[i];
     }
   

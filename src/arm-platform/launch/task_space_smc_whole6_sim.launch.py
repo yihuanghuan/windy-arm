@@ -118,7 +118,7 @@ def generate_launch_description():
     workspace_root = os.path.abspath(os.path.join(pkg_prefix, "..", ".."))
     return LaunchDescription([
         DeclareLaunchArgument("trajectory_shape", default_value="hwtest",
-                              choices=["hwtest", "whole"]),
+                              choices=["hwtest", "whole", "hold"]),
         DeclareLaunchArgument("duration_sec", default_value="0.0"),
         # The simulated plant is already at the analytical trajectory start.
         # A physical-style approach segment is intentionally not required.
