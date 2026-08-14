@@ -1,0 +1,23 @@
+# Diagnostic only. Do not load this file as a runtime configuration.
+#
+# These values came from a joint SE(3) fit on the 16-point dataset
+# base_extrinsic_20260814_170112.json, using the Y-up Vicon convention.
+# The fit was not promoted to vicon_extrinsics.yaml because position RMS
+# remained above the 10 mm acceptance threshold and the parameter Jacobian
+# was ill-conditioned.
+status: diagnostic_only
+coordinate_convention: Y-up
+source_data: data/vicon_base_extrinsic/base_extrinsic_20260814_170112.json
+candidate_zero_frozen: true
+position_rms_mm: 11.614192556855464
+position_max_mm: 21.58083435807562
+orientation_rms_deg: 6.698664530225108
+orientation_max_deg: 9.664255894403176
+jacobian_rank: 12
+jacobian_condition_number: 2863.0824005908794
+arm_base_to_base_link:
+  translation_m: [-0.039864681778335444, -0.043661961125126575, -0.0008000140449799814]
+  quaternion_xyzw: [-0.7617123855219977, -0.08714328079722511, -0.03269903950684389, 0.6411950274055573]
+link6_to_arm_ee:
+  translation_m: [-0.012890008192330946, -0.094669386549352, -0.029021358318220468]
+  quaternion_xyzw: [0.5551835828900739, 0.016842156864886104, -0.10329041140561294, 0.8251173382938564]

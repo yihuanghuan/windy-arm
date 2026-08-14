@@ -1,0 +1,338 @@
+metadata:
+  date: '2026-08-02'
+  urdf: arm6.urdf
+  method: gravity sweep with torque feedforward (MIT mode)
+  torque_scale_alpha: 1.033
+  temperature_c:
+  - 28
+  - 29
+  - 27
+  - 31
+  - 32
+  - 31
+  candidate_created_at: '2026-08-13 15:42:36'
+  candidate_source: /home/zhangziqian/windylab_ws/lagrange_smc/LL100-LH420/src/arm-platform/config/arm6_calibration.yaml
+  candidate_updated_at: '2026-08-14 15:55:41'
+  candidate_phase2:
+    source: src/arm-platform/task_space_smc/hw/data/phase2/phase2_ladder_20260813_154304.json
+    accepted_joints:
+    - 1
+    - 2
+    - 4
+    - 5
+    rejected:
+    - joint: 3
+      reason: not ok
+  candidate_phase3:
+    source: src/arm-platform/task_space_smc/hw/data/phase3/phase3_calibration_20260813_155956.json
+    accepted_joints:
+    - 1
+    - 2
+    - 3
+    rejected:
+    - joint: 4
+      reason: goto timed out 0.302 rad away
+  candidate_phase5:
+    source: src/arm-platform/task_space_smc/hw/data/phase5/phase5_20260813_163737.json
+    accepted_joints:
+    - 3
+    - 4
+    - 5
+    rejected:
+    - joint: 1
+      reason: friction implied -0.029113734803722178 not close to measured 1.25
+    - joint: 2
+      reason: friction implied -0.6628363994147537 not close to measured 1.6
+  candidate_phase5_directional_friction:
+    source: /home/zhangziqian/windylab_ws/lagrange_smc/LL100-LH420/src/arm-platform/task_space_smc/hw/data/phase5_directional/phase5_directional_friction_20260814_095419.json
+    accepted_joints:
+    - 2
+    rejected: []
+    note: zero_offset and first_moment_ratio frozen; official YAML untouched
+  candidate_phase3_j3_cold_start:
+    sources:
+    - src/arm-platform/task_space_smc/hw/data/phase3/phase3_calibration_20260814_134417.json
+    - src/arm-platform/task_space_smc/hw/data/phase3/phase3_calibration_20260814_134802.json
+    - src/arm-platform/task_space_smc/hw/data/phase3/phase3_calibration_20260814_140146.json
+    excluded:
+    - source: src/arm-platform/task_space_smc/hw/data/phase3/phase3_calibration_20260814_135255.json
+      reason: J5/J6 linkage screw was loose during this run
+    accepted_joints:
+    - 3
+    method: median of valid cold-start single-sweep runs 1/2/4
+    zero_offset_deg: 2.0235879323742227
+    first_moment_ratio: 1.0232823692371213
+    official_yaml_untouched: true
+  candidate_phase3_j5_leso_observer_repeat:
+    sources:
+    - src/arm-platform/task_space_smc/hw/data/phase3/phase3_j5_leso_observer_tune_20260814_154941.json
+    - src/arm-platform/task_space_smc/hw/data/phase3/phase3_j5_leso_observer_tune_20260814_155111.json
+    - src/arm-platform/task_space_smc/hw/data/phase3/phase3_j5_leso_observer_tune_20260814_155239.json
+    accepted_joints:
+    - 5
+    method: three independent J5-only LESO observer runs from same candidate initial;
+      mean parameters written to candidate only
+    writes_official_yaml: false
+    leso_compensation_closed_loop: false
+    quality_gate:
+      zero_span_deg: 0.5966915396334644
+      ratio_cv: 0.01471584427881582
+      friction_pos_cv: 0.03224855508334127
+      friction_neg_cv: 0.04806772351733722
+      tracking_rms_values_rad: &id001
+      - 0.015002368538257935
+      - 0.014713307534390905
+      - 0.014556916571757384
+      all_fit_improvements_positive: true
+    mean:
+      zero_offset_deg: -2.433469301353148
+      zero_offset_rad: -0.042472051554818535
+      first_moment_ratio: 0.8722546983907368
+      kinetic_friction_pos_nm: 0.08338327621370313
+      kinetic_friction_neg_nm: 0.03924557292502095
+      kinetic_friction_nm: 0.061314424569362036
+      fitted_residual_rms_nm: 0.039364278862232066
+      baseline_residual_rms_nm: 0.04829498832298576
+      tracking_rms_rad: 0.014757530881468741
+    stats:
+      zero_deg:
+        mean: -2.433469301353148
+        span: 0.5966915396334644
+        std: 0.3189639143185599
+        cv: 0.1310737366364958
+        values:
+        - -2.5637396882151364
+        - -2.6666798777388863
+        - -2.069988338105422
+      ratio:
+        mean: 0.8722546983907368
+        span: 0.024261376666663614
+        std: 0.012835964312983542
+        cv: 0.01471584427881582
+        values:
+        - 0.8819626898518651
+        - 0.8577013131852015
+        - 0.877100092135144
+      friction_pos_nm:
+        mean: 0.08338327621370313
+        span: 0.00505114046606428
+        std: 0.0026889901760070653
+        cv: 0.03224855508334127
+        values:
+        - 0.0853758789165534
+        - 0.08032473845048912
+        - 0.08444921127406688
+      friction_neg_nm:
+        mean: 0.03924557292502095
+        span: 0.0034432281104007575
+        std: 0.0018864453486394023
+        cv: 0.04806772351733722
+        values:
+        - 0.041412428898860223
+        - 0.03835508908774315
+        - 0.037969200788459466
+      baseline_residual_rms_nm:
+        mean: 0.04829498832298576
+        span: 0.000635928960728574
+        std: 0.00031949032384535696
+        cv: 0.006615392920455415
+        values:
+        - 0.048630958878782896
+        - 0.04799502991805432
+        - 0.04825897617212007
+      fitted_residual_rms_nm:
+        mean: 0.039364278862232066
+        span: 0.0024464388991563
+        std: 0.0012233727966833737
+        cv: 0.031078247386798565
+        values:
+        - 0.04057631532117523
+        - 0.03812987642201893
+        - 0.039386644843502044
+      improvement_ratio:
+        mean: 0.18500717523268553
+        span: 0.039917414772665416
+        std: 0.019983924108842397
+        cv: 0.10801702195446419
+        values:
+        - 0.1656278992500354
+        - 0.20554531402270082
+        - 0.1838483124253204
+      tracking_rms_rad:
+        mean: 0.014757530881468741
+        span: 0.00044545196650055095
+        std: 0.00022599478298154823
+        cv: 0.01531386143093445
+        values: *id001
+      tracking_max_abs_rad:
+        mean: 0.03176321537282927
+        span: 0.0055392123800214466
+        std: 0.002820707044579134
+        cv: 0.08880420358802872
+        values:
+        - 0.03484140422793566
+        - 0.03114605004263793
+        - 0.029302191847914216
+      leso_z3_rms_rad_s2:
+        mean: 7.726928841776586
+        span: 0.47685171539802607
+        std: 0.24123295585539217
+        cv: 0.031219771890629647
+        values:
+        - 7.684558264387403
+        - 7.986539988170191
+        - 7.5096882727721646
+    runs:
+    - source: src/arm-platform/task_space_smc/hw/data/phase3/phase3_j5_leso_observer_tune_20260814_154941.json
+      zero_deg: -2.5637396882151364
+      ratio: 0.8819626898518651
+      friction_pos_nm: 0.0853758789165534
+      friction_neg_nm: 0.041412428898860223
+      baseline_residual_rms_nm: 0.048630958878782896
+      fitted_residual_rms_nm: 0.04057631532117523
+      improvement_ratio: 0.1656278992500354
+      tracking_rms_rad: 0.015002368538257935
+      tracking_max_abs_rad: 0.03484140422793566
+      leso_z3_rms_rad_s2: 7.684558264387403
+    - source: src/arm-platform/task_space_smc/hw/data/phase3/phase3_j5_leso_observer_tune_20260814_155111.json
+      zero_deg: -2.6666798777388863
+      ratio: 0.8577013131852015
+      friction_pos_nm: 0.08032473845048912
+      friction_neg_nm: 0.03835508908774315
+      baseline_residual_rms_nm: 0.04799502991805432
+      fitted_residual_rms_nm: 0.03812987642201893
+      improvement_ratio: 0.20554531402270082
+      tracking_rms_rad: 0.014713307534390905
+      tracking_max_abs_rad: 0.03114605004263793
+      leso_z3_rms_rad_s2: 7.986539988170191
+    - source: src/arm-platform/task_space_smc/hw/data/phase3/phase3_j5_leso_observer_tune_20260814_155239.json
+      zero_deg: -2.069988338105422
+      ratio: 0.877100092135144
+      friction_pos_nm: 0.08444921127406688
+      friction_neg_nm: 0.037969200788459466
+      baseline_residual_rms_nm: 0.04825897617212007
+      fitted_residual_rms_nm: 0.039386644843502044
+      improvement_ratio: 0.1838483124253204
+      tracking_rms_rad: 0.014556916571757384
+      tracking_max_abs_rad: 0.029302191847914216
+      leso_z3_rms_rad_s2: 7.5096882727721646
+zero_offset_rad:
+- 0.041135933506289996
+- -0.1615074164772301
+- 0.03531827212355454
+- -0.192988
+- -0.042472051554818535
+- 0.0
+zero_offset_deg:
+- 2.356915376241207
+- -9.253693324206935
+- 2.0235879323742227
+- -11.057
+- -2.433469301353148
+- 0.0
+zero_offset_converged:
+- true
+- true
+- true
+- false
+- true
+- false
+zero_offset_uncertainty_deg:
+- 0.141
+- 0.316
+- 0.163
+- 2.0
+- 0.3189639143185599
+- null
+first_moment_ratio:
+- 1.0025079219216013
+- 1.0087923807122112
+- 1.0232823692371213
+- 0.972
+- 0.8722546983907368
+- 1.0
+stiction_nm:
+- 1.25
+- 1.6
+- 0.625
+- 0.125
+- 0.07500000000000001
+- 0.1
+deadband_rad:
+- 0.041666666666666664
+- 0.05333333333333334
+- 0.0208
+- 0.025
+- 0.015000000000000003
+- 0.02
+notes:
+  joint1: 收敛，漂移 0.141°。扫描区间 [-0.88, 1.40]（原区间起点会让 joint6 撞围栏）
+  joint2: 收敛，漂移 0.316°。静摩擦 1.775 Nm 是其余关节的 2.4~18 倍， 但已用低载荷实验排除关节缺陷 —— 它是承载最重的关节
+  joint3: 收敛，漂移 0.163°。ratio 1.228 与阶段 1 位置模式的 1.220 吻合 0.7%
+  joint4: 未收敛。A/f≈1（重力 0.13 Nm ≈ 静摩擦 0.125），相位噪声大。 三遍单调漂移 -13.5 -> -13.0 -> -11.1，不确定度约
+    ±2°。 末端灵敏度仅 0.897 mm/°，占误差预算 0.5%，可接受
+  joint5: '未收敛（A/f≈1 的物理边界）。已用两轮共 6 遍正式扫描统计定值。
+
+    第一轮 ±1.85：-4.340 / -6.994 / -6.579（端点过冲超限位，单向进入 协议失效 4 次；端点恰是相位拟合权重最大处） 第二轮 ±1.70：-5.958
+    / -6.793 / -7.726（协议违规 0 次）
+
+    修复效果：resid/A 0.347 -> 0.198，sag_max 0.0167 -> 0.0112， ratio 0.905 -> 1.021（13%
+    变化，说明旧值受协议失效污染）。
+
+    取值 -6.398°（6 遍均值），不确定度 ±1.161°（标准差，非标准误 —— 第二轮单调漂移使各遍不独立）。末端贡献 1.70 mm'
+  joint6: 无重力信号 —— link6 质心在 joint6 转轴上（径向偏移 0.113 mm）， 转它既不移动质心也不移动末端。末端位置灵敏度 0.0000
+    mm/rad， 零位偏差按 0 处理。装上末端工具后才可标定
+caveats:
+- resid/A < 0.05 只在 A/f > 5 时才指示几何错误。joint4/5 的 resid/A 达 0.29~0.35 是摩擦主导，不是几何问题
+- 相位精度由【拟合条件数】决定，不是 死区/√N。扫描区间覆盖的周期比例 太小会使幅值与相位强耦合 —— joint4 用 0.8 rad 区间时 ratio 错了
+  59%
+- 温度不是漂移主因。486 秒对照记录显示 joint4/5 温度零变化而 offset 变了 9.9°
+inertia_kgm2:
+- 0.11198
+- 0.19707
+- 0.12018508953935969
+- 0.014409626204013575
+- 0.01102058907382165
+- null
+inertia_stderr_kgm2:
+- 0.00106
+- 0.01567
+- 0.0023904572733993348
+- 0.0011158771208503125
+- 0.00046388575353749296
+- null
+inertia_urdf_kgm2:
+- 0.0129
+- 0.0788
+- 0.0138
+- 0.0006
+- 0.0008
+- null
+kinetic_friction_nm:
+- -0.023
+- 0.6741647857283287
+- 0.331974077015134
+- 0.05179996080426126
+- 0.061314424569362036
+- null
+armature_kgm2:
+- 0.09527
+- 0.09405
+- 0.11219
+- 0.01154
+- 0.0105
+- 0.0105
+kinetic_friction_pos_nm:
+- -0.023
+- 0.08097350123638451
+- 0.331974077015134
+- 0.05179996080426126
+- 0.08338327621370313
+- null
+kinetic_friction_neg_nm:
+- -0.023
+- 1.2673560702202729
+- 0.331974077015134
+- 0.05179996080426126
+- 0.03924557292502095
+- null
