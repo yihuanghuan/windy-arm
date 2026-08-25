@@ -255,7 +255,7 @@ def test_demo_launch_forwards_the_vrpn_endpoint():
     """一键启动 Vicon 时必须把服务器 IP 和端口都传给 VRPN launch。"""
     src = _launch_source("vicon_hold_demo.launch.py")
     assert "'port': LaunchConfiguration('vicon_port')" in src
-    assert "DeclareLaunchArgument('vicon_server', default_value='172.16.20.21')" in src
+    assert "DeclareLaunchArgument('vicon_server', default_value='192.168.200.60')" in src
     assert "DeclareLaunchArgument('vicon_port', default_value='3883')" in src
 
 

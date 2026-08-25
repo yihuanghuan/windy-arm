@@ -26,7 +26,9 @@ This rig defines two rigid bodies:
 | `arm_base` | arm base plate | pose, linear + angular velocity, linear + angular acceleration |
 | `arm_ee` | tool / wrist cluster | **position only** (see §4) |
 
-Server on this setup: `172.16.20.21:3883` (also seen as `192.168.200.78`).
+Server on this setup: `192.168.200.60:3883` (confirmed 2026-08-25, and now the
+default in both Vicon launch files). Earlier notes list `172.16.20.21` and
+`192.168.200.78`; both are stale.
 
 ### σ_min-scheduled damping
 

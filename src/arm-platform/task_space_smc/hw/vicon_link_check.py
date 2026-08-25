@@ -287,7 +287,7 @@ def verdict(stream):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--host", default="172.16.20.21", help="Vicon 主机 IP")
+    ap.add_argument("--host", default="192.168.200.60", help="Vicon 主机 IP")
     ap.add_argument("--topic", default="/vrpn/arm_base/pose")
     ap.add_argument("--seconds", type=float, default=30.0)
     ap.add_argument("--json", default="", help="把完整结果写到这个文件")

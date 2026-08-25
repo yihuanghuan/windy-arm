@@ -579,7 +579,7 @@ source install/setup.bash
 export ROS_DOMAIN_ID=42
 
 ros2 launch manipulator vicon_floating_base.launch.py \
-  server:=172.16.20.21 port:=3883 zero_on_first_pose:=false
+  server:=192.168.200.60 port:=3883 zero_on_first_pose:=false
 ```
 
 启动后，在另一个同样完成上述 source 的终端确认两路数据：
@@ -675,7 +675,7 @@ python3 src/arm-platform/task_space_smc/hw/wrist_prepose.py \
 # source /home/windylab/code/vicon_perception_ws/install/ros/setup.bash
 
 # ros2 launch manipulator vicon_floating_base.launch.py \
-#   server:=172.16.20.21 port:=3883 pose_topic:=/vrpn/arm_base/pose
+#   server:=192.168.200.60 port:=3883 pose_topic:=/vrpn/arm_base/pose
 
 cd /home/windylab/code/windylab_ws
 source /opt/ros/humble/setup.bash

@@ -9,12 +9,13 @@ commands from there verbatim will fail with "no such file or directory".
 | | Path |
 |---|---|
 | Control workspace | `~/jasyach_repo/windylab_arm_control_FanC` |
-| Vicon workspace | `~/jasyach_repo/WindyLab-ViconPerception` |
+| Vicon workspace | `~/jasyach_repo/vicon_perception` |
 | Vicon server | `192.168.200.60:3883` |
 | Branch | `lagrange-smc` |
 
-> Both Vicon addresses in the parent README section 5 (`172.16.20.21` and
-> `192.168.200.78`) are stale. Use `192.168.200.60`.
+> `192.168.200.60` is now the default in `vicon_floating_base.launch.py` and
+> `vicon_hold_demo.launch.py`, so it no longer has to be passed explicitly.
+> Older notes listing `172.16.20.21` or `192.168.200.78` are stale.
 
 ---
 
@@ -43,7 +44,7 @@ smc_sim() { export ROS_DOMAIN_ID=77
             cd ~/jasyach_repo/windylab_arm_control_FanC; }
 
 smc_vicon() { smc_hw
-              source ~/jasyach_repo/WindyLab-ViconPerception/install/setup.bash; }
+              source ~/jasyach_repo/vicon_perception/install/setup.bash; }
 EOF
 ```
 
@@ -113,7 +114,7 @@ pre-empts the equivalent `-lquat` failure. The bug is invisible on machines that
 VRPN installed to `/usr/local`, which is where the find module's fallback paths point.
 
 ```bash
-cd ~/jasyach_repo/WindyLab-ViconPerception
+cd ~/jasyach_repo/vicon_perception
 source /opt/ros/humble/setup.bash
 
 # 3. patch the bare-name link (one line, carry this across re-clones)
@@ -308,7 +309,7 @@ python3 src/arm-platform/task_space_smc/hw/wrist_prepose.py \
 smc_vicon
 ros2 launch manipulator vicon_floating_base.launch.py \
   server:=192.168.200.60 port:=3883 \
-  zero_on_first_pose:=true prefer_vicon_angular_accel:=true
+  zero_on_first_pose:=true prefer_vicon_angular_accel:=false
 ```
 
 This launch starts both `vrpn_listener` (Vicon workspace) and

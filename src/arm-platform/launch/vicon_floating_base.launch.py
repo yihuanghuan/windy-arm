@@ -123,7 +123,7 @@ def _setup(context):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument("server", default_value="172.16.20.21"),
+        DeclareLaunchArgument("server", default_value="192.168.200.60"),
         DeclareLaunchArgument("port", default_value="3883"),
         DeclareLaunchArgument(
             "pose_topic", default_value="/vrpn/arm_base/pose",

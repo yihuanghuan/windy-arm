@@ -190,7 +190,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'rigid_from_base_quaternion_xyzw', default_value='',
             description='覆盖 arm_base->base_link 四元数 "x,y,z,w"'),
-        DeclareLaunchArgument('vicon_server', default_value='172.16.20.21'),
+        DeclareLaunchArgument('vicon_server', default_value='192.168.200.60'),
         DeclareLaunchArgument('vicon_port', default_value='3883'),
         DeclareLaunchArgument(
             'vicon_pose_topic', default_value='/vrpn/arm_base/pose',
