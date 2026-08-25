@@ -425,6 +425,61 @@ a model this checkout does not implement.
 > corrupted world frame, since the 85.3° `q_rb` rotation is what keeps
 > `zero_on_first_pose` from mistaking the marker-cluster frame for the controller world.
 
+### 6.0 Measured on hardware, 2026-08-25
+
+Three runs on the real arm settled this. All numbers from the runner's own summary JSON.
+
+| Metric | Old extrinsics (2026-08-05) | `fk_only` control | zzq extrinsics (2026-08-24) |
+|---|---|---|---|
+| `ee_feedback.mode` | `vicon_direct` | `fk_only` | `vicon_direct` |
+| `hardware_enabled` | true | true | **false** (dry run) |
+| `ee_residual_rms_m` | 46.9 mm | `null` | **31.2 mm** |
+| `ee_velocity_reject_ticks` | 202 / 324 = 62% | 0 | 79 / 674 = 12% |
+| `ee_degraded_ticks` | 83 | 0 | 174 |
+| `position_rms_m` | 44.86 mm | **1.196 mm** | 18.5 mm (base moved by hand, no torque) |
+| `position_peak_m` | 121.75 mm | 1.61 mm | 50.0 mm |
+| `orientation_rms_rad` | 17.85° | 0.78° | 9.18° |
+| `ee_orientation_residual_deg_p95` | 76.3° | `null` | 128.1° |
+| `backend_clamp_total` | 0 | 0 | 0 |
+| `qp_fallback_ticks` | 0 | 0 | 0 |
+| Outcome | watchdog trip @ 2.17 s | ran clean | start posture rejected @ 5.7 s |
+
+**Conclusions:**
+
+1. **The controller is sound.** `fk_only` holds at 1.196 mm RMS / 1.61 mm peak with zero
+   torque clamping and zero QP fallbacks — narrowly missing the 1 mm RMS gate while
+   passing the 2 mm peak, and doing so with a stale base extrinsic still feeding `b6`.
+   The arm, driver, gravity model, friction feedforward, QP and SMC law are all fine.
+   The entire 44.86 mm of run 1 was Vicon geometry.
+
+2. **zzq's extrinsics are a real improvement but insufficient.** Velocity rejection fell
+   from 62% to 12%, so his base rotation is much closer to the current hardware. But
+   `ee_residual_rms_m` plateaus at 31.2 mm — 18× the 1.77 mm the 2026-08-05 fit achieved
+   when its geometry was current. Against `innovation_reject_m: 0.05` that leaves under
+   19 mm of headroom, so any base motion crosses the threshold.
+
+3. **The failure mode fingers the base rotation, not the translation.** Run 3 was stable
+   while stationary and failed only when the base was moved. A translation error in the
+   base extrinsic shifts the FK and Vicon end-effector paths identically and is
+   invisible; a rotation error separates them in proportion to arm reach × sin(error).
+   The offending quantity is `arm_base_from_base_link.quaternion_xyzw`.
+
+4. **zzq re-fitted only the base half.** His `arm_ee_from_link6.translation_m` is
+   byte-identical to the 2026-08-05 file. With both marker clusters reported moved, that
+   un-refitted lever arm is likely part of why his residual stops at 31 mm.
+
+5. **The dry run works.** `hardware_enabled:=false` produced the complete diagnostic —
+   residual, rejection rate, degradation count — with the arm unpowered and nothing at
+   risk. Use it before every torque-enabled run after a geometry change.
+
+Not explained: the orientation residual worsened from 76.3° to 128.1°. It is also the
+least trustworthy signal here, since `vicon_extrinsics.yaml` records that the `arm_ee`
+rigid body is rolled 114.4° about link6's tool axis and its orientation is
+validation-only. Reason from the position residual and the rejection rate instead.
+
+**Both candidate files have now been measured and both fail. Re-calibration is the only
+remaining path**, and the sweep must fit both transforms, not just the base.
+
 **Verdict: neither file should be adopted. Re-calibrate.** The current file is stale
 (markers moved). zzq's file is from the right era but is labelled diagnostic-only by its
 own author and fits five times worse.
