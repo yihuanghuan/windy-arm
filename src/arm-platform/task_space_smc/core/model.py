@@ -45,14 +45,15 @@ def arm6_calibration_path() -> str:
 
 def load_arm6_calibration(path: str | None = None) -> dict:
     import yaml
-    path = path or arm6_calibration_path()
+    path = path or os.environ.get("ARM6_CALIBRATION_YAML") or arm6_calibration_path()
     n = len(ARM6_JOINT_NAMES)
     if not os.path.exists(path):
         return dict(zero_offset_rad=[0.0] * n, first_moment_ratio=[1.0] * n,
                     stiction_nm=[0.0] * n, converged=[False] * n,
                     armature_kgm2=None, inertia_kgm2=None,
                     inertia_stderr_kgm2=None,
-                    kinetic_friction_nm=None, source=None)
+                    kinetic_friction_nm=None, kinetic_friction_pos_nm=None,
+                    kinetic_friction_neg_nm=None, source=None)
     with open(path) as fh:
         raw = yaml.safe_load(fh)
     def vec(key, default):
@@ -70,6 +71,8 @@ def load_arm6_calibration(path: str | None = None) -> dict:
         inertia_kgm2=optvec("inertia_kgm2"),
         inertia_stderr_kgm2=optvec("inertia_stderr_kgm2"),
         kinetic_friction_nm=optvec("kinetic_friction_nm"),
+        kinetic_friction_pos_nm=optvec("kinetic_friction_pos_nm"),
+        kinetic_friction_neg_nm=optvec("kinetic_friction_neg_nm"),
         zero_offset_rad=vec("zero_offset_rad", 0.0),
         first_moment_ratio=vec("first_moment_ratio", 1.0),
         stiction_nm=vec("stiction_nm", 0.0),
@@ -141,11 +144,24 @@ class FloatingBaseArmModel:
 
         self.n_arm = self.model.nv - 6
 
+        # Calibration is loaded once at model construction.  The same model
+        # angle and gravity scaling are then used by FK, Jacobians, task bias,
+        # and RNEA; callers continue to provide encoder-space joint angles.
+        self.calibration = load_arm6_calibration()
+        self.calibration_source = self.calibration.get("source")
+        def _calibration_vector(key, default):
+            values = self.calibration.get(key)
+            if values is None or len(values) != self.n_arm:
+                return np.full(self.n_arm, default, dtype=float)
+            return np.asarray(values, dtype=float).reshape(self.n_arm)
+
+        self.zero_offset_rad = _calibration_vector("zero_offset_rad", 0.0)
+        self.first_moment_ratio = _calibration_vector("first_moment_ratio", 1.0)
+
 
         # 电机转子惯量经减速比折算到关节侧，加在质量阵对角：M_aa ← M_aa + diag(armature)
         if apply_armature:
-            cal = load_arm6_calibration()
-            arm = cal.get("armature_kgm2")
+            arm = self.calibration.get("armature_kgm2")
             if arm is not None and len(arm) == self.model.nv - 6:
                 self.model.armature[6:] = np.asarray(
                     [0.0 if v is None else float(v) for v in arm])
@@ -194,9 +210,31 @@ class FloatingBaseArmModel:
     def make_q_full(self, base_position_w: np.ndarray, base_quat_wxyz: np.ndarray, q_arm: np.ndarray) -> np.ndarray:
         p = np.asarray(base_position_w, dtype=float).reshape(3)
         q_wxyz = quat_normalize(base_quat_wxyz)
-        q_arm = np.asarray(q_arm, dtype=float).reshape(self.n_arm)
+        q_arm = self.model_joint_angles(q_arm)
         q_xyzw = np.array([q_wxyz[1], q_wxyz[2], q_wxyz[3], q_wxyz[0]])
         return np.concatenate([p, q_xyzw, q_arm])
+
+    def model_joint_angles(self, q_encoder: np.ndarray) -> np.ndarray:
+        """Convert encoder coordinates to the URDF/Pinocchio coordinates."""
+        return (np.asarray(q_encoder, dtype=float).reshape(self.n_arm)
+                + self.zero_offset_rad)
+
+    def gravity_arm_torque(self, q_full: np.ndarray) -> np.ndarray:
+        """Return the unscaled arm gravity term at a model-coordinate q."""
+        q_full = np.asarray(q_full, dtype=float).reshape(self.model.nq)
+        gravity = pin.computeGeneralizedGravity(self.model, self.data, q_full)
+        return np.asarray(gravity[6:]).reshape(self.n_arm).copy()
+
+    def scale_gravity_arm_torque(self, gravity_arm: np.ndarray) -> np.ndarray:
+        return (np.asarray(gravity_arm, dtype=float).reshape(self.n_arm)
+                * self.first_moment_ratio)
+
+    def _apply_gravity_ratio(self, tau_arm: np.ndarray,
+                              q_full: np.ndarray) -> np.ndarray:
+        """Keep inertial/Coriolis terms and replace only gravity by ratio*g."""
+        tau_arm = np.asarray(tau_arm, dtype=float).reshape(self.n_arm)
+        gravity = self.gravity_arm_torque(q_full)
+        return tau_arm - gravity + self.scale_gravity_arm_torque(gravity)
 
     # base_velocity 表达在【基座体系】，不是世界系
     def make_v_full(self, base_velocity_lwa: np.ndarray, qd_arm: np.ndarray) -> np.ndarray:
@@ -296,7 +334,7 @@ class FloatingBaseArmModel:
         v_full = np.asarray(v_full, dtype=float).reshape(self.model.nv)
         a_full = self.make_a_full(a_base_lwa, qdd_cmd)
         tau_full = pin.rnea(self.model, self.data, q_full, v_full, a_full)
-        return np.asarray(tau_full[6:]).reshape(self.n_arm).copy()
+        return self._apply_gravity_ratio(tau_full[6:], q_full)
 
     # 手臂正向动力学，上式反解 q̈：
     #   q̈ = M_aa⁻¹·(τ_arm − M_ab·a_base − h_a),  h = RNEA(q, v, 0) 取手臂分量
@@ -309,9 +347,10 @@ class FloatingBaseArmModel:
     ) -> np.ndarray:
         M = self.compute_mass_matrix(q_full)
         n_full = pin.rnea(self.model, self.data, q_full, v_full, np.zeros(self.model.nv))
+        n_full_arm = self._apply_gravity_ratio(n_full[6:], q_full)
         rhs = (
             np.asarray(tau_arm, dtype=float).reshape(self.n_arm)
             - M[6:, :6] @ np.asarray(a_base_lwa, dtype=float).reshape(6)
-            - n_full[6:]
+            - n_full_arm
         )
         return np.linalg.solve(M[6:, 6:], rhs)

@@ -77,12 +77,14 @@ def desk_margin(model: GravityModel, q: np.ndarray) -> float:
 
 
 class Compensator(Node):
-    def __init__(self, *, ignore_workspace_guard: bool = False):
+    def __init__(self, *, ignore_workspace_guard: bool = False,
+                 calibration_yaml: str | None = None):
         super().__init__("phase4_gravity_compensation")
         self.model = GravityModel()
-        cal = load_arm6_calibration()
+        cal = load_arm6_calibration(calibration_yaml)
         self.offset = np.array(cal["zero_offset_rad"], dtype=float)
         self.ratio = np.array(cal["first_moment_ratio"], dtype=float)
+        self.stiction = np.array(cal["stiction_nm"], dtype=float)
         self.cal_source = cal["source"]
         # 仅供动捕标定场地（确认四周无桌面/围栏）使用。关节限位、速度和
         # 漂移保护绝不因此关闭。
@@ -93,6 +95,13 @@ class Compensator(Node):
         self.pub = self.create_publisher(
             MotorControl, "/student/joint_effort_command", 10)
         self.create_subscription(JointState, "/joint_states", self._cb, 50)
+        self.get_logger().info(f"calibration YAML: {self.cal_source}")
+        self.get_logger().info(
+            f"zero_offset_deg: {np.round(np.degrees(self.offset), 3).tolist()}")
+        self.get_logger().info(
+            f"first_moment_ratio: {np.round(self.ratio, 4).tolist()}")
+        self.get_logger().info(
+            f"stiction_nm: {np.round(self.stiction, 4).tolist()}")
 
     def _cb(self, m):
         if len(m.position) == N_ARM:
@@ -116,6 +125,49 @@ class Compensator(Node):
         msg.d = [float(v) for v in kd]
         msg.enable = 1
         self.pub.publish(msg)
+
+    def move_to(self, q_target: np.ndarray, *, timeout: float = 35.0,
+                settle: float = 2.0) -> str | None:
+        q_target = np.asarray(q_target, float)
+        if self.q is None:
+            return "no current joint state"
+        rep = check_setpoint(q_target, self.model)
+        mg = desk_margin(self.model, q_target)
+        if not rep.ok or (not self.ignore_workspace_guard and mg < DESK_MARGIN_MIN):
+            return f"target posture unsafe (margin {mg:+.4f}, reasons={rep.reasons})"
+
+        q_start = self.q.copy()
+        dist = float(np.max(np.abs(q_target - q_start)))
+        ramp_sec = max(4.0, dist / 0.18)
+        t0 = time.time()
+        stable_since = None
+        nxt = t0
+        while time.time() - t0 < timeout:
+            now = time.time()
+            alpha = min(1.0, (now - t0) / ramp_sec)
+            cmd = q_start + alpha * (q_target - q_start)
+            if now >= nxt:
+                self.send(cmd, BASE_P, BASE_D,
+                          self.feedforward(self.q if self.q is not None else cmd))
+                nxt = now + 1.0 / PUBLISH_RATE
+            rclpy.spin_once(self, timeout_sec=0.002)
+            if self.q is None:
+                continue
+            why = self.guard(self.q)
+            if why and "drifted" not in why:
+                return why
+            err = float(np.max(np.abs(self.q - q_target)))
+            vmax = float(np.max(np.abs(self.v))) if self.v is not None else 0.0
+            if err < 0.003:
+                return None
+            if err < 0.012 and vmax < 0.12:
+                if stable_since is None:
+                    stable_since = now
+                if now - stable_since >= settle:
+                    return None
+            else:
+                stable_since = None
+        return f"move_to timed out {np.max(np.abs(q_target - self.q)):.3f} rad away"
 
     def check_effort_enabled(self, timeout: float = 5.0) -> str | None:
         from rcl_interfaces.srv import GetParameters
@@ -225,6 +277,15 @@ def print_plan() -> None:
     cal = load_arm6_calibration()
     q, info = pick_start_posture(model)
     print("=" * 74)
+
+
+def parse_posture(text: str | None) -> np.ndarray | None:
+    if not text:
+        return None
+    vals = [float(x.strip()) for x in text.split(',') if x.strip()]
+    if len(vals) != N_ARM:
+        raise ValueError(f"--posture expects {N_ARM} comma separated values")
+    return np.array(vals, dtype=float)
     print("PLAN (dry run — nothing is commanded)")
     print("=" * 74)
     print(f"标定来源: {cal['source']}")
@@ -255,6 +316,8 @@ def main() -> int:
     ap.add_argument('--ignore-workspace-guard', action='store_true',
                     help='仅在确认四周无桌面/围栏的动捕标定场地使用；'
                          '不关闭关节限位、速度或漂移保护')
+    ap.add_argument('--calibration-yaml', default=None,
+                    help='candidate arm6 calibration YAML used for feedforward')
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()
 
@@ -268,7 +331,8 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime('%Y%m%d_%H%M%S')
     rclpy.init()
-    node = Compensator(ignore_workspace_guard=args.ignore_workspace_guard)
+    node = Compensator(ignore_workspace_guard=args.ignore_workspace_guard,
+                       calibration_yaml=args.calibration_yaml)
     results = []
     try:
         if not node.wait_state():
@@ -283,7 +347,18 @@ def main() -> int:
                   file=sys.stderr)
             return 5
 
-        q_hold = node.q.copy()
+        q_target = parse_posture(args.posture)
+        if q_target is not None:
+            node.get_logger().info(
+                f"moving to requested posture {np.round(q_target, 4).tolist()}")
+            why = node.move_to(q_target)
+            if why:
+                print(f"REFUSED: could not reach requested posture: {why}",
+                      file=sys.stderr)
+                return 7
+            # Extra quiet hold removes residual motion before the kp ladder.
+            node.move_to(q_target, timeout=8.0, settle=1.0)
+        q_hold = q_target.copy() if q_target is not None else node.q.copy()
         rep = check_setpoint(q_hold, node.model)
         mg = desk_margin(node.model, q_hold)
         reasons = list(rep.reasons)

@@ -1,0 +1,41 @@
+# Clean handoff copy of the active arm6 candidate calibration.
+# Source: src/arm-platform/config/arm6_calibration_candidate.yaml
+# This file is a handoff copy; runtime currently loads the source-tree file above.
+
+metadata:
+  date: "2026-08-14"
+  urdf: "arm6.urdf"
+  method: "gravity calibration plus repeated J5 LESO-assisted dynamic fit"
+  joints: 6
+  status: "candidate_for_moving_base_test"
+  official_yaml_overwritten: false
+
+# q_model = q_encoder + zero_offset_rad
+zero_offset_rad: [0.0411359335, -0.1615074165, 0.0353182721, -0.1929880000, -0.0424720516, 0.0]
+zero_offset_deg: [2.3569154, -9.2536933, 2.0235879, -11.0570000, -2.4334693, 0.0]
+zero_offset_converged: [true, true, true, false, true, false]
+zero_offset_uncertainty_deg: [0.141, 0.316, 0.163, 2.0, 0.3189639, null]
+
+# Gravity correction. The active model applies ratio only to the RNEA gravity term.
+first_moment_ratio: [1.0025079219, 1.0087923807, 1.0232823692, 0.972, 0.8722546984, 1.0]
+
+# Static friction and deadband records from Phase 2.
+stiction_nm: [1.25, 1.6, 0.625, 0.125, 0.075, 0.1]
+deadband_rad: [0.0416667, 0.0533333, 0.0208, 0.025, 0.015, 0.02]
+
+# Dynamic friction used by the current candidate control chain.
+# Positive/negative values are selected from the sign of qdot.
+kinetic_friction_pos_nm: [-0.023, 0.0809735012, 0.3319740770, 0.0517999608, 0.0833832762, null]
+kinetic_friction_neg_nm: [-0.023, 1.2673560702, 0.3319740770, 0.0517999608, 0.0392455729, null]
+kinetic_friction_nm: [-0.023, 0.6741647857, 0.3319740770, 0.0517999608, 0.0613144246, null]
+
+# Effective inertia and reflected rotor inertia used by the model.
+inertia_kgm2: [0.11198, 0.19707, 0.1201850895, 0.0144096262, 0.0110205891, null]
+inertia_stderr_kgm2: [0.00106, 0.01567, 0.0023904573, 0.0011158771, 0.0004638858, null]
+inertia_urdf_kgm2: [0.0129, 0.0788, 0.0138, 0.0006, 0.0008, null]
+armature_kgm2: [0.09527, 0.09405, 0.11219, 0.01154, 0.0105, 0.0105]
+
+notes:
+  joint4: "Zero is not fully converged; retain the candidate value and verify before formal deployment."
+  joint5: "Zero, ratio, F+ and F- are the mean of three independent repeat fits."
+  joint6: "No gravity zero fit; value remains zero."

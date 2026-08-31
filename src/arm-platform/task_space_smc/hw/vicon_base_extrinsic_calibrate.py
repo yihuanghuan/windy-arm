@@ -62,7 +62,7 @@ KP = np.array([30.0, 30.0, 30.0, 5.0, 5.0, 5.0])
 KD = np.array([1.0, 1.0, 1.0, 0.3, 0.3, 0.3])
 KD_HANDOVER = np.array([1.0, 1.0, 1.0, 0.1, 0.1, 0.1])
 
-# --- 中止阈值（任一触发即停机并报告） -------------------------------------
+# --- 运动安全阈值（运动阶段触发即停机并报告） -----------------------------
 MIN_LIMIT_MARGIN = 0.05      # rad，距关节硬限位的余量
 # 实测速度按 0.10 s 滑动窗判定，不看单样本。全关节粘滑：指令峰值 0.25 rad/s 时，
 # 位置差分出的瞬时速度可达 1.24 rad/s —— 关节先卡在摩擦死区里不动，再整块挣脱
@@ -82,16 +82,24 @@ SETTLED_ERROR_ALLOWANCE = 0.01
 # 本机 WiFi 链路上到达间隔可达 206 ms 而底层帧流完好：源时钟间隔实测 8.017 ms、
 # σ = 0.474 ms，到达间隔却在 0.09~180 ms 之间散开（docs/QA_record.md）。
 # 按到达判断会在投递抖动上误停，且抓不到任何真实丢帧。
-MAX_VICON_GAP = 0.15         # s，任一刚体的真实丢帧
+MAX_VICON_GAP = 0.15         # s，静态窗过滤阈值；运动阶段仍是安全中止阈值
 # 链路真死的兜底，按到达时间判。臂静止、源流完好（0.15 s 内零丢帧）时，
 # 到达间隔仍能到 0.300 s，故阈值不能靠近这个量级。
 MAX_VICON_SILENCE = 1.00     # s，完全没有数据到达 = 链路已死
 MAX_JOINT_GAP = 0.10         # s，/joint_states 静默 = 串口心跳故障
 
 # --- 采集窗 ----------------------------------------------------------------
-MIN_FRAMES = 30              # 每个刚体的最少帧数，且都要晚于窗起点
-SETTLE_SEC = 0.8             # 落在要求的 0.5~1.0 s 内
-CAPTURE_SEC = 0.8
+MIN_CAPTURE_PAIRS = 200      # 每个姿态至少保留 200 对 source timestamp 配对帧
+READY_FRAMES = 10             # 启动前只用于确认话题已经有数据
+PAIR_MAX_DT = 0.010          # arm_base 与 arm_ee 的 source timestamp 最大差
+SETTLE_SEC = 2.0             # 到位后 qdot 接近零并连续稳定等待 2 s
+SETTLE_QDOT_MAX = 0.03       # rad/s，静态采样前的关节速度门槛
+SETTLE_TIMEOUT_SEC = 10.0
+CAPTURE_TIMEOUT_SEC = 10.0   # 10 s 内不足 MIN_CAPTURE_PAIRS 才判该点失败
+LATENCY_SPIKE_SEC = 0.15     # 仅丢弃对应到达延迟异常帧，不终止整次标定
+
+HERE = Path(__file__).resolve()
+DEFAULT_CANDIDATE_YAML = HERE.parents[2] / "config" / "arm6_calibration_candidate.yaml"
 
 # --- 轨迹 ------------------------------------------------------------------
 # q_k = q0 + A·(sin(F·θ_k + Φ) − sin(Φ)),   θ_k = 2πk/N
@@ -203,11 +211,73 @@ class Abort(RuntimeError):
     pass
 
 
+class CaptureFailure(RuntimeError):
+    """一个姿态的有效配对帧不足；标定继续到下一个姿态。"""
+
+
+def _stream_quality(rows):
+    """过滤 source gap 和传输延迟异常帧，坏帧不升级为全局中止。"""
+    if not rows:
+        return {"rows": [], "dropped_gap": 0, "dropped_latency": 0,
+                "max_gap_sec": 0.0, "max_latency_residual_sec": 0.0}
+    ordered = sorted(rows, key=lambda row: row[1])
+    offset = float(np.median([row[0] - row[1] for row in ordered]))
+    clean = []
+    dropped_gap = dropped_latency = 0
+    max_gap = max_latency = 0.0
+    previous_source = None
+    for row in ordered:
+        source = row[1]
+        if previous_source is not None:
+            gap = source - previous_source
+            if gap > 0.0:
+                max_gap = max(max_gap, float(gap))
+            if gap > MAX_VICON_GAP:
+                dropped_gap += 1
+                previous_source = source
+                continue
+        latency_residual = abs((row[0] - source) - offset)
+        max_latency = max(max_latency, float(latency_residual))
+        previous_source = source
+        if latency_residual > LATENCY_SPIKE_SEC:
+            dropped_latency += 1
+            continue
+        clean.append(row)
+    return {"rows": clean, "dropped_gap": dropped_gap,
+            "dropped_latency": dropped_latency, "max_gap_sec": max_gap,
+            "max_latency_residual_sec": max_latency}
+
+
+def _pair_by_source_timestamp(base_rows, ee_rows):
+    """按 source timestamp 最近邻一对一配对，只保留差值小于 10 ms 的样本。"""
+    base = sorted(base_rows, key=lambda row: row[1])
+    ee = sorted(ee_rows, key=lambda row: row[1])
+    pairs = []
+    j = 0
+    for b in base:
+        while j + 1 < len(ee) and ee[j + 1][1] <= b[1]:
+            j += 1
+        candidates = []
+        if j < len(ee):
+            candidates.append((abs(ee[j][1] - b[1]), j))
+        if j > 0:
+            candidates.append((abs(ee[j - 1][1] - b[1]), j - 1))
+        if candidates:
+            dt, idx = min(candidates)
+            if dt < PAIR_MAX_DT:
+                pairs.append((b, ee[idx]))
+                if idx == j:
+                    j += 1
+    return pairs
+
+
 class BaseExtrinsicCalibrator(Node):
-    def __init__(self, base_topic: str, ee_topic: str):
+    def __init__(self, base_topic: str, ee_topic: str, calibration_yaml: str):
         super().__init__("vicon_base_extrinsic_calibrate")
         self.model = GravityModel()
-        cal = load_arm6_calibration()
+        self.calibration_yaml = str(Path(calibration_yaml).expanduser().resolve())
+        cal = load_arm6_calibration(self.calibration_yaml)
+        self.get_logger().info("FK calibration YAML: %s" % self.calibration_yaml)
         self.zero_offset = np.asarray(cal["zero_offset_rad"], dtype=float)
         deadband = np.asarray(cal["stiction_nm"], dtype=float) / KP
         self.settled_error_limit = np.maximum(
@@ -221,8 +291,8 @@ class BaseExtrinsicCalibrator(Node):
         self.kd = KD.copy()
 
         # 每行为 (到达单调时间, Vicon 源时间戳, 位置, 旋转)
-        self.base: deque[tuple[float, float, np.ndarray, np.ndarray]] = deque(maxlen=8000)
-        self.ee: deque[tuple[float, float, np.ndarray, np.ndarray]] = deque(maxlen=8000)
+        self.base: deque[tuple[float, float, np.ndarray, np.ndarray]] = deque(maxlen=16000)
+        self.ee: deque[tuple[float, float, np.ndarray, np.ndarray]] = deque(maxlen=16000)
         self.base_stamp = -math.inf
         self.ee_stamp = -math.inf
         self.last_gap = {"arm_base": 0.0, "arm_ee": 0.0}
@@ -293,15 +363,15 @@ class BaseExtrinsicCalibrator(Node):
         end = time.monotonic() + timeout
         while time.monotonic() < end:
             self.spin(0.05)
-            if (self.q is not None and len(self.base) >= MIN_FRAMES
-                    and len(self.ee) >= MIN_FRAMES):
+            if (self.q is not None and len(self.base) >= READY_FRAMES
+                    and len(self.ee) >= READY_FRAMES):
                 return
         missing = []
         if self.q is None:
             missing.append("/joint_states (is student_arm6.launch.py running?)")
-        if len(self.base) < MIN_FRAMES:
+        if len(self.base) < READY_FRAMES:
             missing.append(self.base_topic)
-        if len(self.ee) < MIN_FRAMES:
+        if len(self.ee) < READY_FRAMES:
             missing.append(self.ee_topic)
         raise Abort("no data on: " + ", ".join(missing))
 
@@ -338,7 +408,8 @@ class BaseExtrinsicCalibrator(Node):
         return np.abs(rows[-1][1] - rows[0][1]) / dt
 
     # ---------------- 守卫 ----------------
-    def guard(self, q_ref: np.ndarray, *, settled: bool) -> None:
+    def guard(self, q_ref: np.ndarray, *, settled: bool,
+              check_vicon_gap: bool = True) -> None:
         now = time.monotonic()
         if self.q is None or self.qd is None:
             raise Abort("no joint feedback yet")
@@ -347,7 +418,7 @@ class BaseExtrinsicCalibrator(Node):
             raise Abort("/joint_states silent for %.3f s (> %.2f s): serial "
                         "heartbeat fault" % (age, MAX_JOINT_GAP))
         for name, stamp in (("arm_base", self.base_stamp), ("arm_ee", self.ee_stamp)):
-            if self.last_gap[name] > MAX_VICON_GAP:
+            if check_vicon_gap and self.last_gap[name] > MAX_VICON_GAP:
                 raise Abort("Vicon %s dropped frames for %.3f s on the source "
                             "clock (> %.2f s)"
                             % (name, self.last_gap[name], MAX_VICON_GAP))
@@ -384,7 +455,8 @@ class BaseExtrinsicCalibrator(Node):
                                           self.settled_error_limit[j]))
 
     # ---------------- 运动 ----------------
-    def hold(self, q_ref: np.ndarray, seconds: float, *, settled: bool) -> None:
+    def hold(self, q_ref: np.ndarray, seconds: float, *, settled: bool,
+             check_vicon_gap: bool = True) -> None:
         end = time.monotonic() + seconds
         next_pub = time.monotonic()
         while time.monotonic() < end:
@@ -393,7 +465,28 @@ class BaseExtrinsicCalibrator(Node):
                 self.command(q_ref)
                 next_pub = now + 1.0 / RATE_HZ
             self.spin()
-            self.guard(q_ref, settled=settled)
+            self.guard(q_ref, settled=settled, check_vicon_gap=check_vicon_gap)
+
+    def wait_zero_velocity(self, q_ref: np.ndarray) -> None:
+        """要求 qdot 连续低于门槛 2 s，再清理运动阶段缓存。"""
+        deadline = time.monotonic() + SETTLE_TIMEOUT_SEC
+        stable_since = None
+        while time.monotonic() < deadline:
+            now = time.monotonic()
+            self.command(q_ref)
+            self.spin()
+            self.guard(q_ref, settled=True, check_vicon_gap=False)
+            # JointState.velocity 在静止时有编码器量化跳变；用实测位置的
+            # 0.1 s 窗口差分判断真正的 qdot，避免把静止误判成持续运动。
+            qdot = float(np.max(self.windowed_speed()))
+            if qdot <= SETTLE_QDOT_MAX:
+                stable_since = stable_since if stable_since is not None else now
+                if now - stable_since >= SETTLE_SEC:
+                    return
+            else:
+                stable_since = None
+        raise CaptureFailure("qdot did not stay below %.3f rad/s within %.1f s"
+                             % (SETTLE_QDOT_MAX, SETTLE_TIMEOUT_SEC))
 
     def move(self, q_from: np.ndarray, q_to: np.ndarray, move_sec: float) -> None:
         t0 = time.monotonic()
@@ -411,63 +504,63 @@ class BaseExtrinsicCalibrator(Node):
             self.guard(q_ref, settled=False)
 
     def capture(self, q_ref: np.ndarray) -> dict:
-        """Hold still, then take one static sample once both streams are full.
-
-        Static-only sampling is what lets this ignore the Vicon/encoder clock
-        skew entirely: nothing moves, so it does not matter which instant inside
-        the window each frame belongs to.
-        """
-        self.hold(q_ref, SETTLE_SEC, settled=True)
+        """静置后按 source timestamp 配对采样；坏帧只丢弃，不中止全局标定。"""
+        self.wait_zero_velocity(q_ref)
+        # 清除运动阶段和静置阶段积压的数据，采集窗从这里开始。
+        self.base.clear()
+        self.ee.clear()
+        self.joint_log.clear()
         t_start = time.monotonic()
-        deadline = t_start + CAPTURE_SEC + 6.0
-
-        def source_span(rows) -> float:
-            if len(rows) < 2:
-                return 0.0
-            src = sorted(r[1] for r in rows)
-            return src[-1] - src[0]
+        deadline = t_start + CAPTURE_TIMEOUT_SEC
 
         while True:
-            self.hold(q_ref, 0.05, settled=True)
+            self.hold(q_ref, 0.05, settled=True, check_vicon_gap=False)
             base = [r for r in self.base if r[0] >= t_start]
             ee = [r for r in self.ee if r[0] >= t_start]
             joints = [(t, q) for t, q in self.joint_log if t >= t_start]
-            # 窗长按 Vicon 帧时钟量，WiFi 一次性投递 100 帧也无法提前凑满
-            if (len(base) >= MIN_FRAMES and len(ee) >= MIN_FRAMES
-                    and min(source_span(base), source_span(ee)) >= CAPTURE_SEC):
+            base_quality = _stream_quality(base)
+            ee_quality = _stream_quality(ee)
+            pairs = _pair_by_source_timestamp(
+                base_quality["rows"], ee_quality["rows"])
+            if len(pairs) >= MIN_CAPTURE_PAIRS:
                 break
             if time.monotonic() > deadline:
-                raise Abort("capture window timed out with %d arm_base / %d "
-                            "arm_ee frames (need %d each)"
-                            % (len(base), len(ee), MIN_FRAMES))
-        window_sec = min(source_span(base), source_span(ee))
+                raise CaptureFailure("10 s capture window has only %d valid pairs "
+                                     "(need %d)" % (len(pairs), MIN_CAPTURE_PAIRS))
 
-        for name, rows in (("arm_base", base), ("arm_ee", ee)):
-            gaps = np.diff(np.sort(np.asarray([r[1] for r in rows])))
-            if gaps.size and float(np.max(gaps)) > MAX_VICON_GAP:
-                raise Abort("Vicon %s dropped frames for %.3f s inside the "
-                            "capture window (> %.2f s)"
-                            % (name, float(np.max(gaps)), MAX_VICON_GAP))
+        base = [pair[0] for pair in pairs]
+        ee = [pair[1] for pair in pairs]
+        window_sec = max(pairs[-1][0][1] - pairs[0][0][1],
+                         pairs[-1][1][1] - pairs[0][1][1])
 
         def reduce(rows):
             pts = np.asarray([r[2] for r in rows])
             p = np.median(pts, axis=0)
             r = mean_rotation([row[3] for row in rows])
             spread = float(np.max(np.linalg.norm(pts - p, axis=1)))
-            return p, r, spread
+            orientation_spread = float(np.degrees(max(
+                rotation_angle(r.T @ row[3]) for row in rows)))
+            return p, r, spread, orientation_spread
 
-        p_b, r_b, spread_b = reduce(base)
-        p_e, r_e, spread_e = reduce(ee)
+        p_b, r_b, spread_b, ori_spread_b = reduce(base)
+        p_e, r_e, spread_e, ori_spread_e = reduce(ee)
         q_meas = np.median(np.asarray([q for _, q in joints]), axis=0)
         return dict(
             q_encoder=q_meas, q_command=np.asarray(q_ref, dtype=float).copy(),
             base_p=p_b, base_r=r_b, ee_p=p_e, ee_r=r_e,
-            base_frames=len(base), ee_frames=len(ee), joint_frames=len(joints),
-            base_spread_m=spread_b, ee_spread_m=spread_e,
-            base_gap_max_sec=float(np.max(np.diff(np.sort(
-                np.asarray([r[1] for r in base]))))),
-            ee_gap_max_sec=float(np.max(np.diff(np.sort(
-                np.asarray([r[1] for r in ee]))))),
+            base_frames=len(base), ee_frames=len(ee), valid_pairs=len(pairs),
+            joint_frames=len(joints), base_spread_m=spread_b,
+            ee_spread_m=spread_e,
+            base_orientation_spread_deg=ori_spread_b,
+            ee_orientation_spread_deg=ori_spread_e,
+            base_gap_max_sec=base_quality["max_gap_sec"],
+            ee_gap_max_sec=ee_quality["max_gap_sec"],
+            base_dropped_gap=base_quality["dropped_gap"],
+            ee_dropped_gap=ee_quality["dropped_gap"],
+            base_dropped_latency=base_quality["dropped_latency"],
+            ee_dropped_latency=ee_quality["dropped_latency"],
+            pair_time_delta_max_sec=float(max(
+                abs(b[1] - e[1]) for b, e in pairs)),
             window_sec=window_sec)
 
     # ---------------- 运动学 ----------------
@@ -546,6 +639,18 @@ def analyse(samples: list[dict], fk) -> dict:
 
     pos = np.asarray([r["position_error_mm"] for r in residuals])
     ori = np.asarray([r["orientation_error_deg"] for r in residuals])
+    q_encoder = np.asarray([s["q_encoder"] for s in samples])
+
+    def correlations(values):
+        out = {}
+        for j in range(q_encoder.shape[1]):
+            x = q_encoder[:, j]
+            out["joint%d" % (j + 1)] = (None if len(values) < 2
+                                         or np.std(x) < 1e-12
+                                         or np.std(values) < 1e-12 else
+                                         float(np.corrcoef(x, values)[0, 1]))
+        return out
+
     return dict(
         vicon_from_base_link=dict(
             translation_m=p_vb.tolist(),
@@ -561,7 +666,9 @@ def analyse(samples: list[dict], fk) -> dict:
             position_rms_mm=float(np.sqrt(np.mean(pos ** 2))),
             position_max_mm=float(pos.max()),
             orientation_rms_deg=float(np.sqrt(np.mean(ori ** 2))),
-            orientation_max_deg=float(ori.max())),
+            orientation_max_deg=float(ori.max()),
+            position_error_vs_joint_correlation=correlations(pos),
+            orientation_error_vs_joint_correlation=correlations(ori)),
         per_sample_residual=residuals,
         arm_ee_frame_check=dict(
             frame_offset_deg=fit["arm_ee_frame_offset_deg"],
@@ -602,7 +709,8 @@ def describe_plan(q0: np.ndarray, waypoints: np.ndarray, node_fk) -> dict:
         arc_non_planarity=float(sv[2] / sv[0]),
         orientation_span_deg=float(max(angles)),
         estimated_minutes=float(sum(times)
-                                + len(waypoints) * (SETTLE_SEC + CAPTURE_SEC)) / 60.0,
+                                + len(waypoints) *
+                                (SETTLE_SEC + MIN_CAPTURE_PAIRS / 120.0)) / 60.0,
     )
 
 
@@ -622,6 +730,8 @@ def main() -> int:
     ap.add_argument("--plan-only", action="store_true",
                     help="只读当前位姿并打印轨迹计划，不发任何指令")
     ap.add_argument("--output-dir", default="")
+    ap.add_argument("--calibration-yaml", default=str(DEFAULT_CANDIDATE_YAML),
+                    help="FK 使用的标定文件，默认是 arm6_calibration_candidate.yaml")
     args = ap.parse_args()
 
     if not 12 <= args.points <= 20:
@@ -632,7 +742,8 @@ def main() -> int:
         return 2
 
     rclpy.init()
-    node = BaseExtrinsicCalibrator(args.base_topic, args.ee_topic)
+    node = BaseExtrinsicCalibrator(args.base_topic, args.ee_topic,
+                                   args.calibration_yaml)
     result: dict = {}
     try:
         node.wait_ready()
@@ -684,18 +795,27 @@ def main() -> int:
             return 0
 
         samples = []
+        failed_points = []
         q_prev = q0
         for k, q_target in enumerate(waypoints, 1):
             node.move(q_prev, q_target, segment_time(q_prev, q_target))
-            sample = node.capture(q_target)
-            samples.append(sample)
-            node.get_logger().info(
-                "point %d/%d captured: %d base / %d ee frames, marker spread "
-                "%.2f / %.2f mm, tracking error %.4f rad, peak speed %s"
-                % (k, len(waypoints), sample["base_frames"], sample["ee_frames"],
-                   1e3 * sample["base_spread_m"], 1e3 * sample["ee_spread_m"],
-                   float(np.max(np.abs(sample["q_encoder"] - q_target))),
-                   np.round(node.peak_speed, 3).tolist()))
+            try:
+                sample = node.capture(q_target)
+            except CaptureFailure as exc:
+                failed_points.append(dict(point=k, reason=str(exc)))
+                node.get_logger().warning("point %d/%d failed, continue: %s"
+                                          % (k, len(waypoints), exc))
+            else:
+                samples.append(sample)
+                node.get_logger().info(
+                    "point %d/%d captured: %d paired frames, spread p %.2f / %.2f mm, "
+                    "spread R %.3f / %.3f deg, dropped gap %d/%d latency %d/%d"
+                    % (k, len(waypoints), sample["valid_pairs"],
+                       1e3 * sample["base_spread_m"], 1e3 * sample["ee_spread_m"],
+                       sample["base_orientation_spread_deg"],
+                       sample["ee_orientation_spread_deg"],
+                       sample["base_dropped_gap"], sample["ee_dropped_gap"],
+                       sample["base_dropped_latency"], sample["ee_dropped_latency"]))
             q_prev = q_target
 
         node.get_logger().info("returning to the start pose")
@@ -704,12 +824,16 @@ def main() -> int:
         node.kd = KD_HANDOVER.copy()
         node.hold(q0, max(0.0, args.hold_after_sec), settled=True)
 
+        if not samples:
+            raise Abort("all planned static points failed to collect 200 valid pairs")
         result = analyse(samples, node.fk)
         result["plan"] = plan
+        result["failed_points"] = failed_points
         result["assumptions"] = dict(
             arm_ee_equals_link6=True,
             end_effector_extrinsic_fitted=False,
-            q_fk="joint_encoder + arm6_calibration.zero_offset_rad",
+            q_fk="joint_encoder + arm6_calibration_candidate.zero_offset_rad",
+            calibration_yaml=node.calibration_yaml,
             gravity_feedforward="g(arm6.urdf) at q_fk, no first_moment_ratio "
                                 "(already baked into the URDF inertias)",
             vicon_axes="+y up; URDF joint1 axis +x")
@@ -721,15 +845,28 @@ def main() -> int:
             arm_ee_position_m=s["ee_p"].tolist(),
             arm_ee_quaternion_xyzw=rotation_to_quat(s["ee_r"]).tolist(),
             arm_base_frames=s["base_frames"], arm_ee_frames=s["ee_frames"],
+            valid_pairs=s["valid_pairs"],
             joint_frames=s["joint_frames"],
             arm_base_spread_mm=1e3 * s["base_spread_m"],
             arm_ee_spread_mm=1e3 * s["ee_spread_m"],
+            arm_base_orientation_spread_deg=s["base_orientation_spread_deg"],
+            arm_ee_orientation_spread_deg=s["ee_orientation_spread_deg"],
             arm_base_gap_max_sec=s["base_gap_max_sec"],
             arm_ee_gap_max_sec=s["ee_gap_max_sec"],
+            arm_base_dropped_gap=s["base_dropped_gap"],
+            arm_ee_dropped_gap=s["ee_dropped_gap"],
+            arm_base_dropped_latency=s["base_dropped_latency"],
+            arm_ee_dropped_latency=s["ee_dropped_latency"],
+            pair_time_delta_max_sec=s["pair_time_delta_max_sec"],
             window_sec=s["window_sec"]) for s in samples]
         result["vicon_stream"] = dict(
             worst_source_clock_gap_sec=dict(node.worst_gap),
-            dropout_abort_threshold_sec=MAX_VICON_GAP,
+            static_capture_gap_filter_sec=MAX_VICON_GAP,
+            static_capture_pair_max_dt_sec=PAIR_MAX_DT,
+            static_capture_latency_filter_sec=LATENCY_SPIKE_SEC,
+            static_capture_min_valid_pairs=MIN_CAPTURE_PAIRS,
+            static_capture_timeout_sec=CAPTURE_TIMEOUT_SEC,
+            dynamic_movement_gap_abort_threshold_sec=MAX_VICON_GAP,
             link_down_abort_threshold_sec=MAX_VICON_SILENCE)
         return 0
     except Abort as exc:

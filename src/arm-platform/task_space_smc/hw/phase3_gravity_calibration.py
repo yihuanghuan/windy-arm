@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 try:
     import rclpy
@@ -65,6 +66,45 @@ SETTLE_SPAN = 1.5e-3
 SETTLE_WIN = 0.6
 PUBLISH_RATE = 100.0
 DISPLACEMENT_ABORT = 0.15
+TRANSIT_TIMEOUT = 90.0
+
+
+def load_candidate_globals(path: str | None) -> None:
+    if not path:
+        print("[CAL] phase3 using built-in RATIO/STICTION")
+        print(f"[CAL] ratio      : {[RATIO[i] for i in range(1, N_ARM + 1)]}")
+        print(f"[CAL] stiction_nm: {[STICTION[i] for i in range(1, N_ARM + 1)]}")
+        return
+    raw = yaml.safe_load(Path(path).read_text())
+    ratio = raw.get("first_moment_ratio")
+    stiction = raw.get("stiction_nm")
+    if ratio is None or len(ratio) != N_ARM:
+        raise ValueError(f"{path}: first_moment_ratio must have {N_ARM} values")
+    if stiction is None or len(stiction) != N_ARM:
+        raise ValueError(f"{path}: stiction_nm must have {N_ARM} values")
+    for i in range(N_ARM):
+        RATIO[i + 1] = float(ratio[i])
+        STICTION[i + 1] = float(stiction[i])
+    print(f"[CAL] phase3 calibration_yaml: {path}")
+    print(f"[CAL] ratio      : {[RATIO[i] for i in range(1, N_ARM + 1)]}")
+    print(f"[CAL] stiction_nm: {[STICTION[i] for i in range(1, N_ARM + 1)]}")
+
+
+def hold_j6_in_sweep_plans(j6_rad: float) -> None:
+    for plan in SWEEP_PLAN.values():
+        posture = list(plan["posture"])
+        if len(posture) >= 6:
+            posture[5] = float(j6_rad)
+            plan["posture"] = posture
+    print(f"[CAL] holding J6 in Phase3 sweep postures: {float(j6_rad):.6f} rad")
+
+
+# J4/J5 的重力信号和摩擦同量级。单看最后两遍 offset 是否接近，容易把
+# 摩擦相位当成零位相位；这些门槛只决定“是否可采信”，不改变原始数据记录。
+MIN_A_OVER_STICTION = 1.5
+MAX_RESID_OVER_A = 0.20
+MAX_ACCEPTED_OFFSET_SPAN_DEG = 1.0
+MAX_RATIO_CV = 0.15
 
 
 # 桌面余量：只看伸到桌面上方（x < DESK_EDGE_X）的连杆点，取它们离
@@ -193,12 +233,13 @@ class Calibrator(Node):
             rclpy.spin_once(self, timeout_sec=0.002)
         return f"goto timed out {np.max(np.abs(q_target - self.q)):.3f} rad away"
 
-    def approach(self, q_target, joint_idx: int) -> str | None:
+    def approach(self, q_target, joint_idx: int,
+                 overshoot_sign: float = 1.0) -> str | None:
         q_target = np.asarray(q_target, float)
         for overshoot in (APPROACH_OVERSHOOT, APPROACH_OVERSHOOT * 0.5,
                           APPROACH_OVERSHOOT * 0.25):
             q_over = q_target.copy()
-            q_over[joint_idx] += overshoot
+            q_over[joint_idx] += float(np.sign(overshoot_sign) or 1.0) * overshoot
             if check_setpoint(q_over, self.model).ok and \
                     desk_margin(self.model, q_over) > 0.0:
                 why = self.goto(q_over, joint_idx)
@@ -236,54 +277,7 @@ class Calibrator(Node):
                     n=len(qs))
 
 
-def run_sweep(node: Calibrator, joint: int, offsets: dict,
-              n_points: int, dwell: float) -> dict:
-    idx = joint - 1
-    plan = SWEEP_PLAN[joint]
-    posture = np.array(plan['posture'], float)
-    qs_cmd = np.linspace(plan['lo'], plan['hi'], n_points)
-
-
-    first = posture.copy()
-    first[idx] = qs_cmd[0]
-    if node.q is not None and np.max(np.abs(node.q - first)) > 0.05:
-        node.get_logger().info(
-            f"  transiting to the sweep posture "
-            f"({np.max(np.abs(node.q - first)):.3f} rad away)")
-        why = node.goto(first, idx, timeout=90.0, check_drift=False)
-        if why:
-            return dict(joint=joint, ok=False, reason=f"transit failed: {why}",
-                        rows=[])
-
-    rows = []
-    for k, qv in enumerate(qs_cmd):
-        target = posture.copy()
-        target[idx] = qv
-        rep = check_setpoint(target, node.model)
-        if not rep.ok:
-            node.get_logger().warn(
-                f"  skip q={qv:+.4f}: {'; '.join(rep.reasons)}")
-            continue
-        why = node.approach(target, idx)
-        if why:
-            node.get_logger().error(f"  abort at q={qv:+.4f}: {why}")
-            return dict(joint=joint, ok=False, reason=why, rows=rows)
-        rec = node.dwell(target, idx, dwell)
-        if rec is None:
-            return dict(joint=joint, ok=False, reason="dwell got no samples",
-                        rows=rows)
-        rows.append(dict(q_cmd=float(qv),
-                         q_meas=float(rec['q_mean'][idx]),
-                         posture_meas=rec['q_mean'].tolist(),
-                         tau=float(rec['tau_mean'][idx]),
-                         tau_std=float(rec['tau_std'][idx]),
-                         sag=float(qv - rec['q_mean'][idx]),
-                         n=rec['n']))
-        node.get_logger().info(
-            f"  [{k + 1}/{n_points}] q={rec['q_mean'][idx]:+.4f} "
-            f"tau={rec['tau_mean'][idx]:+.4f}+/-{rec['tau_std'][idx]:.4f} "
-            f"sag={qv - rec['q_mean'][idx]:+.4f}")
-
+def fit_sweep_rows(node: Calibrator, joint: int, rows: list[dict]) -> dict:
     if len(rows) < 5:
         return dict(joint=joint, ok=False, reason=f"only {len(rows)} points",
                     rows=rows)
@@ -310,8 +304,169 @@ def run_sweep(node: Calibrator, joint: int, offsets: dict,
                               if fit['amplitude'] else 0.0))
 
 
+def run_sweep_single(node: Calibrator, joint: int, n_points: int, dwell: float,
+                     reverse: bool = False) -> dict:
+    idx = joint - 1
+    plan = SWEEP_PLAN[joint]
+    posture = np.array(plan['posture'], float)
+    qs_cmd = np.linspace(plan['lo'], plan['hi'], n_points)
+    if reverse:
+        qs_cmd = qs_cmd[::-1]
+
+
+    first = posture.copy()
+    first[idx] = qs_cmd[0]
+    if node.q is not None and np.max(np.abs(node.q - first)) > 0.05:
+        node.get_logger().info(
+            f"  transiting to the sweep posture "
+            f"({np.max(np.abs(node.q - first)):.3f} rad away)")
+        why = node.goto(first, idx, timeout=TRANSIT_TIMEOUT, check_drift=False)
+        if why:
+            return dict(joint=joint, ok=False, reason=f"transit failed: {why}",
+                        rows=[])
+
+    rows = []
+    for k, qv in enumerate(qs_cmd):
+        target = posture.copy()
+        target[idx] = qv
+        rep = check_setpoint(target, node.model)
+        if not rep.ok:
+            node.get_logger().warn(
+                f"  skip q={qv:+.4f}: {'; '.join(rep.reasons)}")
+            continue
+        why = node.approach(target, idx, -1.0 if reverse else 1.0)
+        if why:
+            node.get_logger().error(f"  abort at q={qv:+.4f}: {why}")
+            return dict(joint=joint, ok=False, reason=why, rows=rows)
+        rec = node.dwell(target, idx, dwell)
+        if rec is None:
+            return dict(joint=joint, ok=False, reason="dwell got no samples",
+                        rows=rows)
+        rows.append(dict(q_cmd=float(qv),
+                         q_meas=float(rec['q_mean'][idx]),
+                         posture_meas=rec['q_mean'].tolist(),
+                         tau=float(rec['tau_mean'][idx]),
+                         tau_std=float(rec['tau_std'][idx]),
+                         sag=float(qv - rec['q_mean'][idx]),
+                         n=rec['n']))
+        node.get_logger().info(
+            f"  [{k + 1}/{n_points}] q={rec['q_mean'][idx]:+.4f} "
+            f"tau={rec['tau_mean'][idx]:+.4f}+/-{rec['tau_std'][idx]:.4f} "
+            f"sag={qv - rec['q_mean'][idx]:+.4f}")
+
+    out = fit_sweep_rows(node, joint, rows)
+    out["direction"] = "reverse" if reverse else "forward"
+    return out
+
+
+def combine_bidirectional_rows(forward: list[dict],
+                               reverse: list[dict]) -> list[dict]:
+    by_cmd = {round(r["q_cmd"], 9): r for r in reverse}
+    rows = []
+    for f in forward:
+        r = by_cmd.get(round(f["q_cmd"], 9))
+        if r is None:
+            continue
+        rows.append(dict(
+            q_cmd=f["q_cmd"],
+            q_meas=float(0.5 * (f["q_meas"] + r["q_meas"])),
+            posture_meas=(0.5 * (
+                np.asarray(f["posture_meas"]) +
+                np.asarray(r["posture_meas"]))).tolist(),
+            tau=float(0.5 * (f["tau"] + r["tau"])),
+            tau_std=float(0.5 * (f["tau_std"] + r["tau_std"])),
+            tau_forward=float(f["tau"]),
+            tau_reverse=float(r["tau"]),
+            tau_hysteresis=float(f["tau"] - r["tau"]),
+            sag=float(0.5 * (f["sag"] + r["sag"])),
+            n=int(f["n"] + r["n"])))
+    rows.sort(key=lambda x: x["q_cmd"])
+    return rows
+
+
+def run_sweep(node: Calibrator, joint: int, offsets: dict,
+              n_points: int, dwell: float,
+              bidirectional: bool = False) -> dict:
+    if not bidirectional:
+        return run_sweep_single(node, joint, n_points, dwell)
+
+    node.get_logger().info("  bidirectional sweep: forward pass")
+    forward = run_sweep_single(node, joint, n_points, dwell, reverse=False)
+    if not forward.get("ok"):
+        return forward
+    node.get_logger().info("  bidirectional sweep: reverse pass")
+    reverse = run_sweep_single(node, joint, n_points, dwell, reverse=True)
+    if not reverse.get("ok"):
+        return reverse
+
+    rows = combine_bidirectional_rows(forward["rows"], reverse["rows"])
+    out = fit_sweep_rows(node, joint, rows)
+    hysteresis = [abs(r["tau_hysteresis"]) for r in rows]
+    out["bidirectional"] = True
+    out["directional_sweeps"] = dict(forward=forward, reverse=reverse)
+    out["tau_hysteresis_mean"] = float(np.mean(hysteresis)) if hysteresis else 0.0
+    out["tau_hysteresis_max"] = float(np.max(hysteresis)) if hysteresis else 0.0
+    return out
+
+
+def assess_quality(joint: int, real: list[dict],
+                   converged: bool) -> dict:
+    if not real:
+        return dict(accepted=False, reasons=["no valid real sweeps"])
+    last = real[-1]
+    stable_tail = real[-2:] if converged and len(real) >= 2 else real
+    offsets = np.asarray([x["zero_offset_deg"] for x in stable_tail], dtype=float)
+    ratios = np.asarray([x["ratio"] for x in real], dtype=float)
+    a_over_stiction = (
+        float(last["A"] / STICTION[joint]) if STICTION.get(joint) else float("inf"))
+    ratio_mean = float(np.mean(ratios)) if ratios.size else 0.0
+    ratio_cv = (
+        float(np.std(ratios) / abs(ratio_mean))
+        if abs(ratio_mean) > 1e-9 else float("inf"))
+    offset_span = float(np.max(offsets) - np.min(offsets))
+
+    reasons = []
+    if not converged:
+        reasons.append("offset drift did not converge")
+    if a_over_stiction < MIN_A_OVER_STICTION:
+        reasons.append(
+            f"A/stiction={a_over_stiction:.2f} < {MIN_A_OVER_STICTION:.2f}")
+    if last["resid_over_A"] > MAX_RESID_OVER_A:
+        reasons.append(
+            f"resid/A={last['resid_over_A']:.3f} > {MAX_RESID_OVER_A:.3f}")
+    if offset_span > MAX_ACCEPTED_OFFSET_SPAN_DEG:
+        reasons.append(
+            f"offset span={offset_span:.3f}deg > "
+            f"{MAX_ACCEPTED_OFFSET_SPAN_DEG:.3f}deg")
+    if ratio_cv > MAX_RATIO_CV:
+        reasons.append(f"ratio CV={ratio_cv:.3f} > {MAX_RATIO_CV:.3f}")
+
+    return dict(accepted=not reasons, reasons=reasons,
+                a_over_stiction=a_over_stiction,
+                offset_span_deg=offset_span,
+                ratio_cv=ratio_cv)
+
+
+def finish_joint(joint: int, real: list[dict], sweeps: list[dict],
+                 converged: bool) -> dict:
+    if not real:
+        return dict(joint=joint, ok=False, converged=False,
+                    accepted=False, reason="no valid real sweeps",
+                    sweeps=sweeps)
+    quality = assess_quality(joint, real, converged)
+    return dict(joint=joint, ok=True, converged=converged,
+                accepted=quality["accepted"],
+                quality=quality,
+                zero_offset_deg=real[-1]['zero_offset_deg'],
+                zero_offset_rad=real[-1]['zero_offset_rad'],
+                ratio=float(np.mean([x['ratio'] for x in real])),
+                sweeps=sweeps)
+
+
 def calibrate_joint(node: Calibrator, joint: int, warmup: int,
-                    max_sweeps: int, tol_deg: float) -> dict:
+                    max_sweeps: int, tol_deg: float,
+                    bidirectional: bool = False,
+                    no_early_stop: bool = False) -> dict:
     idx = joint - 1
     n = POINTS[joint]
     dwell = DWELL[joint]
@@ -325,7 +480,7 @@ def calibrate_joint(node: Calibrator, joint: int, warmup: int,
     for s in range(warmup + max_sweeps):
         tag = "WARM-UP" if s < warmup else f"sweep {s - warmup + 1}"
         node.get_logger().info(f"--- joint{joint} {tag} ---")
-        r = run_sweep(node, joint, offsets, n, dwell)
+        r = run_sweep(node, joint, offsets, n, dwell, bidirectional)
         r['warmup'] = s < warmup
         r['tag'] = tag
         sweeps.append(r)
@@ -341,29 +496,22 @@ def calibrate_joint(node: Calibrator, joint: int, warmup: int,
         real = [x for x in sweeps if not x['warmup'] and x.get('ok')]
         if len(real) >= 2:
             drift = real[-1]['zero_offset_deg'] - real[-2]['zero_offset_deg']
-            if abs(drift) <= tol_deg:
+            if abs(drift) <= tol_deg and not no_early_stop:
                 node.get_logger().info(
                     f"joint{joint} converged: {real[-2]['zero_offset_deg']:+.3f}"
                     f" -> {real[-1]['zero_offset_deg']:+.3f} deg "
                     f"(within {tol_deg:.3f})")
-                return dict(joint=joint, ok=True, converged=True,
-                            zero_offset_deg=real[-1]['zero_offset_deg'],
-                            zero_offset_rad=real[-1]['zero_offset_rad'],
-                            ratio=float(np.mean([x['ratio'] for x in real])),
-                            sweeps=sweeps)
+                return finish_joint(joint, real, sweeps, True)
             node.get_logger().info(
                 f"joint{joint} {tag}: {real[-1]['zero_offset_deg']:+.3f} deg "
                 f"(prev {real[-2]['zero_offset_deg']:+.3f}, drift {drift:+.3f})"
                 f" — not converged, continuing")
     real = [x for x in sweeps if not x['warmup'] and x.get('ok')]
-    return dict(joint=joint, ok=bool(real), converged=False,
-                zero_offset_deg=real[-1]['zero_offset_deg'] if real else None,
-                zero_offset_rad=real[-1]['zero_offset_rad'] if real else None,
-                ratio=float(np.mean([x['ratio'] for x in real])) if real else None,
-                sweeps=sweeps)
+    return finish_joint(joint, real, sweeps, False)
 
 
-def print_plan(joints: list[int]) -> None:
+def print_plan(joints: list[int], bidirectional_joints: set[int] | None = None) -> None:
+    bidirectional_joints = bidirectional_joints or set()
     model = GravityModel()
     print("=" * 76)
     print("PLAN (dry run — nothing is commanded)")
@@ -376,7 +524,8 @@ def print_plan(joints: list[int]) -> None:
             print(f"joint6   —— 无重力信号（link6 质心在转轴上），跳过")
             continue
         n, d = POINTS[j], DWELL[j]
-        t = n * (d + 3) / 60
+        passes = 2 if j in bidirectional_joints else 1
+        t = passes * n * (d + 3) / 60
         total += t
         db = np.degrees(STICTION[j] / HOLD_P[j - 1])
         print(f"joint{j:<3}{n:>6}{d:>7.1f}{t:>11.1f}{STICTION[j]:>9.3f}"
@@ -405,21 +554,26 @@ def print_verdict(results: list[dict]) -> None:
     print("VERDICT")
     print("=" * 76)
     print(f"{'关节':<8}{'零位偏差(°)':>13}{'ratio':>8}{'resid/A':>9}"
-          f"{'sag_max':>9}{'收敛':>7}")
-    offsets = [0.0] * N_ARM
+          f"{'sag_max':>9}{'收敛':>7}{'采信':>7}")
+    offsets = [None] * N_ARM
     for r in results:
         if not r.get('ok'):
             print(f"joint{r['joint']:<3}  失败: {r.get('reason')}")
             continue
         real = [x for x in r['sweeps'] if not x['warmup'] and x.get('ok')]
         last = real[-1] if real else {}
-        offsets[r['joint'] - 1] = r['zero_offset_rad']
+        if r.get("accepted"):
+            offsets[r['joint'] - 1] = r['zero_offset_rad']
         print(f"joint{r['joint']:<3}{r['zero_offset_deg']:>13.3f}"
               f"{r['ratio']:>8.3f}{last.get('resid_over_A', 0):>9.3f}"
               f"{last.get('sag_max', 0):>9.4f}"
-              f"{'是' if r.get('converged') else '否':>7}")
-    print(f"\n零位偏差向量（实际角 = 命令角 + offset，rad）:")
-    print(f"  {[round(v, 6) for v in offsets]}")
+              f"{'是' if r.get('converged') else '否':>7}"
+              f"{'是' if r.get('accepted') else '否':>7}")
+        if not r.get("accepted"):
+            reasons = "; ".join(r.get("quality", {}).get("reasons", []))
+            print(f"  reject: {reasons}")
+    print(f"\n可采信零位偏差向量（None 表示本次未测或未通过质量门槛，rad）:")
+    print(f"  {[None if v is None else round(v, 6) for v in offsets]}")
     print("\n怎么读:")
     print("  resid/A 只在 A/f > 5 时才指示几何错误。joint4/5 的 A≈f，")
     print("    残差由摩擦主导，resid/A 大是正常的，应改看 ratio 的跨遍复现性。")
@@ -437,12 +591,33 @@ def main() -> int:
     ap.add_argument('--max-sweeps', type=int, default=3)
     ap.add_argument('--tol-deg', type=float, default=0.4,
                     help='收敛判据：连续两遍零位偏差之差')
+    ap.add_argument('--bidirectional-joints', default='',
+                    help='逗号分隔；这些关节每遍做正反向扫掠并平均同一点力矩，'
+                         '用于减小 J4/J5 这类低重力信号关节的摩擦相位偏置')
+    ap.add_argument('--calibration-yaml', default=None,
+                    help='candidate arm6 calibration YAML used for ratio/stiction input')
+    ap.add_argument('--transit-timeout', type=float, default=90.0,
+                    help='seconds allowed for the initial move to each sweep posture')
+    ap.add_argument('--j6-hold-rad', type=float, default=None,
+                    help='override non-calibrated J6 in sweep postures')
+    ap.add_argument('--no-early-stop', action='store_true',
+                    help='always collect max-sweeps real sweeps even if drift converges')
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()
 
+    global TRANSIT_TIMEOUT
+    TRANSIT_TIMEOUT = float(args.transit_timeout)
+    load_candidate_globals(args.calibration_yaml)
+    if args.j6_hold_rad is not None:
+        hold_j6_in_sweep_plans(args.j6_hold_rad)
+
     joints = [int(x) for x in args.joints.split(',')]
+    bidirectional_joints = set()
+    if args.bidirectional_joints.strip():
+        bidirectional_joints = {
+            int(x) for x in args.bidirectional_joints.split(',') if x.strip()}
     if args.dry_run:
-        print_plan(joints)
+        print_plan(joints, bidirectional_joints)
         return 0
     if rclpy is None:
         print(f"rclpy unavailable: {_IMPORT_ERROR}", file=sys.stderr)
@@ -470,7 +645,9 @@ def main() -> int:
                 node.get_logger().info("joint6 has no gravity signal, skipping")
                 continue
             r = calibrate_joint(node, j, args.warmup, args.max_sweeps,
-                                args.tol_deg)
+                                args.tol_deg,
+                                bidirectional=j in bidirectional_joints,
+                                no_early_stop=args.no_early_stop)
             results.append(r)
             if not r.get('ok'):
                 node.get_logger().error(f"joint{j}: {r.get('reason')}")

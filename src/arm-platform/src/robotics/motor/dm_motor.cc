@@ -32,17 +32,29 @@ double DMMotor::GetRatedTorque() const {
 }
 
 void DMMotor::UpdateState() {
-  position_ = protocol_->GetPosition(id_);
-  velocity_ = protocol_->GetVelocity(id_);
-  torque_ = protocol_->GetCurrent(id_);
+  double raw_position = protocol_->GetPosition(id_);
+  double raw_velocity = protocol_->GetVelocity(id_);
+  double raw_torque = protocol_->GetCurrent(id_);
   temperature_ = protocol_->GetTemperature(id_);
-  
+
   if (coord_system_ == CoordinateSystem::LeftHand) {
-    position_ = -position_;
-    velocity_ = -velocity_;
-    torque_ = -torque_;
+    raw_position = -raw_position;
+    raw_velocity = -raw_velocity;
+    raw_torque = -raw_torque;
   }
-  
+
+  // The motor protocol reports a periodic absolute angle.  Keep the joint
+  // angle continuous across +/-pi instead of exposing 2*pi jumps to the
+  // joint-limit checks, gravity model, and position controller.
+  constexpr double TWO_PI = 2.0 * M_PI;
+  if (!is_received_) {
+    position_ = std::remainder(raw_position, TWO_PI);
+  } else {
+    position_ += std::remainder(raw_position - position_, TWO_PI);
+  }
+  velocity_ = raw_velocity;
+  torque_ = raw_torque;
+
   is_received_ = true;
 }
 
