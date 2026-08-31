@@ -19,3 +19,7 @@ __pycache__/
 *.bak
 *.log
 /src/arm-platform/task_space_smc/hw/data/
+
+# macOS
+.DS_Store
+**/.DS_Store
