@@ -185,12 +185,15 @@ class WholeTaskSmcRosRunner(Node):
         self.declare_parameter("visualization_rate_hz", 30.0)
         self.declare_parameter("control_rate_hz_override", 0.0)
         self.declare_parameter("initial_joint_positions", [0.0] * 6)
+        self.declare_parameter("use_fixed_initial_joint_positions", False)
         self.declare_parameter("base_state_mode", "analytic")
         self.declare_parameter("external_base_topic", "/floating_base/vicon")
         self.declare_parameter("hold_capture_measured", True)
         self.declare_parameter("hold_target_position_m", [0.0, 0.0, 0.0])
         self.declare_parameter("simulation_handover_enabled", True)
         self.declare_parameter("simulation_profile_name", "")
+        self.declare_parameter(
+            "timing_diagnostics_topic", "/task_space_smc/timing_callbacks")
 
         self.config_path = str(self.get_parameter("config_path").value)
         with open(self.config_path, "r", encoding="utf-8") as f:
@@ -276,6 +279,11 @@ class WholeTaskSmcRosRunner(Node):
         self.get_logger().info(
             f"model: {Path(self.model.urdf_path).name} "
             f"n_arm={self.model.n_arm} ee={self.model.ee_frame_name}")
+        self.get_logger().info(
+            "标定模型: source=%s zero_offset_rad=%s first_moment_ratio=%s"
+            % (self.model.calibration_source,
+               np.round(self.model.zero_offset_rad, 9).tolist(),
+               np.round(self.model.first_moment_ratio, 9).tolist()))
         self.controller = controller_from_config(self.config)
 
         self.n_arm = self.model.n_arm
@@ -369,6 +377,7 @@ class WholeTaskSmcRosRunner(Node):
         self.feedback_generation = 0
         self.last_command_feedback_generation = -1
         self.feedback_effort = np.zeros(self.n_arm)
+        self._calibration_self_check_done = False
 
 
         self.q_ctrl = self.q
@@ -485,17 +494,23 @@ class WholeTaskSmcRosRunner(Node):
 
         if _tf.get("stiction_nm") is None:
             _tf["stiction_nm"] = self.approach_friction.stiction_nm.tolist()
+        if _tf.get("positive_nm") is None and self.approach_friction.directional:
+            _tf["positive_nm"] = self.approach_friction.positive_nm.tolist()
+        if _tf.get("negative_nm") is None and self.approach_friction.directional:
+            _tf["negative_nm"] = self.approach_friction.negative_nm.tolist()
         self.tracking_friction = self._build_approach_friction(
             {"friction_feedforward": _tf}, quiet=True)
         if self.tracking_friction.enabled:
             self.get_logger().info(
-                "跟踪段静摩擦前馈: 开启 scale=%.2f κ=%.4f rad (%.2f°)  f_s=%s Nm"
+                "跟踪段摩擦前馈: 开启 scale=%.2f κ=%.4f rad (%.2f°)  "
+                "F+=%s Nm F-=%s Nm"
                 % (self.tracking_friction.scale,
                    self.tracking_friction.velocity_epsilon
                    / max(self.tracking_friction.error_gain, 1e-9),
                    np.degrees(self.tracking_friction.velocity_epsilon
                               / max(self.tracking_friction.error_gain, 1e-9)),
-                   np.round(self.tracking_friction.stiction_nm, 3).tolist()))
+                   np.round(self.tracking_friction.positive_nm, 3).tolist(),
+                   np.round(self.tracking_friction.negative_nm, 3).tolist()))
 
         _vf = (self.config.get("feedback") or {}).get("velocity_lowpass_hz", 0.0)
         self.velocity_filter = JointVelocityFilter(_vf, self.n_arm)
@@ -553,9 +568,22 @@ class WholeTaskSmcRosRunner(Node):
             )
             self.approach_initial_q = self.q.copy()
         else:
-
-
-            self.track_start_q = self._track_start_pose(self.q)
+            configured_start = np.asarray(
+                self.get_parameter("initial_joint_positions").value,
+                dtype=float,
+            ).reshape(self.n_arm)
+            use_fixed_start = bool(self.get_parameter(
+                "use_fixed_initial_joint_positions").value)
+            if use_fixed_start and np.any(np.abs(configured_start) > 1e-12):
+                if (np.any(configured_start < self.model.arm_lower_position_limit)
+                        or np.any(configured_start > self.model.arm_upper_position_limit)):
+                    raise ValueError("fixed initial joint position exceeds model limits")
+                self.track_start_q = configured_start.copy()
+                self.get_logger().info(
+                    "固定 hwtest 起点: %s°" %
+                    np.round(np.degrees(self.track_start_q), 2).tolist())
+            else:
+                self.track_start_q = self._track_start_pose(self.q)
             self.approach_initial_q = self.q.copy()
             jump = float(np.max(np.abs(self.track_start_q - self.approach_initial_q)))
             if not self.hold_capture_measured:
@@ -581,6 +609,11 @@ class WholeTaskSmcRosRunner(Node):
             Float64MultiArray, "/task_space_smc/joint_torque", 10)
         self.tf_broadcaster = TransformBroadcaster(self)
         self.create_subscription(JointState, "/joint_states", self._joint_state_cb, 10)
+        self.timing_pub = self.create_publisher(
+            Float64MultiArray,
+            str(self.get_parameter("timing_diagnostics_topic").value),
+            200,
+        )
         if self.ee_estimator.config.mode != "fk_only":
             # 深队列同 QA_record 的教训：这条流与基座位姿走同一条 WiFi，
             # 会被压成串投递，浅队列会在节点内部丢掉已经送达的帧。
@@ -941,6 +974,7 @@ class WholeTaskSmcRosRunner(Node):
         stamp = msg.header.stamp.sec + 1e-9 * msg.header.stamp.nanosec
         if stamp <= 0.0:
             stamp = self.get_clock().now().nanoseconds * 1e-9
+        self._publish_timing_callback(1.0, stamp)
         self.external_base.update(BaseState(
             position_w=vector[:3].copy(),
             quaternion_wxyz=np.array([q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]]) / norm,
@@ -991,6 +1025,40 @@ class WholeTaskSmcRosRunner(Node):
             return
         self.q_ctrl, self.qd_ctrl = self.estimator(
             q_d, qd_d, self._estimator_dt(now))
+
+    def _log_calibration_self_check(self, base_state: BaseState) -> None:
+        """Read-only proof that candidate calibration reaches model dynamics."""
+        if self._calibration_self_check_done:
+            return
+        q_encoder = np.asarray(self.q_ctrl, dtype=float).copy()
+        q_model = self.model.model_joint_angles(q_encoder)
+        q_full = self.model.make_q_full(
+            base_state.position_w, base_state.quaternion_wxyz, q_encoder)
+        v_full = self.model.make_v_full(base_state.velocity_lwa, self.qd_ctrl)
+        gravity_original = self.model.gravity_arm_torque(q_full)
+        gravity_scaled = self.model.scale_gravity_arm_torque(gravity_original)
+        tau_rnea = self.model.compute_rnea_arm_torque(
+            q_full, v_full, base_state.acceleration_lwa,
+            np.zeros(self.n_arm))
+        f_pos = (self.tracking_friction.positive_nm
+                 if self.tracking_friction.directional
+                 else self.tracking_friction.stiction_nm)
+        f_neg = (self.tracking_friction.negative_nm
+                 if self.tracking_friction.directional
+                 else self.tracking_friction.stiction_nm)
+        self.get_logger().info(
+            "candidate 只读自检: q_encoder=%s zero_offset=%s q_model=%s"
+            % (np.round(q_encoder, 6).tolist(),
+               np.round(self.model.zero_offset_rad, 6).tolist(),
+               np.round(q_model, 6).tolist()))
+        self.get_logger().info(
+            "candidate 只读自检: gravity_original=%s gravity_scaled=%s "
+            "F+=%s Nm F-=%s Nm final_rnea=%s Nm"
+            % (np.round(gravity_original, 6).tolist(),
+               np.round(gravity_scaled, 6).tolist(),
+               np.round(f_pos, 6).tolist(), np.round(f_neg, 6).tolist(),
+               np.round(tau_rnea, 6).tolist()))
+        self._calibration_self_check_done = True
 
     def _fill_estimator_row(self, row):
         row["estimator_predict_clamp_hits"] = float(
@@ -1549,10 +1617,29 @@ class WholeTaskSmcRosRunner(Node):
         enabled = bool(cfg.get("enabled", False))
 
         stiction = cfg.get("stiction_nm")
+        positive = cfg.get("positive_nm")
+        negative = cfg.get("negative_nm")
         source = "配置显式给定"
         if stiction is None:
             calibration = load_arm6_calibration()
             stiction = calibration.get("stiction_nm")
+            cal_pos = calibration.get("kinetic_friction_pos_nm")
+            cal_neg = calibration.get("kinetic_friction_neg_nm")
+            if cal_pos is not None and cal_neg is not None:
+                base = stiction or [0.0] * self.n_arm
+                positive = []
+                negative = []
+                for i in range(self.n_arm):
+                    p = cal_pos[i] if i < len(cal_pos) else None
+                    n = cal_neg[i] if i < len(cal_neg) else None
+                    b = base[i] if i < len(base) and base[i] is not None else 0.0
+                    if p is None or n is None or float(p) < 0.0 or float(n) < 0.0:
+                        positive.append(float(b))
+                        negative.append(float(b))
+                    else:
+                        positive.append(float(p))
+                        negative.append(float(n))
+                stiction = np.maximum(positive, negative).tolist()
             source = calibration.get("source") or "标定文件缺失"
         if stiction is None or len(stiction) < self.n_arm:
             if enabled:
@@ -1561,9 +1648,27 @@ class WholeTaskSmcRosRunner(Node):
                     f"个关节的 stiction_nm（来源: {source}）。静摩擦是实测量，"
                     "不能用默认值糊弄 —— 先跑 phase2_torque_probe.py 标定。")
             stiction = [0.0] * self.n_arm
+        stiction = np.asarray([
+            0.0 if v is None else float(v)
+            for v in list(stiction)[:self.n_arm]
+        ], dtype=float)
+        if positive is not None and negative is not None:
+            positive = [
+                stiction[i] if positive[i] is None else float(positive[i])
+                for i in range(self.n_arm)
+            ]
+            negative = [
+                stiction[i] if negative[i] is None else float(negative[i])
+                for i in range(self.n_arm)
+            ]
+        else:
+            positive = None
+            negative = None
 
         friction = FrictionFeedforwardConfig(
-            np.asarray(stiction, dtype=float).ravel()[:self.n_arm],
+            stiction,
+            positive_nm=positive,
+            negative_nm=negative,
             enabled=enabled,
             scale=float(cfg.get("scale", 0.8)),
             velocity_epsilon=float(cfg.get("velocity_epsilon", 0.02)),
@@ -1582,8 +1687,10 @@ class WholeTaskSmcRosRunner(Node):
             stiffness)
         after = residual_deadband(friction, stiffness)
         self.get_logger().info(
-            "approach 静摩擦前馈: 开启 scale=%.2f  f_s=%s Nm (%s)"
-            % (friction.scale, np.round(friction.stiction_nm, 3).tolist(), source))
+            "approach 摩擦前馈: 开启 scale=%.2f  F+=%s Nm F-=%s Nm (%s)"
+            % (friction.scale,
+               np.round(friction.positive_nm, 3).tolist(),
+               np.round(friction.negative_nm, 3).tolist(), source))
         self.get_logger().info(
             "  当前位形力矩刚度 %s Nm/rad，死区 %s° -> %s°"
             % (np.round(stiffness, 2).tolist(),
@@ -1885,7 +1992,6 @@ class WholeTaskSmcRosRunner(Node):
         self._push_estimator_command(
             q_full_ctrl, v_full_ctrl, bs.acceleration_lwa,
             motor.command, tau_friction, self.control_period)
-        self._write_approach_row(elapsed, bs, q_des, tau_friction, motor)
         if self.internal_plant:
             qdd = self.model.compute_arm_forward_dynamics(
                 q_full, v_full, bs.acceleration_lwa, motor.command)
@@ -1901,28 +2007,6 @@ class WholeTaskSmcRosRunner(Node):
             self.qd[lower_hit & (self.qd < 0.0)] = 0.0
             self.qd[upper_hit & (self.qd > 0.0)] = 0.0
 
-        if (
-            self.last_hold_publish_time is None
-            or now - self.last_hold_publish_time
-            >= 1.0 / self.visualization_rate_hz
-        ):
-            if self.internal_plant:
-                self._publish_joint_states()
-            q_visual = self.model.make_q_full(
-                bs.position_w, bs.quaternion_wxyz, self.q)
-            kin = self.model.compute_kinematics(
-                q_visual,
-                self.model.make_v_full(bs.velocity_lwa, self.qd),
-            )
-            ref = self._reference_sample(0.0)
-            desired = PoseState(
-                position=ref.position_w,
-                quaternion_wxyz=ref.quaternion_wxyz,
-                linear_velocity=np.zeros(3),
-                angular_velocity=np.zeros(3),
-            )
-            self._publish_runtime_markers(desired, kin.ee_position)
-            self.last_hold_publish_time = now
 
     def _publish_start_hold_markers(self):
         try:
@@ -2044,6 +2128,7 @@ class WholeTaskSmcRosRunner(Node):
         if not np.all(np.isfinite(position)):
             return
         stamp = msg.header.stamp.sec + 1e-9 * msg.header.stamp.nanosec
+        self._publish_timing_callback(2.0, stamp)
         quaternion = np.array([msg.pose.orientation.x, msg.pose.orientation.y,
                                msg.pose.orientation.z, msg.pose.orientation.w])
         norm = float(np.linalg.norm(quaternion))
@@ -2067,6 +2152,14 @@ class WholeTaskSmcRosRunner(Node):
             angular_velocity=_vec3(msg.twist.angular),
             angular_accel=_vec3(msg.acceleration.angular),
         )
+
+    def _publish_timing_callback(self, stream_code: float,
+                                 source_stamp: float) -> None:
+        """Read-only callback timing probe; it does not enter control math."""
+        msg = Float64MultiArray()
+        arrival = self.get_clock().now().nanoseconds * 1e-9
+        msg.data = [float(stream_code), float(source_stamp), float(arrival)]
+        self.timing_pub.publish(msg)
 
     def _update_ee_feedback(self, now, kin_ctrl, dt):
         """把 Vicon arm_ee 与编码器 FK 融合成本拍使用的末端状态。
@@ -2274,6 +2367,8 @@ class WholeTaskSmcRosRunner(Node):
 
 
         self._refresh_controller_feedback(now)
+        if self.uses_external_base:
+            self._log_calibration_self_check(external_base)
 
         if (self._watchdog_tripped and self.stop_on_watchdog
                 and self._watchdog_trip_time is not None
@@ -2303,13 +2398,6 @@ class WholeTaskSmcRosRunner(Node):
 
 
             self._run_approach(elapsed, now)
-            if (
-                self.last_hold_publish_time is None
-                or now - self.last_hold_publish_time
-                >= 1.0 / self.visualization_rate_hz
-            ):
-                self._publish_start_hold_markers()
-                self.last_hold_publish_time = now
             return
         if self.handover_q is None:
 
@@ -2415,6 +2503,13 @@ class WholeTaskSmcRosRunner(Node):
             t, ref.position_w, ref.rotation_w,
             ref.linear_velocity_w, ref.angular_velocity_w,
             ref.linear_acceleration_w, ref.angular_acceleration_w)
+        # 就位和 handover 只负责安全接管，不作为正式轨迹数据或 RViz
+        # 运行轨迹的一部分。正式记录从 handover 结束、trajectory_clock=0
+        # 的第一拍开始，避免把交接直线误认为圆轨迹跟踪误差。
+        tracking_started = (
+            not self.handover_blend.enabled
+            or t >= self.handover_blend.duration_sec
+        )
         desired = PoseState(
             position=blend_p,
             quaternion_wxyz=rotation_to_quat(blend_R),
@@ -2539,6 +2634,8 @@ class WholeTaskSmcRosRunner(Node):
         self.last_position_error = float(
             np.linalg.norm(blend_p - kin_true.ee_position))
         rot_error = float(np.linalg.norm(quaternion_log_error(ref.quaternion_wxyz, kin_true.ee_quaternion_wxyz)))
+        if not tracking_started:
+            return
         self.error_samples.append(pos_error)
         self.rot_samples.append(rot_error)
         error_xyz = ref.position_w - kin_true.ee_position

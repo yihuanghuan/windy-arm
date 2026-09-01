@@ -19,6 +19,7 @@ StudentArmNode::StudentArmNode() : Node("student_arm_node") {
   }
   effort_control_period_sec_ = 1.0 / control_rate_hz;
   direct_effort_enabled_ = GetParam<bool>("enable_direct_effort_command", false);
+  allow_position_handover_ = GetParam<bool>("allow_position_handover", false);
   step_on_effort_command_ =
       GetParam<bool>("step_on_effort_command", false);
   publish_joint_feedback_ = GetParam<bool>("publish_joint_feedback", false);
@@ -400,6 +401,25 @@ void StudentArmNode::ControlLoop() {
         arm_platform_->PublishCurrentState();
         last_initial_state_publish_stamp_ = now().seconds();
       }
+      return;
+    }
+    // Allow one process to perform position prepose before the first effort
+    // command switches the node permanently to direct-effort control.
+    if (allow_position_handover_ && !got_effort_command_ && got_command_) {
+      if (!holding_ &&
+          now().seconds() - last_command_stamp_ > command_timeout_sec_) {
+        if (last_known_position_.size() == joint_count_) {
+          planning::JointSetpoint hold;
+          hold.q.resize(joint_count_);
+          hold.dq = Eigen::VectorXd::Zero(joint_count_);
+          for (size_t i = 0; i < joint_count_; ++i) {
+            hold.q[i] = last_known_position_[i];
+          }
+          arm_platform_->SetJointSetpoint(hold);
+        }
+        holding_ = true;
+      }
+      arm_platform_->ExecuteControlCycle(effort_control_period_sec_);
       return;
     }
     if (!got_effort_command_) {

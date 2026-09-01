@@ -97,6 +97,14 @@ def generate_launch_description():
         ),
     )
 
+    allow_position_handover_arg = DeclareLaunchArgument(
+        'allow_position_handover',
+        default_value='False',
+        description=(
+            '直驱模式在收到第一条力矩前允许 /student/joint_command 位控就位'
+        ),
+    )
+
     step_on_effort_command_arg = DeclareLaunchArgument(
         'step_on_effort_command',
         default_value='False',
@@ -120,12 +128,17 @@ def generate_launch_description():
             'control_rate_hz': ParameterValue(
                 LaunchConfiguration('control_rate_hz'), value_type=float),
             'max_velocity': LaunchConfiguration('max_velocity'),
+            'p_gain': [35.0, 35.0, 35.0, 5.0, 5.0, 5.0],
+            'd_gain': [1.5, 1.5, 1.5, 1.0, 1.0, 1.0],
             'publish_joint_feedback': ParameterValue(
                 LaunchConfiguration('publish_joint_feedback'), value_type=bool),
             # 力矩通路默认关闭 (见对应 DeclareLaunchArgument)。位置模式
             # 标定全程无需它; 阶段 2 起显式传 true 打开。
             'enable_direct_effort_command': ParameterValue(
                 LaunchConfiguration('enable_direct_effort_command'),
+                value_type=bool),
+            'allow_position_handover': ParameterValue(
+                LaunchConfiguration('allow_position_handover'),
                 value_type=bool),
             'step_on_effort_command': ParameterValue(
                 LaunchConfiguration('step_on_effort_command'),
@@ -167,6 +180,7 @@ def generate_launch_description():
         use_rviz_arg,
         publish_joint_feedback_arg,
         enable_direct_effort_command_arg,
+        allow_position_handover_arg,
         step_on_effort_command_arg,
         student_arm_node,
         robot_state_publisher_node,

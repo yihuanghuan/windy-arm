@@ -128,6 +128,7 @@ class StudentArmNode : public rclcpp::Node, public IArmDataSubscriber {
   bool got_command_ = false;
   bool holding_ = false;
   bool direct_effort_enabled_ = false;
+  bool allow_position_handover_ = false;
   bool step_on_effort_command_ = false;
   bool got_effort_command_ = false;
   bool effort_zeroed_ = false;

@@ -1,0 +1,31 @@
+# Clean handoff copy of the active Vicon geometric calibration.
+# Source: src/arm-platform/task_space_smc/config/vicon_extrinsics.yaml
+# Coordinate convention: Vicon Y-up. Quaternion order: x,y,z,w.
+
+metadata:
+  date: "2026-08-24"
+  samples: 16
+  urdf: "arm6.urdf"
+  ee_frame: "link6"
+  vicon_up_axis: "+y"
+  status: "diagnostic_only_for_position_and_orientation_quality"
+  position_residual_rms_mm: 8.6125845
+  position_residual_max_mm: 13.2422972
+
+# Transform semantics:
+# p_arm_base = R_arm_base_from_base_link * p_base_link + t_arm_base_from_base_link
+arm_base_from_base_link:
+  translation_m: [0.0356877332, -0.0416385701, -0.0178878451]
+  quaternion_xyzw: [-0.6747091816, -0.1120866705, 0.0005753346, 0.7295229726]
+
+# Fixed marker-origin transform used for EE position validation.
+# Current controller uses FK/link6 orientation for control; arm_ee orientation is validation-only.
+arm_ee_from_link6:
+  translation_m: [0.0119, 0.0047, 0.0125]
+  quaternion_xyzw: [0.8852728911, 0.0654227164, 0.0463393357, 0.4581096402]
+
+notes:
+  - "Do not swap quaternion order to w,x,y,z."
+  - "The base transform is loaded by vicon_floating_base.launch.py."
+  - "The EE transform is retained for geometry validation and handoff; control orientation remains FK/link6."
+  - "This diagnostic result was not used to claim sub-10-mm geometry accuracy across all conditions."

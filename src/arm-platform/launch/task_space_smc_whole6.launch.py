@@ -105,6 +105,13 @@ def generate_launch_description():
     initial_joint_positions = list(
         np.asarray(init_pose, dtype=float) + approach_offset)
 
+    fixed_start_arg = DeclareLaunchArgument(
+        'use_fixed_initial_joint_positions',
+        default_value='false',
+        choices=['true', 'false'],
+        description='Use configured initial pose as the hardware track start.',
+    )
+
     mode_arg = DeclareLaunchArgument(
         'mode',
         default_value='simulation',
@@ -232,6 +239,9 @@ def generate_launch_description():
             'hardware_enabled': hardware_enabled,
             'data_dir': LaunchConfiguration('data_dir'),
             'initial_joint_positions': initial_joint_positions,
+            'use_fixed_initial_joint_positions': ParameterValue(
+                LaunchConfiguration('use_fixed_initial_joint_positions'),
+                value_type=bool),
             'control_rate_hz_override': control_rate,
             'base_state_mode': base_state_mode,
             'external_base_topic': LaunchConfiguration('external_base_topic'),
@@ -257,6 +267,7 @@ def generate_launch_description():
         rviz_arg,
         control_rate_arg,
         base_state_mode_arg,
+        fixed_start_arg,
         external_base_topic_arg,
         RegisterEventHandler(
             OnProcessExit(

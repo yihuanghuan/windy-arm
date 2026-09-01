@@ -15,13 +15,15 @@ _MAX_SAFE_SCALE = 1.0
 
 class FrictionFeedforwardConfig:
 
-    __slots__ = ("enabled", "stiction_nm", "scale", "velocity_epsilon",
-                 "error_gain")
+    __slots__ = ("enabled", "stiction_nm", "positive_nm", "negative_nm",
+                 "directional", "scale", "velocity_epsilon", "error_gain")
 
     def __init__(
         self,
         stiction_nm,
         *,
+        positive_nm=None,
+        negative_nm=None,
         enabled: bool = False,
         scale: float = 0.8,           # 补偿比例，必须 < 1。大→残留死区小，≥1 时零误差处即可自行挣脱、自激成极限环；小→补不动
         velocity_epsilon: float = 0.02,  # tanh 的速度尺度 ε (rad/s)。大→过零平缓、零速附近补得少；小→接近 sign()、零速换向抖
@@ -34,6 +36,18 @@ class FrictionFeedforwardConfig:
             raise ValueError(f"stiction_nm 含非有限值: {stiction}")
         if np.any(stiction < 0.0):
             raise ValueError(f"stiction_nm 不能为负: {stiction}")
+        pos = stiction if positive_nm is None else np.asarray(
+            positive_nm, dtype=float).ravel()
+        neg = stiction if negative_nm is None else np.asarray(
+            negative_nm, dtype=float).ravel()
+        if pos.shape != stiction.shape or neg.shape != stiction.shape:
+            raise ValueError(
+                f"方向摩擦维度必须等于 stiction_nm: {pos.shape}, {neg.shape}, "
+                f"{stiction.shape}")
+        if not np.all(np.isfinite(pos)) or not np.all(np.isfinite(neg)):
+            raise ValueError(f"方向摩擦含非有限值: pos={pos}, neg={neg}")
+        if np.any(pos < 0.0) or np.any(neg < 0.0):
+            raise ValueError(f"方向摩擦不能为负: pos={pos}, neg={neg}")
 
         scale = float(scale)
         if not np.isfinite(scale) or scale < 0.0:
@@ -54,7 +68,11 @@ class FrictionFeedforwardConfig:
                 f"error_gain 必须非负（1/s，把位置误差折成等效速度），收到 {error_gain}")
 
         self.enabled = bool(enabled)
-        self.stiction_nm = stiction
+        self.positive_nm = pos
+        self.negative_nm = neg
+        self.directional = bool(
+            positive_nm is not None or negative_nm is not None)
+        self.stiction_nm = np.maximum(pos, neg) if self.directional else stiction
         self.scale = scale
         self.velocity_epsilon = velocity_epsilon
         self.error_gain = error_gain
@@ -67,7 +85,8 @@ class FrictionFeedforwardConfig:
         return (f"FrictionFeedforwardConfig(enabled={self.enabled}, "
                 f"scale={self.scale}, velocity_epsilon={self.velocity_epsilon}, "
                 f"error_gain={self.error_gain}, "
-                f"stiction_nm={np.round(self.stiction_nm, 4).tolist()})")
+                f"positive_nm={np.round(self.positive_nm, 4).tolist()}, "
+                f"negative_nm={np.round(self.negative_nm, 4).tolist()})")
 
 
 # 静摩擦前馈力矩。静摩擦在零速附近是符号函数，直接补 f_s·sign(q̇) 会在零速处
@@ -93,8 +112,8 @@ def stiction_feedforward(
         return np.zeros(n)
 
     drive = qd_ref + config.error_gain * err
-    return config.scale * config.stiction_nm * np.tanh(
-        drive / config.velocity_epsilon)
+    mag = np.where(drive >= 0.0, config.positive_nm, config.negative_nm)
+    return config.scale * mag * np.tanh(drive / config.velocity_epsilon)
 
 
 # 关节等效力矩刚度。关节空间 PD 的比例项经惯量折算成力矩：

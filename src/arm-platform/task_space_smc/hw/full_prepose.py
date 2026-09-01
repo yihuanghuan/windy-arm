@@ -13,7 +13,6 @@ import time
 
 import rclpy
 from rclpy.node import Node
-from dummy_interface.msg import MotorControl
 from sensor_msgs.msg import JointState
 
 JOINT_NAMES = [f"joint{i}" for i in range(1, 7)]
@@ -40,7 +39,7 @@ class FullPrepose(Node):
         self.q = None
         self.create_subscription(JointState, "/joint_states", self._cb, 10)
         self.pub = self.create_publisher(
-            MotorControl, "/student/joint_effort_command", 10)
+            JointState, "/student/joint_command", 10)
 
     def _cb(self, msg):
         idx = {n: i for i, n in enumerate(msg.name)}
@@ -92,14 +91,11 @@ class FullPrepose(Node):
                 break
             phase = quintic(min(elapsed / self.duration, 1.0))
             cmd = [start[i] + phase * delta[i] for i in range(6)]
-            msg = MotorControl()
+            msg = JointState()
             msg.header.stamp = self.get_clock().now().to_msg()
+            msg.name = list(JOINT_NAMES)
             msg.position = cmd
             msg.velocity = [0.0] * 6
-            msg.current = [0.0] * 6
-            msg.p = list(self.kp)
-            msg.d = list(HOLD_KD)
-            msg.enable = 1
             self.pub.publish(msg)
             rclpy.spin_once(self, timeout_sec=0.0)
             time.sleep(dt)

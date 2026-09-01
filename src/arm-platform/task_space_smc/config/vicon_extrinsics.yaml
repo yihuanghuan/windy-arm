@@ -1,54 +1,67 @@
-# Vicon rigid body -> robot frame extrinsics.
+# Vicon 刚体 -> 机器人坐标系的实测外参（2026-08-24，Y-up）。
+# 采集工具 task_space_smc/hw/vicon_base_extrinsic_calibrate.py，
+# 原始数据 task_space_smc/hw/data/vicon_base_extrinsic_candidate_20260824/base_extrinsic_20260824_155522.json。
 #
-# SOURCE: zzq handoff copy (vicon_extrinsics_zzq.yaml), swapped in 2026-08-25.
-# The previous file (2026-08-05, 1.77 mm RMS) is preserved in git history. It became
-# stale when the base and end-effector marker clusters were physically moved.
-#
-# ⚠️ THIS IS A TRIAL FIT, NOT A VALIDATED ONE. Read before trusting any result:
-#   1. zzq's own metadata says status: diagnostic_only_for_position_and_orientation_quality,
-#      and his notes decline to claim sub-10-mm accuracy across conditions.
-#   2. Position residual is 8.61 mm RMS / 13.24 mm max — roughly 5x worse than the
-#      2026-08-05 fit achieved on the old marker placement.
-#   3. There is no leave-one-out figure, so overfitting is unmeasured.
-#   4. arm_ee_from_link6.translation_m is IDENTICAL to the old file. zzq re-fitted only
-#      the BASE transform. If the end-effector markers also moved, that lever arm is
-#      still stale and ee_residual_rms_m will not fully recover.
-#   5. test/core/test_base_state_fusion.py::test_extrinsics_yaml_still_carries_both_vectors_unswapped
-#      hardcodes the old base translation and will FAIL against this file.
-#
-# The correct fix remains re-running task_space_smc/hw/vicon_base_extrinsic_calibrate.py
-# on the current hardware. See docs/README_jasyach.md section 6.
-#
-# Coordinate convention: Vicon Y-up. Quaternion order: x,y,z,w.
+# 本文件的 FK 角度约定为 q_fk = q_encoder，不加 arm6_calibration.yaml 的 zero_offset_rad；
+# zero_offset_rad 只用于重力前馈那一路。
 
+# 标定溯源记录，不被任何代码读取。三项残差同源，都是第 i 个静止位姿上末端标记位置的预测误差
+#   e_i = ‖ V_p_meas,i − V_T_B · ( B_p_link6(q_i) + B_R_link6(q_i)·t_ee ) ‖
 metadata:
-  date: "2026-08-24"
-  samples: 16
-  urdf: "arm6.urdf"
-  ee_frame: "link6"
-  vicon_up_axis: "+y"
-  status: "diagnostic_only_for_position_and_orientation_quality"
-  position_residual_rms_mm: 8.6125845
-  position_residual_max_mm: 13.2422972
+  date: "2026-08-24"                  # 本轮正式 16 姿态结果
+  model: "20260824 position fit + fixed link6-to-arm_ee rotation diagnostic"
+  samples: 16                         # 参与拟合的静止位姿数 N
+  position_residual_rms_mm: 8.612584527658107  # 2026-08-24 16 点正式拟合 RMS，mm
+  position_residual_max_mm: 13.242297231536952 # 2026-08-24 16 点正式拟合 max，mm
+  leave_one_out_rms_mm: null           # 本轮正式结果未计算留一交叉验证
+  urdf: "arm6.urdf"                   # 拟合所用的运动学模型；换 URDF 则本文件外参失效，必须重测
+  ee_frame: "link6"                   # 上式里 B_p_link6 / B_R_link6 的末端帧
+  vicon_up_axis: "+y"                 # Vicon 世界系中重力反方向的轴，与 caveats 第 1 条同一套约定
 
-# Transform semantics:
-# p_arm_base = R_arm_base_from_base_link * p_base_link + t_arm_base_from_base_link
-# The bridge composes V_T_B = V_T_Rb . Rb_T_B, i.e.
+# ---------------------------------------------------------------------------
+# 基座外参：arm_base 刚体 -> base_link
+# ---------------------------------------------------------------------------
+# 语义：把 base_link 系里的点变换到 arm_base 刚体系。
+#   p_arm_base = R * p_base_link + t
+# 桥按 V_T_B = V_T_Rb · Rb_T_B 合成，即
 #   p_wb = p_vr + R_vr @ t_rb ; q_wb = q_vr * q_rb
-# matching _transform_pose in vicon_floating_base_bridge.py (around lines 367-387).
+# 与 vicon_floating_base_bridge.py 的 _transform_pose 一致。
+#
+# 旋转量约 86.3°：不加这一项，zero_on_first_pose 会把【标记簇】的坐标系当成
+# 控制器 world，世界系会整整歪 85°。
 arm_base_from_base_link:
-  translation_m: [0.0356877332, -0.0416385701, -0.0178878451]   # |t| = 57.68 mm (old file: 33.07 mm)
-  quaternion_xyzw: [-0.6747091816, -0.1120866705, 0.0005753346, 0.7295229726]
+  translation_m: [0.03568773317901029, -0.04163857005757812, -0.017887845102928762]      # t (m)，表达在 arm_base 刚体系
+  # 上式的 R，单位四元数 (x,y,z,w)。这是唯一进代码的旋转表示，缺它即硬失败、不退化成单位阵
+  quaternion_xyzw: [-0.6747091815619208, -0.11208667047494776, 0.0005753345769959433, 0.7295229726389759]
+  # 同一个 R 的矩阵形式，代码不读，仅供人核对；改了四元数必须同步改这里，否则两者会悄悄分叉
+  rotation_matrix:
+    - [0.97487249458393, 0.1504123718185613, -0.16431596911931687]
+    - [0.1520912509820496, 0.08953437861233482, 0.9843027209254368]
+    - [0.16276323503304005, -0.9845606702740152, 0.06440819723576674]
 
-# Fixed marker-origin transform used for EE position validation.
-# Control orientation remains FK/link6; arm_ee orientation is validation-only.
-# ⚠️ Unchanged from the 2026-08-05 file — not re-fitted by zzq.
+# ---------------------------------------------------------------------------
+# 末端标记杠杆臂：link6 -> arm_ee 刚体原点
+# ---------------------------------------------------------------------------
+# 与基座外参无关，两个用处：
+#   ① 验收与残差分析：V_p_arm_ee = V_T_B · ( B_p_link6(q) + B_R_link6(q)·t )
+#   ② apply_control_point_offset: true 时把控制点从 link6 原点搬到标记簇原点（r = R_fk·t）：
+#        p' = p + r ; v' = v + ω×r ; J_p' = J_p − [r]×·J_w ; b_p' = b_p + b_w×r + ω×(ω×r)
 arm_ee_from_link6:
-  translation_m: [0.0119, 0.0047, 0.0125]                        # |t| = 17.8 mm
-  quaternion_xyzw: [0.8852728911, 0.0654227164, 0.0463393357, 0.4581096402]
+  # 上式的 t (m)，表达在 link6 局部系。该平移沿用已有末端原点测量结果。
+  translation_m: [0.0119, 0.0047, 0.0125]              # |t| = 17.8 mm
+  # 2026-08-24 固定 EE 旋转诊断结果。当前 whole_task_smc_ros_runner.py
+  # 只读取上面的 translation_m；该旋转保存在此处供几何诊断/交接使用，
+  # 不进入当前姿态闭环，姿态控制仍使用 Pinocchio FK 的 link6 旋转。
+  quaternion_xyzw: [0.8852728911007806, 0.0654227163935637, 0.04633933572179148, 0.4581096401808373]
 
-notes:
-  - "Do not swap quaternion order to w,x,y,z."
-  - "The base transform is loaded by vicon_floating_base.launch.py."
-  - "The EE transform is retained for geometry validation and handoff; control orientation remains FK/link6."
-  - "This diagnostic result was not used to claim sub-10-mm geometry accuracy across all conditions."
+# ---------------------------------------------------------------------------
+# 已知的未决项
+# ---------------------------------------------------------------------------
+caveats:
+  - "拟合出的 base_link +z 与 Vicon +y 差 6.49°。若基座实际是水平安装的，
+     这 6.5° 就是残留的模型误差；先确认实物基座是否真有倾角。"
+  - "arm_ee 刚体的姿态不可直接用于当前控制：2026-08-24 固定旋转候选约
+     125.5°，但扣除后仍有约 9.38° 姿态残差；joint6 的零位偏差与标记簇姿态
+     误差不可完全分离。本文件的当前控制链只用 arm_ee 的【位置】。"
+  - "单条圆弧无法把关节零位与外参分开。要定案需在工作空间另一个区域再采一段
+     形状不同的弧，用同一模型拟合后比对；两次之差就是真实不确定度。"

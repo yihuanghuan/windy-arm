@@ -44,6 +44,13 @@ def _setup(context):
     pkg_share = FindPackageShare("manipulator").find("manipulator")
     pkg_prefix = get_package_prefix("manipulator")
     workspace_root = os.path.abspath(os.path.join(pkg_prefix, "..", ".."))
+    candidate_path = os.path.join(
+        workspace_root, "src", "arm-platform", "config",
+        "arm6_calibration_candidate.yaml")
+    if not os.path.exists(candidate_path):
+        raise RuntimeError("candidate calibration does not exist: %s" % candidate_path)
+    # Keep the simulation model and controller on the same frozen calibration.
+    os.environ["ARM6_CALIBRATION_YAML"] = candidate_path
     controller_path = _first_existing_path(
         os.path.join(workspace_root, "src", "arm-platform", "task_space_smc",
                      "config", "smc_params_whole6.yaml"),
@@ -57,8 +64,11 @@ def _setup(context):
     if shape not in profiles:
         raise RuntimeError("unknown 6DOF simulation shape: %s" % shape)
     profile = profiles[shape]
-    initial_q = np.asarray(
-        profile["initial_joint_positions_rad"], dtype=float).reshape(6).tolist()
+    # The runner computes this track-start IK pose before the simulation plant
+    # starts. Starting the plant there avoids an artificial watchdog trip from
+    # the profile seed being tens of millimetres away from the reference.
+    initial_q = [-0.1692192410, 0.3257492857, -0.5457727704,
+                 -1.1629664826, 0.4854422558, 0.8842706410]
     urdf_path = os.path.join(pkg_share, "%s.urdf" % controller_config["urdf"])
     if not os.path.exists(urdf_path):
         raise RuntimeError("simulation URDF does not exist: %s" % urdf_path)

@@ -317,6 +317,10 @@ class ViconFloatingBaseBridge(Node):
                     queue_depth)
         self.diag_pub = self.create_publisher(
             Float64MultiArray, str(self.get_parameter("diagnostics_topic").value), 10)
+        # Read-only timing probe: records the exact local time immediately before
+        # each bridge output publish. It is separate from control data.
+        self.timing_pub = self.create_publisher(
+            Float64MultiArray, "/floating_base/vicon_timing", 200)
 
         self.get_logger().info(
             "Vicon base bridge: %s -> %s (zero_on_first_pose=%s, "
@@ -625,6 +629,8 @@ class ViconFloatingBaseBridge(Node):
             "p_w": p_w, "q_w": q_w,
             "sample_time": aligned.sample_time,
             "stamp_local": aligned.stamp_local,
+            "stamp_source": float(msg.header.stamp.sec)
+                + 1e-9 * float(msg.header.stamp.nanosec),
             "orientation": msg.pose.orientation,
         }
         if not aligned.used_source:
@@ -718,6 +724,12 @@ class ViconFloatingBaseBridge(Node):
             out.acceleration.linear.z = [float(x) for x in a[:3]]
         out.acceleration.angular.x, out.acceleration.angular.y, \
             out.acceleration.angular.z = [float(x) for x in a[3:]]
+        publish_time = self.get_clock().now().nanoseconds * 1e-9
+        self.timing_pub.publish(Float64MultiArray(data=[
+            2.0, float(pose_sample["stamp_source"]),
+            float(out.header.stamp.sec + 1e-9 * out.header.stamp.nanosec),
+            float(publish_time),
+        ]))
         self.ee_pub.publish(out)
 
     def _vicon_twist_accel(self, twist, accel, q_vr, local_v, local_a):
@@ -912,6 +924,8 @@ class ViconFloatingBaseBridge(Node):
         pose_sample = {
             "p": p, "q": q, "q_vr": self._last_q_vr.copy(),
             "sample_time": sample_time, "stamp_local": stamp_local,
+            "stamp_source": float(msg.header.stamp.sec)
+                + 1e-9 * float(msg.header.stamp.nanosec),
             "latency": latency,
         }
         if source is None:
@@ -1029,6 +1043,12 @@ class ViconFloatingBaseBridge(Node):
         out.twist.angular.x, out.twist.angular.y, out.twist.angular.z = [float(x) for x in v[3:]]
         out.acceleration.linear.x, out.acceleration.linear.y, out.acceleration.linear.z = [float(x) for x in a[:3]]
         out.acceleration.angular.x, out.acceleration.angular.y, out.acceleration.angular.z = [float(x) for x in a[3:]]
+        publish_time = self.get_clock().now().nanoseconds * 1e-9
+        self.timing_pub.publish(Float64MultiArray(data=[
+            1.0, float(frame.samples["pose"]["stamp_source"]),
+            float(out.header.stamp.sec + 1e-9 * out.header.stamp.nanosec),
+            float(publish_time),
+        ]))
         self.pub.publish(out)
 
         # 同帧装配后"通道年龄"退化成"这一帧有没有这条通道"：有就是 0（同一
