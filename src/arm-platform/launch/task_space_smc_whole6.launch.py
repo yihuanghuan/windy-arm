@@ -107,9 +107,9 @@ def generate_launch_description():
 
     fixed_start_arg = DeclareLaunchArgument(
         'use_fixed_initial_joint_positions',
-        default_value='false',
+        default_value='true',
         choices=['true', 'false'],
-        description='Use configured initial pose as the hardware track start.',
+        description='Use configured initial pose as the hardware track start; prepose must reach it first.',
     )
 
     mode_arg = DeclareLaunchArgument(

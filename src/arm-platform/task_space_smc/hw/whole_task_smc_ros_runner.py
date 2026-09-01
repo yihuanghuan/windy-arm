@@ -383,6 +383,11 @@ class WholeTaskSmcRosRunner(Node):
         self.q_ctrl = self.q
         self.qd_ctrl = self.qd
         self.effort_ctrl = self.feedback_effort
+        # Hardware must calculate its approach target only after the first real
+        # joint-state sample arrives.  The config pose is a target, not a sensor
+        # measurement, and using it here makes a successful prepose invisible.
+        self._hardware_start_initialized = self.internal_plant
+        self._skip_task_space_approach = False
         self.start_time = None
         self.last_update_time = None
         self._watchdog_tripped = False
@@ -583,13 +588,21 @@ class WholeTaskSmcRosRunner(Node):
                     "固定 hwtest 起点: %s°" %
                     np.round(np.degrees(self.track_start_q), 2).tolist())
             else:
-                self.track_start_q = self._track_start_pose(self.q)
+                # Placeholder only.  The real target and jump are computed in
+                # _control_loop after _joint_state_cb supplies measured q.
+                self.track_start_q = configured_start.copy()
             self.approach_initial_q = self.q.copy()
-            jump = float(np.max(np.abs(self.track_start_q - self.approach_initial_q)))
-            if not self.hold_capture_measured:
+            if self.internal_plant:
+                self._hardware_start_initialized = True
+                jump = float(np.max(np.abs(self.track_start_q - self.approach_initial_q)))
+                if not self.hold_capture_measured:
+                    self.get_logger().info(
+                        f"approach: 需移动 {np.degrees(jump):.1f}° "
+                        f"(峰值速度约 {1.875 * jump / max(self.start_delay_sec, 1e-3):.2f} rad/s)")
+            else:
+                self._hardware_start_initialized = False
                 self.get_logger().info(
-                    f"approach: 需移动 {np.degrees(jump):.1f}° "
-                    f"(峰值速度约 {1.875 * jump / max(self.start_delay_sec, 1e-3):.2f} rad/s)")
+                    "硬件等待首帧 /joint_states 后再确定 approach 起点")
         self._resolve_track_start_nullspace_nominal()
 
         self.command_pub = self.create_publisher(MotorControl, "/student/joint_effort_command", 10)
@@ -696,6 +709,15 @@ class WholeTaskSmcRosRunner(Node):
 
                 "estimator_predict_clamp_hits",
                 "estimator_hold_count",
+                "j5_q_ref_rad", "j5_qdot_motor_rad_s", "j5_leso_z1_rad",
+                "j5_leso_z2_rad_s", "j5_leso_z3_raw_rad_s2",
+                "j5_leso_z3_filtered_rad_s2", "j5_M55_kg_m2",
+                "j5_tau_smc_nm", "j5_tau_dist_nm", "j5_tau_final_nm",
+                "j5_s_norm", "j5_torque_saturation", "watchdog_flag",
+                # Diagnostic only: qdd_actual is derived from filtered LESO z2;
+                # it never enters the controller.
+                "qdd_commanded_j5", "qdd_actual_est_j5",
+                "acceleration_residual_j5",
             ] + vector_fields,
         )
         self.metrics_writer.writeheader()
@@ -744,6 +766,46 @@ class WholeTaskSmcRosRunner(Node):
             self.get_logger().info(_msg)
         for _msg in _est_plan.warnings:
             self.get_logger().warning("⚠️ " + _msg)
+
+        # Independent J5 residual-disturbance path.  It is disabled by
+        # default so observer-only tests cannot alter the nominal SMC torque.
+        _dc = self.config.get("disturbance_compensation") or {}
+        _dc_j5 = _dc.get("joint5") or {}
+        self.disturbance_compensation_enabled = bool(_dc.get("enabled", False))
+        self.j5_z3_lpf_hz = max(0.0, float(_dc_j5.get("z3_lpf_hz", 5.0)))
+        self.j5_disturbance_gain = float(_dc_j5.get("gain", 0.0))
+        self.j5_disturbance_limit_nm = max(
+            0.0, float(_dc_j5.get("torque_limit_nm", 0.2)))
+        self.observer_settle_sec = max(0.0, float(
+            _dc.get("observer_settle_sec", 0.0)))
+        self.compensation_ramp_sec = max(0.0, float(
+            _dc.get("compensation_ramp_sec", 0.0)))
+        if not all(np.isfinite([
+                self.j5_z3_lpf_hz, self.j5_disturbance_gain,
+                self.j5_disturbance_limit_nm, self.observer_settle_sec,
+                self.compensation_ramp_sec])) or self.j5_disturbance_gain < 0.0:
+            raise ValueError("disturbance_compensation.joint5 参数必须有限且 gain >= 0")
+        self._j5_z3_filtered = 0.0
+        self._j5_z2_diag_prev = float("nan")
+        self._j5_z2_diag_filtered = float("nan")
+        self._j5_qdd_actual_diag = float("nan")
+        self._j5_qdd_commanded_diag = float("nan")
+        self._j5_acceleration_residual_diag = float("nan")
+        self._j5_diag_lpf_hz = 20.0
+        self._last_j5_q_ref = float("nan")
+        self._j5_saturation_ticks = 0
+        self._j5_disturbance_diag = {
+            "z3_raw": float("nan"), "z3_filtered": float("nan"),
+            "m55": float("nan"), "tau_dist": 0.0,
+            "tau_smc": float("nan"), "tau_final": float("nan"),
+            "q_ref": float("nan"), "s_norm": float("nan"),
+            "saturated": 0.0,
+        }
+        self.get_logger().info(
+            "J5 扰动观测/补偿: enabled=%s lpf=%.2f Hz gain=%.3f limit=%.3f Nm settle=%.1fs ramp=%.1fs"
+            % (self.disturbance_compensation_enabled, self.j5_z3_lpf_hz,
+               self.j5_disturbance_gain, self.j5_disturbance_limit_nm,
+               self.observer_settle_sec, self.compensation_ramp_sec))
 
 
         self._q_meas = self.q
@@ -1087,7 +1149,83 @@ class WholeTaskSmcRosRunner(Node):
 
 
             return
+        # This is the model-implied acceleration from the command that was
+        # actually sent after adapter conversion/saturation.  It is logged for
+        # LESO sign diagnostics and is not fed back into the controller here.
+        self._j5_qdd_commanded_diag = float(qdd_eff[4])
         self.estimator.push_command(qdd_eff, dt)
+
+    def _update_j5_acceleration_diagnostic(self, dt):
+        """Estimate J5 acceleration from filtered LESO z2 for diagnostics only."""
+        z2 = float(self.estimator.leso.velocity_estimate[4])
+        if not np.isfinite(z2) or not np.isfinite(dt) or dt <= 0.0:
+            self._j5_qdd_actual_diag = float("nan")
+            self._j5_acceleration_residual_diag = float("nan")
+            return
+        alpha = 1.0 - math.exp(-2.0 * math.pi * self._j5_diag_lpf_hz * dt)
+        if not np.isfinite(self._j5_z2_diag_filtered):
+            self._j5_z2_diag_filtered = z2
+        self._j5_z2_diag_filtered += alpha * (z2 - self._j5_z2_diag_filtered)
+        if np.isfinite(self._j5_z2_diag_prev):
+            self._j5_qdd_actual_diag = (
+                (self._j5_z2_diag_filtered - self._j5_z2_diag_prev) / dt)
+        else:
+            self._j5_qdd_actual_diag = float("nan")
+        self._j5_z2_diag_prev = self._j5_z2_diag_filtered
+        self._j5_acceleration_residual_diag = (
+            self._j5_qdd_actual_diag - self._j5_qdd_commanded_diag
+            if np.isfinite(self._j5_qdd_actual_diag)
+            and np.isfinite(self._j5_qdd_commanded_diag) else float("nan"))
+
+    def _j5_disturbance_torque(self, q_full_ctrl, dt, t, tau_smc, smc):
+        """Compute the optional, clipped J5 residual-disturbance torque."""
+        z3 = float(self.estimator.leso.disturbance_estimate[4])
+        valid_dt = np.isfinite(dt) and 0.0 < dt <= 0.05
+        if valid_dt and np.isfinite(z3):
+            if self.j5_z3_lpf_hz > 0.0:
+                alpha = 1.0 - math.exp(-2.0 * math.pi * self.j5_z3_lpf_hz * dt)
+                self._j5_z3_filtered += alpha * (z3 - self._j5_z3_filtered)
+            else:
+                self._j5_z3_filtered = z3
+        else:
+            self._j5_z3_filtered = 0.0
+
+        try:
+            m55 = float(self.model.compute_arm_mass_block(q_full_ctrl)[4, 4])
+        except (ValueError, np.linalg.LinAlgError, IndexError):
+            m55 = float("nan")
+        tau_dist = 0.0
+        clipped = False
+        ramp = 0.0
+        if self.compensation_ramp_sec <= 0.0:
+            ramp = float(t >= self.observer_settle_sec)
+        else:
+            ramp = float(np.clip(
+                (t - self.observer_settle_sec) / self.compensation_ramp_sec,
+                0.0, 1.0))
+        effective_gain = self.j5_disturbance_gain * ramp
+        if (self.disturbance_compensation_enabled and valid_dt
+                and np.isfinite(z3) and np.isfinite(self._j5_z3_filtered)
+                and np.isfinite(m55) and m55 > 0.0
+                and np.isfinite(effective_gain)):
+            raw = -effective_gain * m55 * self._j5_z3_filtered
+            if np.isfinite(raw):
+                tau_dist = float(np.clip(
+                    raw, -self.j5_disturbance_limit_nm,
+                    self.j5_disturbance_limit_nm))
+                clipped = abs(raw) > self.j5_disturbance_limit_nm
+
+        self._j5_disturbance_diag.update({
+            "z3_raw": z3, "z3_filtered": self._j5_z3_filtered,
+            "m55": m55, "tau_dist": tau_dist,
+            "tau_smc": float(tau_smc[4]),
+            "tau_final": float(tau_smc[4] + tau_dist),
+            "q_ref": float(self._last_j5_q_ref),
+            "s_norm": float(np.linalg.norm(np.concatenate([
+                smc.position_sliding, smc.orientation_sliding]))),
+            "saturated": float(clipped),
+        })
+        return tau_dist
 
     @staticmethod
     def _point(p):
@@ -1766,6 +1904,9 @@ class WholeTaskSmcRosRunner(Node):
             "tau_disturbance_max_abs": float("nan"),
 
             "trajectory_clock": 0.0,
+            "qdd_commanded_j5": float("nan"),
+            "qdd_actual_est_j5": float("nan"),
+            "acceleration_residual_j5": float("nan"),
         }
         for axis, value in zip("xyz", ref.position_w):
             row[f"desired_{axis}_m"] = float(value)
@@ -1931,7 +2072,7 @@ class WholeTaskSmcRosRunner(Node):
             tau, np.full(self.n_arm, np.nan), tau_friction)
 
     def _run_approach(self, elapsed, now):
-        if self.approach_mode == "task_space":
+        if self.approach_mode == "task_space" and not self._skip_task_space_approach:
             return self._run_task_space_approach(elapsed, now)
         duration = max(self.start_delay_sec, self.control_period)
         phase = float(np.clip(elapsed / duration, 0.0, 1.0))
@@ -2276,6 +2417,11 @@ class WholeTaskSmcRosRunner(Node):
     def _task_space_torque(self, desired, actual, kin_ctrl,
                            q_full_ctrl, v_full_ctrl, bs_est):
         smc = self.controller.compute(desired, actual)
+        qd_ref = np.linalg.lstsq(
+            kin_ctrl.J_arm_lwa,
+            np.concatenate([desired.linear_velocity, desired.angular_velocity]),
+            rcond=None)[0]
+        self._last_j5_q_ref = float(self.q_ctrl[4] + qd_ref[4] * self.control_period)
         b6 = self.model.compute_task_bias_acceleration(q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa)
 
         # 任务右端 y = ν − b6：末端加速度 ẍ = J·q̈ + b6，要求 ẍ = ν 即得该式。
@@ -2367,6 +2513,34 @@ class WholeTaskSmcRosRunner(Node):
 
 
         self._refresh_controller_feedback(now)
+        if not self.internal_plant and not self._hardware_start_initialized:
+            configured_start = np.asarray(
+                self.get_parameter("initial_joint_positions").value,
+                dtype=float,
+            ).reshape(self.n_arm)
+            use_fixed_start = bool(self.get_parameter(
+                "use_fixed_initial_joint_positions").value)
+            self.approach_initial_q = np.asarray(self.q_ctrl, dtype=float).copy()
+            if use_fixed_start and np.any(np.abs(configured_start) > 1e-12):
+                self.track_start_q = configured_start.copy()
+            else:
+                self.track_start_q = self._track_start_pose(self.approach_initial_q)
+            self._resolve_track_start_nullspace_nominal()
+            self._hardware_start_initialized = True
+            jump = float(np.max(np.abs(self.track_start_q - self.approach_initial_q)))
+            # A successful prepose already placed the arm at the configured
+            # start.  Do not re-solve a task-space orientation path here: with
+            # a small joint error that path can choose a large J6 motion.
+            self._skip_task_space_approach = jump <= np.deg2rad(5.0)
+            if not self.hold_capture_measured:
+                self.get_logger().info(
+                    "硬件首帧起点: 当前实测 q=%s°，目标=%s°，需移动 %.1f°"
+                    % (np.round(np.degrees(self.approach_initial_q), 2).tolist(),
+                       np.round(np.degrees(self.track_start_q), 2).tolist(),
+                       np.degrees(jump)))
+                if self._skip_task_space_approach:
+                    self.get_logger().info(
+                        "硬件已完成 prepose：小误差交接改用关节空间，不重新规划任务空间姿态路径")
         if self.uses_external_base:
             self._log_calibration_self_check(external_base)
 
@@ -2416,6 +2590,7 @@ class WholeTaskSmcRosRunner(Node):
             t = elapsed - self.start_delay_sec
             dt = max(1e-5, now - self.last_update_time)
         self.last_update_time = now
+        self._update_j5_acceleration_diagnostic(dt)
         if t > self.duration_sec:
             self._publish_motor_command(
                 self.adapter.zero(
@@ -2572,6 +2747,13 @@ class WholeTaskSmcRosRunner(Node):
              tau_track_friction) = self._task_space_torque(
                 desired, actual, kin_ctrl, q_full_ctrl, v_full_ctrl, bs_est)
 
+        # Apply only after the existing SMC/QP calculation and before the
+        # adapter's existing whole-arm torque saturation.
+        tau_smc_before_disturbance = np.asarray(tau, dtype=float).copy()
+        tau_dist_j5 = self._j5_disturbance_torque(
+            q_full_ctrl, dt, t, tau_smc_before_disturbance, smc)
+        tau[4] += tau_dist_j5
+
 
         if self._watchdog_hold_q is None:
             self._watchdog_hold_q = np.asarray(self._q_meas, dtype=float).copy()
@@ -2580,6 +2762,15 @@ class WholeTaskSmcRosRunner(Node):
         motor = self.adapter.torque_to_motor_command(
             tau, now, self.last_joint_stamp or now,
             getattr(bs_est, "stamp", now), dt)
+        if motor.enabled:
+            motor_cmd = np.asarray(motor.command, dtype=float)
+            limit_hit = (np.any(np.abs(motor_cmd)
+                                >= self.feasibility_torque - 1e-6))
+            self._j5_disturbance_diag["tau_final"] = float(motor_cmd[4])
+            self._j5_disturbance_diag["saturated"] = float(
+                self._j5_disturbance_diag["saturated"] or limit_hit)
+            if self._j5_disturbance_diag["saturated"]:
+                self._j5_saturation_ticks += 1
 
         # 后端 clamp 只是【通信兜底】，正常运行必须恒为 0。真削到了就说明
         # 求解器的力矩箱与 adapter 的不一致（多半是 tau_prev 基准错开），
@@ -2604,7 +2795,8 @@ class WholeTaskSmcRosRunner(Node):
 
         self._push_estimator_command(
             q_full_ctrl, v_full_ctrl, bs_est.acceleration_lwa,
-            motor.command, tau_track_friction, dt, tau_bias=tau_bias)
+            motor.command, np.asarray(tau_track_friction, dtype=float),
+            dt, tau_bias=tau_bias)
 
         if self.internal_plant:
             tau_actual = self._actual_plant_torque(motor.command, t, q_full_true, kin_true)
@@ -2707,6 +2899,22 @@ class WholeTaskSmcRosRunner(Node):
             "handover_blend": float(self.handover_blend.scale(t)),
 
             "trajectory_clock": float(traj_t),
+            "j5_q_ref_rad": self._j5_disturbance_diag["q_ref"],
+            "j5_qdot_motor_rad_s": float(self._qd_meas[4]),
+            "j5_leso_z1_rad": float(self.estimator.leso.position_estimate[4]),
+            "j5_leso_z2_rad_s": float(self.estimator.leso.velocity_estimate[4]),
+            "j5_leso_z3_raw_rad_s2": self._j5_disturbance_diag["z3_raw"],
+            "j5_leso_z3_filtered_rad_s2": self._j5_disturbance_diag["z3_filtered"],
+            "j5_M55_kg_m2": self._j5_disturbance_diag["m55"],
+            "j5_tau_smc_nm": self._j5_disturbance_diag["tau_smc"],
+            "j5_tau_dist_nm": self._j5_disturbance_diag["tau_dist"],
+            "j5_tau_final_nm": self._j5_disturbance_diag["tau_final"],
+            "j5_s_norm": self._j5_disturbance_diag["s_norm"],
+            "j5_torque_saturation": self._j5_disturbance_diag["saturated"],
+            "watchdog_flag": float(self._watchdog_tripped),
+            "qdd_commanded_j5": self._j5_qdd_commanded_diag,
+            "qdd_actual_est_j5": self._j5_qdd_actual_diag,
+            "acceleration_residual_j5": self._j5_acceleration_residual_diag,
         }
         for axis, value in zip("xyz", ref.position_w):
             row[f"desired_{axis}_m"] = float(value)
@@ -2785,6 +2993,9 @@ class WholeTaskSmcRosRunner(Node):
             # 验收硬指标：这两个数不为 0，就说明后端裁剪重新参与了控制策略、
             # 或者求解器根本没在正常工作。它们比位置 RMS 更早暴露问题。
             "backend_clamp_total": int(self._backend_clamp_hits),
+            "watchdog": bool(self._watchdog_tripped),
+            "watchdog_reason": self.watchdog_reason,
+            "j5_torque_saturation_ticks": int(self._j5_saturation_ticks),
             "qp_enabled": bool(self.use_task_qp),
             "qp_fallback_ticks": int(self._qp_fallback_ticks),
             "ee_mode": self.ee_estimator.config.mode,
