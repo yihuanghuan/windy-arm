@@ -1,0 +1,217 @@
+{
+  "timepoint_method": "last received q/dq at or before requested host-relative cutoff, no forward extrapolation; null means observation terminated",
+  "timepoints_ms": {
+    "10": {
+      "2": {
+        "no_support": {
+          "delta_q": 0.0,
+          "dq": -0.0048847198486328125,
+          "torque_proxy": 0.0014654159545898437,
+          "latest_event_ms": 6.096914999943692,
+          "position_age_at_cut_ms": 4.0770390021498315,
+          "velocity_age_at_cut_ms": 3.9030850000563078
+        },
+        "support": {
+          "delta_q": 0.0,
+          "dq": -0.0048847198486328125,
+          "torque_proxy": 0.0014654159545898437,
+          "latest_event_ms": 6.752944998879684,
+          "position_age_at_cut_ms": 3.247055001120316,
+          "velocity_age_at_cut_ms": 3.247055001120316
+        }
+      },
+      "3": {
+        "no_support": {
+          "delta_q": 0.0,
+          "dq": -0.0048847198486328125,
+          "torque_proxy": 0.0014654159545898437,
+          "latest_event_ms": 6.096914999943692,
+          "position_age_at_cut_ms": 4.0770390021498315,
+          "velocity_age_at_cut_ms": 3.9030850000563078
+        },
+        "support": {
+          "delta_q": 0.0,
+          "dq": -0.0048847198486328125,
+          "torque_proxy": 0.0014654159545898437,
+          "latest_event_ms": 6.752944998879684,
+          "position_age_at_cut_ms": 3.247055001120316,
+          "velocity_age_at_cut_ms": 3.247055001120316
+        }
+      }
+    },
+    "20": {
+      "2": {
+        "no_support": {
+          "delta_q": 0.0,
+          "dq": 0.0634918212890625,
+          "torque_proxy": -0.01904754638671875,
+          "latest_event_ms": 16.114678997837473,
+          "position_age_at_cut_ms": 4.052763000363484,
+          "velocity_age_at_cut_ms": 3.8853210021625277
+        },
+        "support": {
+          "delta_q": 0.0,
+          "dq": 0.0048847198486328125,
+          "torque_proxy": -0.0014654159545898437,
+          "latest_event_ms": 16.88653000019258,
+          "position_age_at_cut_ms": 3.4790210006758575,
+          "velocity_age_at_cut_ms": 3.1134699998074216
+        }
+      },
+      "3": {
+        "no_support": {
+          "delta_q": 0.0,
+          "dq": -0.014652252197265625,
+          "torque_proxy": 0.004395675659179687,
+          "latest_event_ms": 16.114678997837473,
+          "position_age_at_cut_ms": 4.052763000363484,
+          "velocity_age_at_cut_ms": 3.8853210021625277
+        },
+        "support": {
+          "delta_q": 0.0,
+          "dq": -0.0048847198486328125,
+          "torque_proxy": 0.0014654159545898437,
+          "latest_event_ms": 16.88653000019258,
+          "position_age_at_cut_ms": 3.4790210006758575,
+          "velocity_age_at_cut_ms": 3.1134699998074216
+        }
+      }
+    },
+    "30": {
+      "2": {
+        "no_support": {
+          "delta_q": 0.0011444091796875,
+          "dq": 0.16117286682128906,
+          "torque_proxy": -0.05521831512451172,
+          "latest_event_ms": 25.988915000198176,
+          "position_age_at_cut_ms": 4.169659999461145,
+          "velocity_age_at_cut_ms": 4.011084999801823
+        },
+        "support": {
+          "delta_q": 0.0003814697265625,
+          "dq": 0.014652252197265625,
+          "torque_proxy": -0.006684494018554687,
+          "latest_event_ms": 26.548399997409433,
+          "position_age_at_cut_ms": 3.451600002590566,
+          "velocity_age_at_cut_ms": 3.451600002590566
+        }
+      },
+      "3": {
+        "no_support": {
+          "delta_q": 0.0,
+          "dq": -0.014652252197265625,
+          "torque_proxy": 0.004395675659179687,
+          "latest_event_ms": 25.988915000198176,
+          "position_age_at_cut_ms": 4.169659999461145,
+          "velocity_age_at_cut_ms": 4.011084999801823
+        },
+        "support": {
+          "delta_q": 0.0,
+          "dq": -0.0048847198486328125,
+          "torque_proxy": 0.0014654159545898437,
+          "latest_event_ms": 26.548399997409433,
+          "position_age_at_cut_ms": 3.451600002590566,
+          "velocity_age_at_cut_ms": 3.451600002590566
+        }
+      }
+    },
+    "50": {
+      "2": {
+        "no_support": null,
+        "support": null
+      },
+      "3": {
+        "no_support": null,
+        "support": null
+      }
+    },
+    "100": {
+      "2": {
+        "no_support": null,
+        "support": null
+      },
+      "3": {
+        "no_support": null,
+        "support": null
+      }
+    },
+    "500": {
+      "2": {
+        "no_support": null,
+        "support": null
+      },
+      "3": {
+        "no_support": null,
+        "support": null
+      }
+    },
+    "2000": {
+      "2": {
+        "no_support": null,
+        "support": null
+      },
+      "3": {
+        "no_support": null,
+        "support": null
+      }
+    }
+  },
+  "previous_abort_time_ms": 30.695669000124326,
+  "at_previous_abort_time": {
+    "2": {
+      "no_support": {
+        "delta_q": 0.0019073486328125,
+        "dq": 0.16117286682128906,
+        "torque_proxy": -0.05979595184326172,
+        "latest_event_ms": 30.695669000124326,
+        "position_age_at_cut_ms": 0.0,
+        "velocity_age_at_cut_ms": 4.70675399992615
+      },
+      "support": {
+        "delta_q": 0.0003814697265625,
+        "dq": 0.014652252197265625,
+        "torque_proxy": -0.006684494018554687,
+        "latest_event_ms": 26.548399997409433,
+        "position_age_at_cut_ms": 4.147269002714893,
+        "velocity_age_at_cut_ms": 4.147269002714893
+      }
+    },
+    "3": {
+      "no_support": {
+        "delta_q": 0.0,
+        "dq": -0.014652252197265625,
+        "torque_proxy": 0.004395675659179687,
+        "latest_event_ms": 30.695669000124326,
+        "position_age_at_cut_ms": 0.0,
+        "velocity_age_at_cut_ms": 4.70675399992615
+      },
+      "support": {
+        "delta_q": 0.0,
+        "dq": -0.0048847198486328125,
+        "torque_proxy": 0.0014654159545898437,
+        "latest_event_ms": 26.548399997409433,
+        "position_age_at_cut_ms": 4.147269002714893,
+        "velocity_age_at_cut_ms": 4.147269002714893
+      }
+    }
+  },
+  "joint2_displacement_ratios": {
+    "30ms": {
+      "support_over_no_support": 0.3333333333333333,
+      "reduction_percent": 66.66666666666667
+    },
+    "previous_abort_time": {
+      "support_over_no_support": 0.2,
+      "reduction_percent": 80.0
+    }
+  },
+  "initial_q_difference_support_minus_no_support": [
+    0.0,
+    0.1365680694580078,
+    -0.023652076721191406,
+    0.0007677078247070312,
+    0.07633781433105469,
+    0.0007677078247070312
+  ],
+  "causal_conclusion": "J2 short-transient displacement and velocity reduced, consistent with support helping load bearing. Neither run completed 2s; supported run aborted on J5. Different initial q and unknown persistent board state confound strict support-only causality; does not prove cause or validate command directions."
+}

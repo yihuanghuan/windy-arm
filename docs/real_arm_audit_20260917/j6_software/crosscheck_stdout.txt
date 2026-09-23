@@ -1,0 +1,140 @@
+{
+  "comparison_frames_per_run": {
+    "chunk_size_1": 12856,
+    "chunk_size_7": 12856,
+    "chunk_size_34": 12856,
+    "chunk_size_4096": 12856,
+    "chunk_size_396532": 12856,
+    "original_read_chunks": 12856
+  },
+  "all_equal": true,
+  "sentinels": [
+    {
+      "cmd": "0x20",
+      "frame_hex": "fe 55 20 1c 00 00 90 3f 00 00 10 40 00 00 58 40 00 00 90 40 00 00 b4 40 00 00 d8 40 00 00 fc 40 5e be",
+      "raw_seven": [
+        1.125,
+        2.25,
+        3.375,
+        4.5,
+        5.625,
+        6.75,
+        7.875
+      ],
+      "physical_six": [
+        1.125,
+        2.25,
+        3.375,
+        4.5,
+        5.625,
+        6.75
+      ],
+      "joint6_position": -0.46681469282041377
+    },
+    {
+      "cmd": "0x21",
+      "frame_hex": "fe 55 21 1c 00 00 90 3f 00 00 10 40 00 00 58 40 00 00 90 40 00 00 b4 40 00 00 d8 40 00 00 fc 40 5f dc",
+      "raw_seven": [
+        1.125,
+        2.25,
+        3.375,
+        4.5,
+        5.625,
+        6.75,
+        7.875
+      ],
+      "physical_six": [
+        1.125,
+        2.25,
+        3.375,
+        4.5,
+        5.625,
+        6.75
+      ],
+      "joint6_velocity": -6.75
+    },
+    {
+      "cmd": "0x22",
+      "frame_hex": "fe 55 22 1c 00 00 90 3f 00 00 10 40 00 00 58 40 00 00 90 40 00 00 b4 40 00 00 d8 40 00 00 fc 40 60 fa",
+      "raw_seven": [
+        1.125,
+        2.25,
+        3.375,
+        4.5,
+        5.625,
+        6.75,
+        7.875
+      ],
+      "physical_six": [
+        1.125,
+        2.25,
+        3.375,
+        4.5,
+        5.625,
+        6.75
+      ],
+      "joint6_raw_current": 6.75,
+      "cpp_expected_signed_current": -6.75
+    },
+    {
+      "cmd": "0x24",
+      "frame_hex": "fe 55 24 0e 15 00 16 00 17 00 18 00 19 00 1a 00 1b 00 2d 9b",
+      "raw_seven": [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27
+      ],
+      "physical_six": [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26
+      ],
+      "joint6_temperature": 26
+    }
+  ],
+  "actual_feedback_poll_offline": {
+    "names": [
+      "joint1",
+      "joint2",
+      "joint3",
+      "joint4",
+      "joint5",
+      "joint6"
+    ],
+    "position": [
+      1.125,
+      2.25,
+      -2.9081853071795862,
+      1.7831853071795862,
+      0.6581853071795862,
+      -0.46681469282041377
+    ],
+    "velocity": [
+      1.125,
+      2.25,
+      3.375,
+      -4.5,
+      -5.625,
+      -6.75
+    ],
+    "effort": [],
+    "ros_node_created": false,
+    "serial_opened": false,
+    "real_publisher_created": false
+  },
+  "zero_fresh_mapping": [
+    0.0,
+    0.0,
+    0.0,
+    -0.0,
+    -0.0,
+    -0.0
+  ]
+}

@@ -1,0 +1,813 @@
+{
+  "verdict": "INCONCLUSIVE",
+  "execution_status": "NOT EXECUTED",
+  "offline_only": true,
+  "source": "saved prior Gate A q, NOT a fresh live reading",
+  "q_saved": [
+    -0.031853675842285156,
+    1.494049072265625,
+    -1.415846824645996,
+    0.0024938583374023438,
+    0.16706371307373047,
+    0.002109527587890625
+  ],
+  "g_model": [
+    0.2583339385303244,
+    -2.303601500310789,
+    0.960947922021869,
+    0.02943664912663042,
+    -0.007233618207626143,
+    0.00010753843208119264
+  ],
+  "model_assumptions": [
+    "arm6 fixed base, default gravity [0,0,-9.81] in URDF base",
+    "no additional tool/payload beyond arm6 URDF",
+    "no runtime first_moment_ratio, offset, alpha or friction compensation",
+    "0x12 nominal joint-torque scaling assumed for feasibility only, NOT validated"
+  ],
+  "urdf": "/home/yihuang/westlake/windy-arm/src/arm-platform/config/arm6.urdf",
+  "urdf_sha256": "60cbb80ad234f5bb5d55c53d0d77853b04ab33f8a4c1bb3d79889586201b1166",
+  "kp": [
+    6.0,
+    6.0,
+    6.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "kd": [
+    0.3,
+    0.3,
+    0.3,
+    0.03,
+    0.03,
+    0.03
+  ],
+  "velocity_target": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "absolute_authorized_envelope": [
+    0.03,
+    0.03,
+    0.03,
+    0.05,
+    0.05,
+    0.05
+  ],
+  "proposed_reduced_envelope": [
+    0.03,
+    0.03,
+    0.002476587677001943,
+    0.05,
+    0.05,
+    0.05
+  ],
+  "retained_limit_margin": 0.15,
+  "joint_limit_margin": [
+    3.968146324157715,
+    0.505950927734375,
+    0.15495317535400388,
+    3.9975061416625977,
+    1.8329362869262695,
+    3.9978904724121094
+  ],
+  "restore_position_tolerance_proposed": 0.00153350830078125,
+  "minimum_lambda_for_nominal_static_restore_tolerance": [
+    0.9643831164537158,
+    0.9960057979631259,
+    0.9904250276275866,
+    0.9479047939803062,
+    0.7880025933405599,
+    0.0
+  ],
+  "restore_vmax_proposed": 0.03,
+  "restore_amax_proposed": 0.06,
+  "unknowns": [
+    "actual 0x12 scale/sign",
+    "board total torque limit",
+    "persistent/exit board state",
+    "current workspace/desk and passive-catch geometry",
+    "unmodelled tool/payload/friction"
+  ],
+  "blockers": [
+    "Only user-reported J3-to-desk clearance about 10cm is known; full swept-link/catch clearance not established.",
+    "low-lambda, fixed-low-Kp, unsupported slow restore lacks nominal static torque authority within authorized envelope"
+  ],
+  "stages": [
+    {
+      "lambda_value": 0.1,
+      "execution_status": "NOT EXECUTED",
+      "planned_observation_seconds": 0.5,
+      "q_start_live": null,
+      "q_end": null,
+      "delta_q": null,
+      "dq": null,
+      "sag_rate_j2_j3": null,
+      "g_from_saved_q": [
+        0.2583339385303244,
+        -2.303601500310789,
+        0.960947922021869,
+        0.02943664912663042,
+        -0.007233618207626143,
+        0.00010753843208119264
+      ],
+      "candidate_tau_gc": [
+        0.02583339385303244,
+        -0.2303601500310789,
+        0.0960947922021869,
+        0.0029436649126630423,
+        -0.0007233618207626143,
+        1.0753843208119264e-05
+      ],
+      "hypothetical_zero_velocity_zero_error_proxy": [
+        0.02583339385303244,
+        -0.2303601500310789,
+        0.0960947922021869,
+        0.0029436649126630423,
+        -0.0007233618207626143,
+        1.0753843208119264e-05
+      ],
+      "residual_gravity_nominal": [
+        0.23250054467729195,
+        -2.07324135027971,
+        0.8648531298196821,
+        0.02649298421396738,
+        -0.006510256386863529,
+        9.678458887307338e-05
+      ],
+      "required_static_position_error_rad": [
+        0.038750090779548656,
+        0.34554022504661835,
+        0.14414218830328035,
+        0.02649298421396738,
+        0.006510256386863529,
+        9.678458887307338e-05
+      ],
+      "static_feasible_within_authorized_max": [
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "static_feasible_within_restore_tolerance": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ],
+      "executed_duration": 0.0,
+      "guard_utilization": null,
+      "serial_tx_frames": 0,
+      "theoretical_arrays": {
+        "0x10": [
+          -0.031853675842285156,
+          1.494049072265625,
+          -1.415846824645996,
+          -0.0024938583374023438,
+          -0.16706371307373047,
+          -0.002109527587890625,
+          0.0
+        ],
+        "0x11": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "0x12": [
+          0.02583339385303244,
+          -0.2303601500310789,
+          0.0960947922021869,
+          -0.0029436649126630423,
+          0.0007233618207626143,
+          -1.0753843208119264e-05,
+          0.0
+        ],
+        "0x13": [
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1.0,
+          1.0,
+          0.0
+        ],
+        "0x14": [
+          0.3,
+          0.3,
+          0.3,
+          0.03,
+          0.03,
+          0.03,
+          0.0
+        ]
+      }
+    },
+    {
+      "lambda_value": 0.2,
+      "execution_status": "NOT EXECUTED",
+      "planned_observation_seconds": 0.5,
+      "q_start_live": null,
+      "q_end": null,
+      "delta_q": null,
+      "dq": null,
+      "sag_rate_j2_j3": null,
+      "g_from_saved_q": [
+        0.2583339385303244,
+        -2.303601500310789,
+        0.960947922021869,
+        0.02943664912663042,
+        -0.007233618207626143,
+        0.00010753843208119264
+      ],
+      "candidate_tau_gc": [
+        0.05166678770606488,
+        -0.4607203000621578,
+        0.1921895844043738,
+        0.0058873298253260846,
+        -0.0014467236415252286,
+        2.150768641623853e-05
+      ],
+      "hypothetical_zero_velocity_zero_error_proxy": [
+        0.05166678770606488,
+        -0.4607203000621578,
+        0.1921895844043738,
+        0.0058873298253260846,
+        -0.0014467236415252286,
+        2.150768641623853e-05
+      ],
+      "residual_gravity_nominal": [
+        0.20666715082425952,
+        -1.8428812002486312,
+        0.7687583376174952,
+        0.023549319301304338,
+        -0.005786894566100914,
+        8.603074566495411e-05
+      ],
+      "required_static_position_error_rad": [
+        0.034444525137376586,
+        0.3071468667081052,
+        0.12812638960291586,
+        0.023549319301304338,
+        0.005786894566100914,
+        8.603074566495411e-05
+      ],
+      "static_feasible_within_authorized_max": [
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "static_feasible_within_restore_tolerance": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ],
+      "executed_duration": 0.0,
+      "guard_utilization": null,
+      "serial_tx_frames": 0,
+      "theoretical_arrays": {
+        "0x10": [
+          -0.031853675842285156,
+          1.494049072265625,
+          -1.415846824645996,
+          -0.0024938583374023438,
+          -0.16706371307373047,
+          -0.002109527587890625,
+          0.0
+        ],
+        "0x11": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "0x12": [
+          0.05166678770606488,
+          -0.4607203000621578,
+          0.1921895844043738,
+          -0.0058873298253260846,
+          0.0014467236415252286,
+          -2.150768641623853e-05,
+          0.0
+        ],
+        "0x13": [
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1.0,
+          1.0,
+          0.0
+        ],
+        "0x14": [
+          0.3,
+          0.3,
+          0.3,
+          0.03,
+          0.03,
+          0.03,
+          0.0
+        ]
+      }
+    },
+    {
+      "lambda_value": 0.35,
+      "execution_status": "NOT EXECUTED",
+      "planned_observation_seconds": 0.5,
+      "q_start_live": null,
+      "q_end": null,
+      "delta_q": null,
+      "dq": null,
+      "sag_rate_j2_j3": null,
+      "g_from_saved_q": [
+        0.2583339385303244,
+        -2.303601500310789,
+        0.960947922021869,
+        0.02943664912663042,
+        -0.007233618207626143,
+        0.00010753843208119264
+      ],
+      "candidate_tau_gc": [
+        0.09041687848561353,
+        -0.806260525108776,
+        0.33633177270765413,
+        0.010302827194320647,
+        -0.00253176637266915,
+        3.7638451228417425e-05
+      ],
+      "hypothetical_zero_velocity_zero_error_proxy": [
+        0.09041687848561353,
+        -0.806260525108776,
+        0.33633177270765413,
+        0.010302827194320647,
+        -0.00253176637266915,
+        3.7638451228417425e-05
+      ],
+      "residual_gravity_nominal": [
+        0.16791706004471085,
+        -1.4973409752020128,
+        0.6246161493142148,
+        0.019133821932309773,
+        -0.004701851834956993,
+        6.989998085277522e-05
+      ],
+      "required_static_position_error_rad": [
+        0.027986176674118474,
+        0.24955682920033548,
+        0.10410269155236913,
+        0.019133821932309773,
+        0.004701851834956993,
+        6.989998085277522e-05
+      ],
+      "static_feasible_within_authorized_max": [
+        true,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "static_feasible_within_restore_tolerance": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ],
+      "executed_duration": 0.0,
+      "guard_utilization": null,
+      "serial_tx_frames": 0,
+      "theoretical_arrays": {
+        "0x10": [
+          -0.031853675842285156,
+          1.494049072265625,
+          -1.415846824645996,
+          -0.0024938583374023438,
+          -0.16706371307373047,
+          -0.002109527587890625,
+          0.0
+        ],
+        "0x11": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "0x12": [
+          0.09041687848561353,
+          -0.806260525108776,
+          0.33633177270765413,
+          -0.010302827194320647,
+          0.00253176637266915,
+          -3.7638451228417425e-05,
+          0.0
+        ],
+        "0x13": [
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1.0,
+          1.0,
+          0.0
+        ],
+        "0x14": [
+          0.3,
+          0.3,
+          0.3,
+          0.03,
+          0.03,
+          0.03,
+          0.0
+        ]
+      }
+    },
+    {
+      "lambda_value": 0.5,
+      "execution_status": "NOT EXECUTED",
+      "planned_observation_seconds": 0.5,
+      "q_start_live": null,
+      "q_end": null,
+      "delta_q": null,
+      "dq": null,
+      "sag_rate_j2_j3": null,
+      "g_from_saved_q": [
+        0.2583339385303244,
+        -2.303601500310789,
+        0.960947922021869,
+        0.02943664912663042,
+        -0.007233618207626143,
+        0.00010753843208119264
+      ],
+      "candidate_tau_gc": [
+        0.1291669692651622,
+        -1.1518007501553944,
+        0.4804739610109345,
+        0.01471832456331521,
+        -0.0036168091038130713,
+        5.376921604059632e-05
+      ],
+      "hypothetical_zero_velocity_zero_error_proxy": [
+        0.1291669692651622,
+        -1.1518007501553944,
+        0.4804739610109345,
+        0.01471832456331521,
+        -0.0036168091038130713,
+        5.376921604059632e-05
+      ],
+      "residual_gravity_nominal": [
+        0.1291669692651622,
+        -1.1518007501553944,
+        0.4804739610109345,
+        0.01471832456331521,
+        -0.0036168091038130713,
+        5.376921604059632e-05
+      ],
+      "required_static_position_error_rad": [
+        0.021527828210860366,
+        0.19196679169256572,
+        0.08007899350182242,
+        0.01471832456331521,
+        0.0036168091038130713,
+        5.376921604059632e-05
+      ],
+      "static_feasible_within_authorized_max": [
+        true,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "static_feasible_within_restore_tolerance": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ],
+      "executed_duration": 0.0,
+      "guard_utilization": null,
+      "serial_tx_frames": 0,
+      "theoretical_arrays": {
+        "0x10": [
+          -0.031853675842285156,
+          1.494049072265625,
+          -1.415846824645996,
+          -0.0024938583374023438,
+          -0.16706371307373047,
+          -0.002109527587890625,
+          0.0
+        ],
+        "0x11": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "0x12": [
+          0.1291669692651622,
+          -1.1518007501553944,
+          0.4804739610109345,
+          -0.01471832456331521,
+          0.0036168091038130713,
+          -5.376921604059632e-05,
+          0.0
+        ],
+        "0x13": [
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1.0,
+          1.0,
+          0.0
+        ],
+        "0x14": [
+          0.3,
+          0.3,
+          0.3,
+          0.03,
+          0.03,
+          0.03,
+          0.0
+        ]
+      }
+    },
+    {
+      "lambda_value": 0.75,
+      "execution_status": "NOT EXECUTED",
+      "planned_observation_seconds": 0.5,
+      "q_start_live": null,
+      "q_end": null,
+      "delta_q": null,
+      "dq": null,
+      "sag_rate_j2_j3": null,
+      "g_from_saved_q": [
+        0.2583339385303244,
+        -2.303601500310789,
+        0.960947922021869,
+        0.02943664912663042,
+        -0.007233618207626143,
+        0.00010753843208119264
+      ],
+      "candidate_tau_gc": [
+        0.19375045389774329,
+        -1.7277011252330916,
+        0.7207109415164017,
+        0.022077486844972814,
+        -0.005425213655719607,
+        8.065382406089448e-05
+      ],
+      "hypothetical_zero_velocity_zero_error_proxy": [
+        0.19375045389774329,
+        -1.7277011252330916,
+        0.7207109415164017,
+        0.022077486844972814,
+        -0.005425213655719607,
+        8.065382406089448e-05
+      ],
+      "residual_gravity_nominal": [
+        0.0645834846325811,
+        -0.5759003750776972,
+        0.24023698050546724,
+        0.007359162281657605,
+        -0.0018084045519065357,
+        2.688460802029816e-05
+      ],
+      "required_static_position_error_rad": [
+        0.010763914105430183,
+        0.09598339584628286,
+        0.04003949675091121,
+        0.007359162281657605,
+        0.0018084045519065357,
+        2.688460802029816e-05
+      ],
+      "static_feasible_within_authorized_max": [
+        true,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "static_feasible_within_restore_tolerance": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ],
+      "executed_duration": 0.0,
+      "guard_utilization": null,
+      "serial_tx_frames": 0,
+      "theoretical_arrays": {
+        "0x10": [
+          -0.031853675842285156,
+          1.494049072265625,
+          -1.415846824645996,
+          -0.0024938583374023438,
+          -0.16706371307373047,
+          -0.002109527587890625,
+          0.0
+        ],
+        "0x11": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "0x12": [
+          0.19375045389774329,
+          -1.7277011252330916,
+          0.7207109415164017,
+          -0.022077486844972814,
+          0.005425213655719607,
+          -8.065382406089448e-05,
+          0.0
+        ],
+        "0x13": [
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1.0,
+          1.0,
+          0.0
+        ],
+        "0x14": [
+          0.3,
+          0.3,
+          0.3,
+          0.03,
+          0.03,
+          0.03,
+          0.0
+        ]
+      }
+    },
+    {
+      "lambda_value": 1.0,
+      "execution_status": "NOT EXECUTED",
+      "planned_observation_seconds": 0.5,
+      "q_start_live": null,
+      "q_end": null,
+      "delta_q": null,
+      "dq": null,
+      "sag_rate_j2_j3": null,
+      "g_from_saved_q": [
+        0.2583339385303244,
+        -2.303601500310789,
+        0.960947922021869,
+        0.02943664912663042,
+        -0.007233618207626143,
+        0.00010753843208119264
+      ],
+      "candidate_tau_gc": [
+        0.2583339385303244,
+        -2.303601500310789,
+        0.960947922021869,
+        0.02943664912663042,
+        -0.007233618207626143,
+        0.00010753843208119264
+      ],
+      "hypothetical_zero_velocity_zero_error_proxy": [
+        0.2583339385303244,
+        -2.303601500310789,
+        0.960947922021869,
+        0.02943664912663042,
+        -0.007233618207626143,
+        0.00010753843208119264
+      ],
+      "residual_gravity_nominal": [
+        0.0,
+        -0.0,
+        0.0,
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "required_static_position_error_rad": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "static_feasible_within_authorized_max": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "static_feasible_within_restore_tolerance": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "executed_duration": 0.0,
+      "guard_utilization": null,
+      "serial_tx_frames": 0,
+      "theoretical_arrays": {
+        "0x10": [
+          -0.031853675842285156,
+          1.494049072265625,
+          -1.415846824645996,
+          -0.0024938583374023438,
+          -0.16706371307373047,
+          -0.002109527587890625,
+          0.0
+        ],
+        "0x11": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "0x12": [
+          0.2583339385303244,
+          -2.303601500310789,
+          0.960947922021869,
+          -0.02943664912663042,
+          0.007233618207626143,
+          -0.00010753843208119264,
+          0.0
+        ],
+        "0x13": [
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1.0,
+          1.0,
+          0.0
+        ],
+        "0x14": [
+          0.3,
+          0.3,
+          0.3,
+          0.03,
+          0.03,
+          0.03,
+          0.0
+        ]
+      }
+    }
+  ],
+  "serial_open_count": 0,
+  "serial_write_count": 0,
+  "hardware_executable_available": false,
+  "snapshot_source": "/home/yihuang/westlake/windy-arm/docs/real_arm_audit_20260917/control_preparation/takeover/j5_observed_retry_20260917/run1.jsonl.pre_send.json",
+  "program_sha256": "8af4c5a0ff65f0fe456a0f696703cd1cfe5e004b50c9defcea25905a7946cdad",
+  "site_report": {
+    "lowest_point": "joint3",
+    "approximate_desk_clearance_m": 0.1,
+    "source": "user current message",
+    "full_workspace_clearance": "UNKNOWN",
+    "passive_catch_gap": "UNKNOWN",
+    "support_removal_status": "not explicitly confirmed in current site reply"
+  },
+  "why_no_execution": "Low-lambda return-to-start lacks nominal static restoring authority at approved fixed low gains. Completing normal-stage->restore->next-stage cannot be justified without altering the approved plan or relying on unverified friction/board behavior. No device opened."
+}

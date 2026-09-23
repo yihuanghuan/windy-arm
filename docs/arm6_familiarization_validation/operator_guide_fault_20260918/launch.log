@@ -1,0 +1,7 @@
+1789722365.5630841 [INFO] [launch]: All log files can be found below /home/yihuang/.ros/log/2026-09-18-17-06-05-562269-JIAOLONG-Series-54678
+1789722365.5631714 [INFO] [launch]: Default logging verbosity is set to INFO
+1789722365.7082770 [INFO] [student_arm_node-1]: process started with pid [54702]
+1789722365.7083757 [INFO] [robot_state_publisher-2]: process started with pid [54704]
+1789722473.9320836 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+1789722474.0368395 [INFO] [robot_state_publisher-2]: process has finished cleanly [pid 54704]
+1789722474.0979350 [INFO] [student_arm_node-1]: process has finished cleanly [pid 54702]

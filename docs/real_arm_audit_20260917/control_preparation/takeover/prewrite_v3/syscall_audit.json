@@ -1,0 +1,10 @@
+{
+  "scope": "final dry-run process and descendants; terminal/file writes are not serial TX",
+  "serial_open_syscalls": 0,
+  "serial_write_syscalls": 0,
+  "socket_or_connect_syscalls": 0,
+  "serial_matches": [],
+  "0x10_to_0x14_TX": 0,
+  "hardware_controller_started": false,
+  "program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd"
+}

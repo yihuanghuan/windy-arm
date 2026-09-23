@@ -1,0 +1,2 @@
+[INFO] [1789721342.835754183] [arm6_manual_guidance]: gravity = g_arm6(q + explicit_offset), ratio=1; damping only in MIT Kd
+[ERROR] [1789721343.088146457] [arm6_manual_guidance]: GUIDANCE STOPPED: old/future JointState stamp; restart required

@@ -1,0 +1,23 @@
+{
+  "stop_reason": "guard: feedback stale/invalid/overspeed: fault latched, restart required",
+  "fault": "GUIDANCE STOPPED: operator stop; restart required",
+  "guide_reached": false,
+  "command_count": 560,
+  "q_start": [
+    -0.02422332763671875,
+    1.3620586395263672,
+    -1.4059276580810547,
+    0.0036439895629882812,
+    0.1022329330444336,
+    0.0028772354125976562
+  ],
+  "q_end": [
+    -0.02422332763671875,
+    1.4589529037475586,
+    -1.4223318099975586,
+    0.004795074462890625,
+    0.16322612762451172,
+    0.0028772354125976562
+  ],
+  "hardware_disable_claimed": false
+}

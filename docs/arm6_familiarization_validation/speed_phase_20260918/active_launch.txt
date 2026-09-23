@@ -1,0 +1,53 @@
+[INFO] [launch]: All log files can be found below /home/yihuang/.ros/log/2026-09-18-14-56-13-119017-JIAOLONG-Series-33664
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [student_arm_node-1]: process started with pid [33688]
+[INFO] [robot_state_publisher-2]: process started with pid [33690]
+[INFO] [rviz2-3]: process started with pid [33692]
+[INFO] [manual_guidance.py-4]: process started with pid [33694]
+[robot_state_publisher-2] [WARN] [1789714573.453814204] [kdl_parser]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.
+[robot_state_publisher-2] [INFO] [1789714573.454581438] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1789714573.456025087] [robot_state_publisher]: got segment link1
+[robot_state_publisher-2] [INFO] [1789714573.457409625] [robot_state_publisher]: got segment link2
+[robot_state_publisher-2] [INFO] [1789714573.458423821] [robot_state_publisher]: got segment link3
+[robot_state_publisher-2] [INFO] [1789714573.459470969] [robot_state_publisher]: got segment link4
+[robot_state_publisher-2] [INFO] [1789714573.460770939] [robot_state_publisher]: got segment link5
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[robot_state_publisher-2] [INFO] [1789714573.462096938] [robot_state_publisher]: got segment link6
+[student_arm_node-1] add motor
+[student_arm_node-1] [INFO] [1789714573.478992114] [student_arm_node]: Arm type 'a_l1' initialized from config
+[student_arm_node-1] [INFO] [1789714573.485946455] [student_arm_node]: Direct-effort fallback hold: gravity feedforward enabled
+[student_arm_node-1] [INFO] [1789714573.486321336] [student_arm_node]: SmoothPositionController: max_velocity=0.500, velocity_feedforward=false, ff_gain=0.700, fb_tau=0.150, fb_vel_limit=0.500, acceleration_limit=true, max_acceleration=5.000
+[student_arm_node-1] [INFO] [1789714573.486673885] [student_arm_node]: StudentArmNode started: six-axis familiarization; position commands disabled
+[student_arm_node-1] [INFO] [1789714573.487021244] [student_arm_node]: Direct effort command topic /student/joint_effort_command is enabled
+[student_arm_node-1] [INFO] [1789714573.512884515] [student_arm_node]: Direct effort startup: serial heartbeat and 3 feedback frames confirmed; ready for configured effort/hold mode
+[manual_guidance.py-4] [INFO] [1789714573.941564331] [arm6_manual_guidance]: gravity = g_arm6(q + explicit_offset), ratio=1; damping only in MIT Kd
+[manual_guidance.py-4] [INFO] [1789714573.967081425] [arm6_manual_guidance]: ACTIVE RAMP_GRAVITY
+[rviz2-3] [INFO] [1789714575.183288096] [rviz2]: Stereo is NOT SUPPORTED
+[rviz2-3] [INFO] [1789714575.183431955] [rviz2]: OpenGl version: 4.6 (GLSL 4.6)
+[rviz2-3] [INFO] [1789714575.568221772] [rviz2]: Stereo is NOT SUPPORTED
+[manual_guidance.py-4] [INFO] [1789714576.976904957] [arm6_manual_guidance]: ACTIVE RELEASE_STIFFNESS
+[manual_guidance.py-4] [INFO] [1789714579.977148801] [arm6_manual_guidance]: ACTIVE GUIDE
+[student_arm_node-1] [WARN] [1789714614.516773852] [student_arm_node]: SPEED WARNING joint1 phase=GUIDE dq=0.512821
+[manual_guidance.py-4] [WARN] [1789714614.527534661] [arm6_manual_guidance]: SPEED WARNING joint1 phase=GUIDE dq=0.532356
+[student_arm_node-1] [WARN] [1789714616.326781482] [student_arm_node]: SPEED WARNING joint1 phase=GUIDE dq=-0.512821
+[manual_guidance.py-4] [WARN] [1789714616.337408542] [arm6_manual_guidance]: SPEED WARNING joint1 phase=GUIDE dq=-0.512821
+[student_arm_node-1] [WARN] [1789714616.476783539] [student_arm_node]: SPEED WARNING joint1 phase=GUIDE dq=-0.542124
+[manual_guidance.py-4] [WARN] [1789714616.487160520] [arm6_manual_guidance]: SPEED WARNING joint1 phase=GUIDE dq=-0.542124
+[student_arm_node-1] [WARN] [1789714618.846794526] [student_arm_node]: SPEED WARNING joint2 phase=GUIDE dq=-0.522589
+[manual_guidance.py-4] [WARN] [1789714618.857067944] [arm6_manual_guidance]: SPEED WARNING joint2 phase=GUIDE dq=-0.522589
+[student_arm_node-1] [ERROR] [1789714619.006779068] [student_arm_node]: SPEED HARD_ABORT joint2 phase=GUIDE type=sustained dq=-0.971916 duration=0.080033
+[student_arm_node-1] [ERROR] [1789714619.007045546] [student_arm_node]: feedback stale/invalid/overspeed: fault latched, restart required
+[student_arm_node-1] [ERROR] [1789714619.026065117] [student_arm_node]: guidance speed fault axes=2: fault latched, restart required
+[manual_guidance.py-4] [ERROR] [1789714619.028064946] [arm6_manual_guidance]: GUIDANCE STOPPED: speed HARD_ABORT joint2 phase=GUIDE type=sustained dq=-0.981686 duration=0.089987s; restart required
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[rviz2-3] [INFO] [1789714853.066127114] [rclcpp]: signal_handler(signum=2)
+[robot_state_publisher-2] [INFO] [1789714853.066128427] [rclcpp]: signal_handler(signum=2)
+[student_arm_node-1] [INFO] [1789714853.066136812] [rclcpp]: signal_handler(signum=2)
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 33690]
+[INFO] [manual_guidance.py-4]: process has finished cleanly [pid 33694]
+[INFO] [student_arm_node-1]: process has finished cleanly [pid 33688]
+[INFO] [rviz2-3]: process has finished cleanly [pid 33692]

@@ -1,0 +1,36 @@
+Arguments (pass arguments as '<name>:=<value>'):
+
+    'port_name':
+        Verified real-arm serial path; no guessed default
+
+    'mode':
+        readonly=no motor writes; hold=PD hold; guidance=active gravity/hand guiding. Valid choices are: ['readonly', 'hold', 'guidance']
+        (default: 'readonly')
+
+    'config':
+        no description given
+        (default: '/tmp/windy-arm6-handover-install/manipulator/share/manipulator/arm6_familiarization.yaml')
+
+    'use_rviz':
+        One of: ['true', 'false']
+        (default: 'true')
+
+    'manual_push_test':
+        Capability only; explicit service and 3 stable handovers still required. Valid choices are: ['true', 'false']
+        (default: 'false')
+
+    'start_guidance':
+        Allow repeated guidance trials with one persistent hardware driver. Valid choices are: ['true', 'false']
+        (default: 'true')
+
+    'hold_command_file':
+        Fresh verified existing command for driver restart; never guessed from q
+        (default: '')
+
+    'supported_startup_file':
+        Fresh stationary feedback for supported cold-start HOLD; not command readback
+        (default: '')
+
+    'external_support_confirmed':
+        Required only for supported cold start; support stays until HOLD verified. Valid choices are: ['true', 'false']
+        (default: 'false')

@@ -1,0 +1,3 @@
+Type: sensor_msgs/msg/JointState
+Publisher count: 0
+Subscription count: 1

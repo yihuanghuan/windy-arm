@@ -1,0 +1,30 @@
+{
+  "time": "2026-09-17T12:59:47.069595+00:00",
+  "program_sha256": "68c682381dc69ab7d7e4ba03944025d1900ac235b61cd060e3f1f7be58ca5691",
+  "recorded_review_sha256": "68c682381dc69ab7d7e4ba03944025d1900ac235b61cd060e3f1f7be58ca5691",
+  "matches_recorded_review": true,
+  "gate_a_authorization": "Explicitly granted in current user prompt; not missing",
+  "user_confirmed": [
+    "independent load-bearing support",
+    "operator present",
+    "physical power isolation available"
+  ],
+  "preflight": "ABORT BEFORE FIRST COMMAND",
+  "serial_opened": false,
+  "serial_write_calls_by_this_turn": 0,
+  "tx_frames_by_this_turn": {
+    "0x10": 0,
+    "0x11": 0,
+    "0x12": 0,
+    "0x13": 0,
+    "0x14": 0
+  },
+  "program_modified": false,
+  "hardware_entry_invoked": false,
+  "blockers": [
+    "No required decoded pre-send print/record in reviewed live()",
+    "First returned candidate precedes explicit proxy calculation/record",
+    "Required firmware/board limit/transition evidence absent"
+  ],
+  "verdict": "INCONCLUSIVE"
+}

@@ -1,0 +1,22 @@
+ src/arm-platform/CMakeLists.txt                    |   4 +
+ src/arm-platform/config/arm6_calibration.yaml      |  10 +-
+ .../include/manipulator/robotics/arm/a_l1.h        |   8 +-
+ .../include/manipulator/robotics/arm/a_l1_gamma.h  |   8 +-
+ .../include/manipulator/robotics/arm/abs_arm.h     |   3 +
+ .../include/manipulator/robotics/arm_platform.h    |   7 +
+ .../manipulator/robotics/protocol/protocol_v1.h    |  11 +-
+ .../manipulator/ros_nodes/student_arm_node.h       |  38 ++
+ src/arm-platform/launch/student_arm6.launch.py     |   4 +-
+ src/arm-platform/package.xml                       |   4 +
+ .../src/controller/gravity_controller.cc           |  58 +--
+ src/arm-platform/src/robotics/arm/a_l1.cc          |   3 +-
+ src/arm-platform/src/robotics/arm_platform.cc      |  35 +-
+ src/arm-platform/src/robotics/motor/dm_motor.cc    |   9 +-
+ .../src/robotics/protocol/protocol_v1.cc           |  49 ++-
+ src/arm-platform/src/ros_nodes/student_arm_node.cc | 438 +++++++++++++++++++--
+ src/arm-platform/task_space_smc/core/model.py      |  29 +-
+ .../hw/phase4_gravity_compensation.py              |  21 +-
+ .../task_space_smc/hw/phase5_inertia_id.py         |  13 +-
+ src/arm-platform/test/test_effort_safety.cc        |  47 +++
+ src/arm-platform/test/test_protocol_heartbeat.cc   |  53 +++
+ 21 files changed, 715 insertions(+), 137 deletions(-)

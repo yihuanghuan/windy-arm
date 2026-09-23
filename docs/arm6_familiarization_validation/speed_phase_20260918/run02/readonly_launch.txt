@@ -1,0 +1,33 @@
+[INFO] [launch]: All log files can be found below /home/yihuang/.ros/log/2026-09-18-15-00-53-669278-JIAOLONG-Series-34607
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [student_arm_node-1]: process started with pid [34634]
+[INFO] [robot_state_publisher-2]: process started with pid [34636]
+[INFO] [rviz2-3]: process started with pid [34638]
+[robot_state_publisher-2] [WARN] [1789714853.823949544] [kdl_parser]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.
+[robot_state_publisher-2] [INFO] [1789714853.824002172] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1789714853.824029283] [robot_state_publisher]: got segment link1
+[robot_state_publisher-2] [INFO] [1789714853.824034944] [robot_state_publisher]: got segment link2
+[robot_state_publisher-2] [INFO] [1789714853.824038440] [robot_state_publisher]: got segment link3
+[robot_state_publisher-2] [INFO] [1789714853.824041656] [robot_state_publisher]: got segment link4
+[robot_state_publisher-2] [INFO] [1789714853.824044722] [robot_state_publisher]: got segment link5
+[robot_state_publisher-2] [INFO] [1789714853.824047747] [robot_state_publisher]: got segment link6
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] [INFO] [1789714853.839856517] [student_arm_node]: Arm type 'a_l1' initialized from config
+[student_arm_node-1] [INFO] [1789714853.839996860] [student_arm_node]: SmoothPositionController: max_velocity=0.500, velocity_feedforward=false, ff_gain=0.700, fb_tau=0.150, fb_vel_limit=0.500, acceleration_limit=true, max_acceleration=5.000
+[student_arm_node-1] [INFO] [1789714853.840014463] [student_arm_node]: StudentArmNode started: READ ONLY: feedback polling, all motor writes disabled
+[student_arm_node-1] [INFO] [1789714853.840018921] [student_arm_node]: Direct effort command topic /student/joint_effort_command is disabled
+[rviz2-3] [INFO] [1789714854.377041243] [rviz2]: Stereo is NOT SUPPORTED
+[rviz2-3] [INFO] [1789714854.377095224] [rviz2]: OpenGl version: 4.6 (GLSL 4.6)
+[rviz2-3] [INFO] [1789714854.474456074] [rviz2]: Stereo is NOT SUPPORTED
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[rviz2-3] [INFO] [1789714890.570332918] [rclcpp]: signal_handler(signum=2)
+[student_arm_node-1] [INFO] [1789714890.570351052] [rclcpp]: signal_handler(signum=2)
+[robot_state_publisher-2] [INFO] [1789714890.570349719] [rclcpp]: signal_handler(signum=2)
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 34636]
+[INFO] [student_arm_node-1]: process has finished cleanly [pid 34634]
+[INFO] [rviz2-3]: process has finished cleanly [pid 34638]

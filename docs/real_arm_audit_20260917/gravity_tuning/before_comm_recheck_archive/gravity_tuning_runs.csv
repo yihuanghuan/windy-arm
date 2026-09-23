@@ -1,0 +1,2 @@
+run_id,phase,result,lambda,Kp,Kd,q_start,q_end,duration,max_displacement,velocity,drift,oscillation,gravity_torque,P,D,FF,direction_consistency,desk_margin,joint_limit_margin,restore_result,serial_tx_frames,checksum_errors,reason
+preflight01,READ_ONLY_NOT_ACTIVE_RUN,HARD_ABORT,,,,,,,,,,,,,,,,,,NOT_ATTEMPTED,0,1,0x22 checksum mismatch before control qualification

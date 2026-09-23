@@ -1,0 +1,12 @@
+{
+  "program_sha256": "7a7cffcd7c71050a453b8adac2987207ebc6c64cadea6dfeb1802ea3c9e82505",
+  "plan_sha256": "07d1328567c7fe5d50a0d6348cc2c223851c04d00bc3dbb28cbb591ce688d690",
+  "current_user_authorization": true,
+  "operator_present_power_isolation_available": true,
+  "no_support_no_extra_load": true,
+  "workspace_clear": true,
+  "accept_unknown_firmware_risk": true,
+  "authorization_reference": "Current user expanded bounded gravity authority: lambda 0..1, historical gains, geometry-derived motion bounds, no intentional q target changes; current site reply confirms support removed, personnel outside, no tool/load, J3 10cm desk clearance.",
+  "maximum_attempts_before_analysis": 1,
+  "hard_abort_means_no_restore_no_retry": true
+}

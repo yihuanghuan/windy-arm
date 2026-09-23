@@ -1,0 +1,79 @@
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800  1) arms:
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800  2)   a_l1_gamma:
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800  3)     joints:
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800  4)       - name: "joint1"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800  5)         model: "DM4340-48V"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800  6)         id: 0
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800  7)         lower_limit: -4
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800  8)         upper_limit: 4
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800  9)       - name: "joint2"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 10)         model: "DM4340-48V"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 11)         id: 1
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 12)         lower_limit: -3.1415
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 13)         upper_limit: 2
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 14)       - name: "joint3"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 15)         model: "DM4340-48V"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 16)         id: 2
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 17)         lower_limit: -1.5708
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 18)         upper_limit: 1.5708
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 19)       - name: "joint4"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 20)         model: "RS05"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 21)         id: 3
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 22)         coord_system: "left_hand"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 23)         lower_limit: -4
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 24)         upper_limit: 4
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 25)       - name: "joint5"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 26)         model: "RS05"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 27)         id: 4
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 28)         lower_limit: -2
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 29)         upper_limit: 2
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 30)       - name: "joint6"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 31)         model: "RS05"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 32)         id: 5
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 33)         lower_limit: -4
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 34)         upper_limit: 4
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 35)       - name: "joint7"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 36)         model: "RS05"
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 37)         id: 6
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 38)         lower_limit: -4
+^7563c11 (chnchenfan 2026-06-28 15:31:39 +0800 39)         upper_limit: 4
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 40) 
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 41)   # 6 自由度实机构型: 末端无电机, link7/joint7 物理不存在。
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 42)   # 固件仍按 7 通道上报 (dataLen=28), 但通道 7 是幽灵数据
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 43)   # (position -6.52 rad / velocity 27.97 rad/s / temperature 1),
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 44)   # 只创建 6 个电机即可让驱动层不去读它。
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 45)   # 与之配套: urdf_path=arm6.urdf, 末端 frame=link6。
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 46)   # 注: 每关节旋向由 motor_config.yaml 的 coord_system 决定,
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 47)   #     本文件的 coord_system 字段不被 LoadArmConfig 解析。
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 48)   a_l1_gamma6:
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 49)     joints:
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 50)       - name: "joint1"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 51)         model: "DM4340-48V"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 52)         id: 0
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 53)         lower_limit: -4
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 54)         upper_limit: 4
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 55)       - name: "joint2"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 56)         model: "DM4340-48V"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 57)         id: 1
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 58)         lower_limit: -3.1415
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 59)         upper_limit: 2
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 60)       - name: "joint3"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 61)         model: "DM4340-48V"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 62)         id: 2
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 63)         lower_limit: -1.5708
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 64)         upper_limit: 1.5708
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 65)       - name: "joint4"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 66)         model: "RS05"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 67)         id: 3
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 68)         lower_limit: -4
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 69)         upper_limit: 4
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 70)       - name: "joint5"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 71)         model: "RS05"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 72)         id: 4
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 73)         lower_limit: -2
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 74)         upper_limit: 2
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 75)       - name: "joint6"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 76)         model: "RS05"
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 77)         id: 5
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 78)         lower_limit: -4
+ef84a9db (chnchenfan 2026-08-04 17:23:06 -0700 79)         upper_limit: 4

@@ -1,0 +1,8 @@
+{
+  "user_statement": "我稍微碰了下末端关节",
+  "context": "reply to question about contact between Run03 and Attempt04",
+  "manual_contact_confirmed": true,
+  "exact_time_force_and_full_displacement_attribution": "UNKNOWN",
+  "interpretation": "Between-session difference cannot be used as evidence of spontaneous drift; geometry plan was invalidated before TX",
+  "no_restart_after_hard_abort": true
+}

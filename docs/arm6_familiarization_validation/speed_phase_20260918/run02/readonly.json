@@ -1,0 +1,51 @@
+{
+  "passed": true,
+  "sample_count": 403,
+  "matched_tf_count": 258,
+  "measured_rate_hz": 100.46460345701087,
+  "max_receive_gap_sec": 0.010148532001039712,
+  "first_q": [
+    -0.08869266510009766,
+    1.2911043167114258,
+    -1.3929576873779297,
+    -0.037018775939941406,
+    -0.039704322814941406,
+    -0.002109527587890625
+  ],
+  "last_q": [
+    -0.08869266510009766,
+    1.2911043167114258,
+    -1.3929576873779297,
+    -0.037018775939941406,
+    -0.039704322814941406,
+    -0.002109527587890625
+  ],
+  "observed_q_span": [
+    0.0,
+    0.0,
+    0.0,
+    0.000766754150390625,
+    0.0003833770751953125,
+    0.000766754150390625
+  ],
+  "max_fk_tf_error": [
+    5.006713685883697e-17,
+    4.244408962118466e-16
+  ],
+  "graph": {
+    "nodes": [
+      "student_arm_node",
+      "robot_state_publisher",
+      "arm6_familiarization_rviz",
+      "transform_listener_impl_5b299b562430",
+      "arm6_feedback_verifier"
+    ],
+    "joint_state_publishers": [
+      "student_arm_node"
+    ],
+    "motor_control_publishers": []
+  },
+  "errors": [],
+  "manual_motion_observed_by_operator": false,
+  "note": "TF agrees with encoder-based URDF; physical calibration and hand-guidance are not certified"
+}

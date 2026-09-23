@@ -1,0 +1,12 @@
+{
+  "utc": "2026-09-17T13:29:52.867092+00:00",
+  "program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd",
+  "fuser_returncode": 1,
+  "fuser_stdout": "",
+  "fuser_stderr": "",
+  "external_support_retained_user_confirmed": true,
+  "user_observing_joint5": true,
+  "maximum_attempts": 1,
+  "duration_seconds": 2,
+  "control_changes": []
+}

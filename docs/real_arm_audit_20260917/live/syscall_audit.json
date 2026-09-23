@@ -1,0 +1,18 @@
+{
+  "serial_open_events": [
+    "19016 openat(AT_FDCWD</home/yihuang/westlake/windy-arm>, \"/dev/ttyUSB0\", O_RDONLY|O_NOCTTY|O_NONBLOCK|O_CLOEXEC) = 4</dev/ttyUSB0<char 188:0>>"
+  ],
+  "serial_close_events": [
+    "19016 close(4</dev/ttyUSB0<char 188:0>>) = 0"
+  ],
+  "serial_write_syscalls": [],
+  "serial_read_calls": 3036,
+  "serial_ioctl_events": [
+    "19016 ioctl(4</dev/ttyUSB0<char 188:0>>, TIOCEXCL) = 0",
+    "19016 ioctl(4</dev/ttyUSB0<char 188:0>>, TCGETS, {B9600 opost isig icanon echo ...}) = 0",
+    "19016 ioctl(4</dev/ttyUSB0<char 188:0>>, TCGETS, {B9600 opost isig icanon echo ...}) = 0",
+    "19016 ioctl(4</dev/ttyUSB0<char 188:0>>, TCGETS, {B9600 opost isig icanon echo ...}) = 0",
+    "19016 ioctl(4</dev/ttyUSB0<char 188:0>>, SNDCTL_TMR_START or TCSETS, {B921600 -opost -isig -icanon -echo ...}) = 0",
+    "19016 ioctl(4</dev/ttyUSB0<char 188:0>>, TCGETS, {B921600 -opost -isig -icanon -echo ...}) = 0"
+  ]
+}

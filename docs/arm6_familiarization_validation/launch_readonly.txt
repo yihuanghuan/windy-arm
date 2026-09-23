@@ -1,0 +1,38 @@
+[INFO] [launch]: All log files can be found below /home/yihuang/.ros/log/2026-09-18-11-30-38-459782-JIAOLONG-Series-19328
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [student_arm_node-1]: process started with pid [19355]
+[INFO] [robot_state_publisher-2]: process started with pid [19357]
+[INFO] [rviz2-3]: process started with pid [19359]
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[robot_state_publisher-2] [WARN] [1789702238.811979896] [kdl_parser]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.
+[robot_state_publisher-2] [INFO] [1789702238.812378540] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1789702238.812499707] [robot_state_publisher]: got segment link1
+[robot_state_publisher-2] [INFO] [1789702238.812558917] [robot_state_publisher]: got segment link2
+[robot_state_publisher-2] [INFO] [1789702238.812625993] [robot_state_publisher]: got segment link3
+[robot_state_publisher-2] [INFO] [1789702238.812713075] [robot_state_publisher]: got segment link4
+[robot_state_publisher-2] [INFO] [1789702238.812777966] [robot_state_publisher]: got segment link5
+[robot_state_publisher-2] [INFO] [1789702238.812839521] [robot_state_publisher]: got segment link6
+[student_arm_node-1] [INFO] [1789702238.818481760] [student_arm_node]: Arm type 'a_l1' initialized from config
+[student_arm_node-1] [INFO] [1789702238.819313844] [student_arm_node]: SmoothPositionController: max_velocity=0.500, velocity_feedforward=false, ff_gain=0.700, fb_tau=0.150, fb_vel_limit=0.500, acceleration_limit=true, max_acceleration=5.000
+[student_arm_node-1] [INFO] [1789702238.819387121] [student_arm_node]: StudentArmNode started. Publish sensor_msgs/JointState to /student/joint_command to control the arm.
+[student_arm_node-1] [INFO] [1789702238.819434239] [student_arm_node]: Direct effort command topic /student/joint_effort_command is enabled
+[rviz2-3] [INFO] [1789702240.428702355] [rviz2]: Stereo is NOT SUPPORTED
+[rviz2-3] [INFO] [1789702240.428860901] [rviz2]: OpenGl version: 4.6 (GLSL 4.6)
+[rviz2-3] [INFO] [1789702240.793388918] [rviz2]: Stereo is NOT SUPPORTED
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [rviz2-3]: sending signal 'SIGINT' to process[rviz2-3]
+[INFO] [robot_state_publisher-2]: sending signal 'SIGINT' to process[robot_state_publisher-2]
+[INFO] [student_arm_node-1]: sending signal 'SIGINT' to process[student_arm_node-1]
+[rviz2-3] [INFO] [1789702278.065910274] [rclcpp]: signal_handler(signum=2)
+[robot_state_publisher-2] [INFO] [1789702278.065945290] [rclcpp]: signal_handler(signum=2)
+[student_arm_node-1] [INFO] [1789702278.065950299] [rclcpp]: signal_handler(signum=2)
+[rviz2-3] [INFO] [1789702278.068637900] [rclcpp]: signal_handler(signum=2)
+[robot_state_publisher-2] [INFO] [1789702278.069102448] [rclcpp]: signal_handler(signum=2)
+[ERROR] [student_arm_node-1]: process has died [pid 19355, exit code -2, cmd '/tmp/windy-familiarization-install/manipulator/lib/manipulator/student_arm_node --ros-args -r __node:=student_arm_node --params-file /tmp/launch_params_c8y4thcz'].
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 19357]
+[INFO] [rviz2-3]: process has finished cleanly [pid 19359]

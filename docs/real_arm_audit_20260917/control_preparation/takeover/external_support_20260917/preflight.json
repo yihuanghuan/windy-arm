@@ -1,0 +1,8 @@
+{
+  "utc": "2026-09-17T13:24:32.936357+00:00",
+  "program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd",
+  "byte_identical_to_previous_executed_version": true,
+  "fuser": "",
+  "support_change": "user now confirms actual external distal/forearm weight support; previous condition corrected to no support",
+  "control_changes": []
+}

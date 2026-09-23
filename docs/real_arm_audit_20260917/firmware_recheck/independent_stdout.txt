@@ -1,0 +1,699 @@
+{
+  "input": "docs/real_arm_audit_20260917/firmware_recheck/capture.rx.bin",
+  "sha256": "e3a591b9fdeb86458e397f9694c601c92629eb4eb301f242a14459cfcdb9c2cb",
+  "byte_count": 371866,
+  "valid_frames": 12418,
+  "counts": {
+    "0x20": 3014,
+    "0x21": 3014,
+    "0x22": 3014,
+    "0x24": 3014,
+    "0x1": 302,
+    "0x23": 30,
+    "0x25": 30
+  },
+  "bad_checksum": 0,
+  "malformed_target_length": 0,
+  "skipped_bytes": 4,
+  "trailing_bytes": 0,
+  "slots": {
+    "0x20": [
+      {
+        "slot": 0,
+        "n": 3014,
+        "min": -0.031853675842285156,
+        "max": -0.031853675842285156,
+        "unique_raw_bytes": {
+          "00 79 02 bd": 3014
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 1,
+        "n": 3014,
+        "min": 1.3563365936279297,
+        "max": 1.3563365936279297,
+        "unique_raw_bytes": {
+          "70 9c ad 3f": 3014
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 2,
+        "n": 3014,
+        "min": -1.3349733352661133,
+        "max": -1.3349733352661133,
+        "unique_raw_bytes": {
+          "68 e0 aa bf": 3014
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 3,
+        "n": 3014,
+        "min": -0.0024938583374023438,
+        "max": -0.0017261505126953125,
+        "unique_raw_bytes": {
+          "00 40 e2 ba": 24,
+          "00 40 0a bb": 2934,
+          "00 70 23 bb": 56
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 4,
+        "n": 3014,
+        "min": -0.007863998413085938,
+        "max": -0.0070972442626953125,
+        "unique_raw_bytes": {
+          "00 20 f5 bb": 2809,
+          "00 90 e8 bb": 202,
+          "00 d8 00 bc": 3
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 5,
+        "n": 3014,
+        "min": -0.002109527587890625,
+        "max": -0.0013427734375,
+        "unique_raw_bytes": {
+          "00 40 e2 ba": 2860,
+          "00 00 b0 ba": 88,
+          "00 40 0a bb": 66
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 6,
+        "n": 3014,
+        "min": 0.0,
+        "max": 0.0,
+        "unique_raw_bytes": {
+          "00 00 00 00": 3014
+        },
+        "all_bytes_zero": true
+      }
+    ],
+    "0x21": [
+      {
+        "slot": 0,
+        "n": 3014,
+        "min": -0.0048847198486328125,
+        "max": -0.0048847198486328125,
+        "unique_raw_bytes": {
+          "00 10 a0 bb": 3014
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 1,
+        "n": 3014,
+        "min": -0.0048847198486328125,
+        "max": 0.0048847198486328125,
+        "unique_raw_bytes": {
+          "00 10 a0 bb": 3011,
+          "00 10 a0 3b": 3
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 2,
+        "n": 3014,
+        "min": -0.0048847198486328125,
+        "max": -0.0048847198486328125,
+        "unique_raw_bytes": {
+          "00 10 a0 bb": 3014
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 3,
+        "n": 3014,
+        "min": -0.15872955322265625,
+        "max": 0.15872955322265625,
+        "unique_raw_bytes": {
+          "00 08 16 3d": 342,
+          "00 08 16 bd": 570,
+          "00 89 09 be": 21,
+          "00 10 7a bd": 384,
+          "00 0a af 3d": 59,
+          "00 10 7a 3d": 177,
+          "00 0e e1 bd": 54,
+          "00 10 48 3c": 587,
+          "00 0a af bd": 182,
+          "00 10 48 bc": 603,
+          "00 0e e1 3d": 25,
+          "00 8a 22 be": 3,
+          "00 89 09 3e": 5,
+          "00 8a 22 3e": 2
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 4,
+        "n": 3014,
+        "min": -0.23199081420898438,
+        "max": 0.13431167602539062,
+        "unique_raw_bytes": {
+          "00 08 16 3d": 380,
+          "00 0e e1 3d": 24,
+          "00 10 7a bd": 360,
+          "00 08 16 bd": 535,
+          "00 10 48 bc": 590,
+          "00 0e e1 bd": 83,
+          "00 10 7a 3d": 178,
+          "00 10 48 3c": 542,
+          "00 0a af bd": 184,
+          "00 0a af 3d": 87,
+          "00 89 09 be": 40,
+          "00 89 09 3e": 5,
+          "00 8a 22 be": 4,
+          "00 8f 6d be": 1,
+          "00 8c 3b be": 1
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 5,
+        "n": 3014,
+        "min": -0.15872955322265625,
+        "max": 0.15872955322265625,
+        "unique_raw_bytes": {
+          "00 10 48 bc": 723,
+          "00 10 7a 3d": 159,
+          "00 08 16 bd": 576,
+          "00 10 48 3c": 580,
+          "00 08 16 3d": 343,
+          "00 10 7a bd": 364,
+          "00 0a af bd": 146,
+          "00 0a af 3d": 36,
+          "00 89 09 3e": 2,
+          "00 0e e1 3d": 15,
+          "00 0e e1 bd": 55,
+          "00 89 09 be": 12,
+          "00 8a 22 3e": 1,
+          "00 8a 22 be": 2
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 6,
+        "n": 3014,
+        "min": 0.0,
+        "max": 0.0,
+        "unique_raw_bytes": {
+          "00 00 00 00": 3014
+        },
+        "all_bytes_zero": true
+      }
+    ],
+    "0x22": [
+      {
+        "slot": 0,
+        "n": 3014,
+        "min": 0.020513534545898438,
+        "max": 0.47179412841796875,
+        "unique_raw_bytes": {
+          "00 0c 3d 3e": 84,
+          "80 89 96 3e": 179,
+          "80 8c c7 3e": 154,
+          "80 88 88 3e": 155,
+          "80 8b b9 3e": 172,
+          "80 0f 75 3e": 148,
+          "00 89 8f 3e": 165,
+          "80 0e 67 3e": 111,
+          "00 88 81 3e": 141,
+          "80 0c 4b 3e": 102,
+          "c0 89 9d 3e": 179,
+          "40 8a a4 3e": 185,
+          "00 0b 2f 3e": 60,
+          "00 0a 9a 3d": 4,
+          "00 8c c0 3e": 191,
+          "00 8d ce 3e": 107,
+          "80 0d 59 3e": 113,
+          "00 10 7c 3d": 6,
+          "40 8b b2 3e": 184,
+          "c0 8a ab 3e": 201,
+          "00 0d d2 3d": 26,
+          "c0 8d dc 3e": 42,
+          "00 0f ee 3d": 38,
+          "40 8d d5 3e": 79,
+          "00 09 13 3e": 45,
+          "00 0b b6 3d": 14,
+          "00 0a 21 3e": 56,
+          "c0 8e ea 3e": 6,
+          "80 08 05 3e": 28,
+          "40 8e e3 3e": 29,
+          "00 0c 44 3d": 7,
+          "00 0c a8 3c": 1,
+          "00 08 0c 3d": 1,
+          "00 8f f1 3e": 1
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 1,
+        "n": 3014,
+        "min": -2.714529037475586,
+        "max": -2.331623077392578,
+        "unique_raw_bytes": {
+          "f8 b9 1f c0": 152,
+          "68 ba 26 c0": 211,
+          "b8 59 1b c0": 54,
+          "98 99 19 c0": 15,
+          "28 5a 22 c0": 200,
+          "60 da 25 c0": 220,
+          "98 5a 29 c0": 154,
+          "a0 3a 2a c0": 109,
+          "88 7a 28 c0": 199,
+          "50 fa 24 c0": 192,
+          "30 3a 23 c0": 178,
+          "c0 39 1c c0": 104,
+          "88 b9 18 c0": 14,
+          "78 9a 27 c0": 201,
+          "18 7a 21 c0": 183,
+          "d0 19 1d c0": 87,
+          "08 9a 20 c0": 147,
+          "40 1a 24 c0": 192,
+          "e0 f9 1d c0": 133,
+          "b0 1a 2b c0": 56,
+          "f0 d9 1e c0": 124,
+          "a8 79 1a c0": 35,
+          "d0 da 2c c0": 11,
+          "c0 fa 2b c0": 26,
+          "50 39 15 c0": 2,
+          "70 f9 16 c0": 5,
+          "d8 ba 2d c0": 3,
+          "80 d9 17 c0": 7
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 2,
+        "n": 3014,
+        "min": 0.5811958312988281,
+        "max": 0.6632480621337891,
+        "unique_raw_bytes": {
+          "c0 c9 1b 3f": 694,
+          "00 4a 1f 3f": 1245,
+          "80 49 18 3f": 134,
+          "20 ca 22 3f": 789,
+          "60 4a 26 3f": 137,
+          "a0 ca 29 3f": 8,
+          "40 c9 14 3f": 7
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 3,
+        "n": 3014,
+        "min": -0.01904773712158203,
+        "max": 0.03076934814453125,
+        "unique_raw_bytes": {
+          "00 08 90 3b": 555,
+          "00 10 c0 ba": 414,
+          "00 10 c0 3a": 554,
+          "00 10 f0 3b": 472,
+          "00 0a 28 3c": 304,
+          "00 08 90 bb": 266,
+          "00 0e 58 3c": 162,
+          "00 0a 9c 3c": 25,
+          "00 10 f0 bb": 132,
+          "00 0a 28 bc": 41,
+          "00 0e 58 bc": 9,
+          "00 08 84 3c": 67,
+          "00 0b b4 3c": 9,
+          "00 10 fc 3c": 1,
+          "00 0e e4 3c": 1,
+          "00 08 84 bc": 1,
+          "00 0a 9c bc": 1
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 4,
+        "n": 3014,
+        "min": 0.05128192901611328,
+        "max": 0.09523820877075195,
+        "unique_raw_bytes": {
+          "c0 0a ab 3d": 186,
+          "c0 08 8d 3d": 410,
+          "80 09 99 3d": 522,
+          "40 0c c3 3d": 2,
+          "40 0a a5 3d": 316,
+          "00 0a 9f 3d": 464,
+          "80 0f 76 3d": 41,
+          "40 09 93 3d": 571,
+          "00 08 81 3d": 131,
+          "80 08 87 3d": 247,
+          "00 0b b1 3d": 72,
+          "80 0e 6a 3d": 18,
+          "80 0b b7 3d": 24,
+          "00 0d 52 3d": 3,
+          "c0 0b bd 3d": 6,
+          "00 0e 5e 3d": 1
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 5,
+        "n": 3014,
+        "min": -0.03076934814453125,
+        "max": 0.04542112350463867,
+        "unique_raw_bytes": {
+          "00 08 84 bc": 149,
+          "00 0a 28 3c": 125,
+          "00 0e e4 bc": 4,
+          "00 0a 9c bc": 67,
+          "00 08 90 3b": 173,
+          "00 10 c0 ba": 329,
+          "80 09 16 3d": 7,
+          "00 08 90 bb": 384,
+          "00 10 f0 bb": 389,
+          "00 0a 9c 3c": 61,
+          "00 0a 28 bc": 339,
+          "00 08 84 3c": 79,
+          "00 10 c0 3a": 224,
+          "00 0e 58 bc": 235,
+          "00 0b b4 bc": 23,
+          "00 0d cc bc": 9,
+          "00 0e 58 3c": 117,
+          "00 10 f0 3b": 133,
+          "00 0b b4 3c": 53,
+          "00 0d cc 3c": 37,
+          "00 0b 2e 3d": 4,
+          "00 10 fc 3c": 28,
+          "80 08 0a 3d": 14,
+          "00 0e e4 3c": 23,
+          "80 0b 3a 3d": 1,
+          "00 10 fc bc": 1,
+          "00 0a 22 3d": 6
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 6,
+        "n": 3014,
+        "min": 0.0,
+        "max": 0.0,
+        "unique_raw_bytes": {
+          "00 00 00 00": 3014
+        },
+        "all_bytes_zero": true
+      }
+    ],
+    "0x24": [
+      {
+        "slot": 0,
+        "n": 3014,
+        "min": 24,
+        "max": 24,
+        "unique_raw_bytes": {
+          "18 00": 3014
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 1,
+        "n": 3014,
+        "min": 25,
+        "max": 25,
+        "unique_raw_bytes": {
+          "19 00": 3014
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 2,
+        "n": 3014,
+        "min": 24,
+        "max": 24,
+        "unique_raw_bytes": {
+          "18 00": 3014
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 3,
+        "n": 3014,
+        "min": 26,
+        "max": 26,
+        "unique_raw_bytes": {
+          "1a 00": 3014
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 4,
+        "n": 3014,
+        "min": 26,
+        "max": 26,
+        "unique_raw_bytes": {
+          "1a 00": 3014
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 5,
+        "n": 3014,
+        "min": 26,
+        "max": 26,
+        "unique_raw_bytes": {
+          "1a 00": 3014
+        },
+        "all_bytes_zero": false
+      },
+      {
+        "slot": 6,
+        "n": 3014,
+        "min": 0,
+        "max": 0,
+        "unique_raw_bytes": {
+          "00 00": 3014
+        },
+        "all_bytes_zero": true
+      }
+    ]
+  }
+}
+frame #137 offset=4058 cmd=0x20 len=28
+frame: fe 55 20 1c 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 90 e8 bb 00 40 e2 ba 00 00 00 00 84 9f
+payload: 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 90 e8 bb 00 40 e2 ba 00 00 00 00
+slot0: bytes=00 79 02 bd value=-0.031853675842285156
+slot1: bytes=70 9c ad 3f value=1.3563365936279297
+slot2: bytes=68 e0 aa bf value=-1.3349733352661133
+slot3: bytes=00 40 0a bb value=-0.002109527587890625
+slot4: bytes=00 90 e8 bb value=-0.0070972442626953125
+slot5: bytes=00 40 e2 ba value=-0.0017261505126953125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #949 offset=28395 cmd=0x21 len=28
+frame: fe 55 21 1c 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 08 16 bd 00 08 16 bd 00 08 16 3d 00 00 00 00 e2 b5
+payload: 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 08 16 bd 00 08 16 bd 00 08 16 3d 00 00 00 00
+slot0: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot1: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot2: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot3: bytes=00 08 16 bd value=-0.03662872314453125
+slot4: bytes=00 08 16 bd value=-0.03662872314453125
+slot5: bytes=00 08 16 3d value=0.03662872314453125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #1516 offset=45377 cmd=0x22 len=28
+frame: fe 55 22 1c 00 09 13 3e 18 7a 21 c0 00 4a 1f 3f 00 0e 58 3c c0 08 8d 3d 00 0d cc bc 00 00 00 00 cf 45
+payload: 00 09 13 3e 18 7a 21 c0 00 4a 1f 3f 00 0e 58 3c c0 08 8d 3d 00 0d cc bc 00 00 00 00
+slot0: bytes=00 09 13 3e value=0.14358901977539062
+slot1: bytes=18 7a 21 c0 value=-2.5230770111083984
+slot2: bytes=00 4a 1f 3f value=0.622222900390625
+slot3: bytes=00 0e 58 3c value=0.013186931610107422
+slot4: bytes=c0 08 8d 3d value=0.06886434555053711
+slot5: bytes=00 0d cc bc value=-0.02490854263305664
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #2452 offset=73402 cmd=0x24 len=14
+frame: fe 55 24 0e 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00 1c d3
+payload: 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00
+slot0: bytes=18 00 value=24
+slot1: bytes=19 00 value=25
+slot2: bytes=18 00 value=24
+slot3: bytes=1a 00 value=26
+slot4: bytes=1a 00 value=26
+slot5: bytes=1a 00 value=26
+slot6: bytes=00 00 value=0
+
+frame #2734 offset=81835 cmd=0x20 len=28
+frame: fe 55 20 1c 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 90 e8 bb 00 00 b0 ba 00 00 00 00 12 b3
+payload: 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 90 e8 bb 00 00 b0 ba 00 00 00 00
+slot0: bytes=00 79 02 bd value=-0.031853675842285156
+slot1: bytes=70 9c ad 3f value=1.3563365936279297
+slot2: bytes=68 e0 aa bf value=-1.3349733352661133
+slot3: bytes=00 40 0a bb value=-0.002109527587890625
+slot4: bytes=00 90 e8 bb value=-0.0070972442626953125
+slot5: bytes=00 00 b0 ba value=-0.0013427734375
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #3112 offset=93156 cmd=0x21 len=28
+frame: fe 55 21 1c 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 08 16 3d 00 0a af 3d 00 10 48 3c 00 00 00 00 b6 24
+payload: 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 08 16 3d 00 0a af 3d 00 10 48 3c 00 00 00 00
+slot0: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot1: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot2: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot3: bytes=00 08 16 3d value=0.03662872314453125
+slot4: bytes=00 0a af 3d value=0.08546829223632812
+slot5: bytes=00 10 48 3c value=0.012210845947265625
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #3875 offset=116022 cmd=0x22 len=28
+frame: fe 55 22 1c 00 8c c0 3e 98 5a 29 c0 00 4a 1f 3f 00 10 c0 ba c0 08 8d 3d 00 10 f0 3b 00 00 00 00 f5 14
+payload: 00 8c c0 3e 98 5a 29 c0 00 4a 1f 3f 00 10 c0 ba c0 08 8d 3d 00 10 f0 3b 00 00 00 00
+slot0: bytes=00 8c c0 3e value=0.376068115234375
+slot1: bytes=98 5a 29 c0 value=-2.6461544036865234
+slot2: bytes=00 4a 1f 3f value=0.622222900390625
+slot3: bytes=00 10 c0 ba value=-0.0014653205871582031
+slot4: bytes=c0 08 8d 3d value=0.06886434555053711
+slot5: bytes=00 10 f0 3b value=0.0073261260986328125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #4741 offset=141959 cmd=0x24 len=14
+frame: fe 55 24 0e 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00 1c d3
+payload: 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00
+slot0: bytes=18 00 value=24
+slot1: bytes=19 00 value=25
+slot2: bytes=18 00 value=24
+slot3: bytes=1a 00 value=26
+slot4: bytes=1a 00 value=26
+slot5: bytes=1a 00 value=26
+slot6: bytes=00 00 value=0
+
+frame #5546 offset=166045 cmd=0x20 len=28
+frame: fe 55 20 1c 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00 21 51
+payload: 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00
+slot0: bytes=00 79 02 bd value=-0.031853675842285156
+slot1: bytes=70 9c ad 3f value=1.3563365936279297
+slot2: bytes=68 e0 aa bf value=-1.3349733352661133
+slot3: bytes=00 40 0a bb value=-0.002109527587890625
+slot4: bytes=00 20 f5 bb value=-0.007480621337890625
+slot5: bytes=00 40 e2 ba value=-0.0017261505126953125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #5938 offset=177800 cmd=0x21 len=28
+frame: fe 55 21 1c 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 7a 3d 00 08 16 3d 00 10 48 bc 00 00 00 00 07 84
+payload: 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 7a 3d 00 08 16 3d 00 10 48 bc 00 00 00 00
+slot0: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot1: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot2: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot3: bytes=00 10 7a 3d value=0.0610504150390625
+slot4: bytes=00 08 16 3d value=0.03662872314453125
+slot5: bytes=00 10 48 bc value=-0.012210845947265625
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #6784 offset=203127 cmd=0x22 len=28
+frame: fe 55 22 1c 40 8a a4 3e 08 9a 20 c0 c0 c9 1b 3f 00 08 90 3b 40 0a a5 3d 00 0a 9c 3c 00 00 00 00 83 03
+payload: 40 8a a4 3e 08 9a 20 c0 c0 c9 1b 3f 00 08 90 3b 40 0a a5 3d 00 0a 9c 3c 00 00 00 00
+slot0: bytes=40 8a a4 3e value=0.3213672637939453
+slot1: bytes=08 9a 20 c0 value=-2.509401321411133
+slot2: bytes=c0 c9 1b 3f value=0.6085472106933594
+slot3: bytes=00 08 90 3b value=0.004395484924316406
+slot4: bytes=40 0a a5 3d value=0.08058595657348633
+slot5: bytes=00 0a 9c 3c value=0.01904773712158203
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #7383 offset=221085 cmd=0x24 len=14
+frame: fe 55 24 0e 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00 1c d3
+payload: 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00
+slot0: bytes=18 00 value=24
+slot1: bytes=19 00 value=25
+slot2: bytes=18 00 value=24
+slot3: bytes=1a 00 value=26
+slot4: bytes=1a 00 value=26
+slot5: bytes=1a 00 value=26
+slot6: bytes=00 00 value=0
+
+frame #7672 offset=229701 cmd=0x20 len=28
+frame: fe 55 20 1c 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00 21 51
+payload: 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00
+slot0: bytes=00 79 02 bd value=-0.031853675842285156
+slot1: bytes=70 9c ad 3f value=1.3563365936279297
+slot2: bytes=68 e0 aa bf value=-1.3349733352661133
+slot3: bytes=00 40 0a bb value=-0.002109527587890625
+slot4: bytes=00 20 f5 bb value=-0.007480621337890625
+slot5: bytes=00 40 e2 ba value=-0.0017261505126953125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #8300 offset=248520 cmd=0x21 len=28
+frame: fe 55 21 1c 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 48 3c 00 10 48 3c 00 10 48 bc 00 00 00 00 0d fe
+payload: 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 48 3c 00 10 48 3c 00 10 48 bc 00 00 00 00
+slot0: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot1: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot2: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot3: bytes=00 10 48 3c value=0.012210845947265625
+slot4: bytes=00 10 48 3c value=0.012210845947265625
+slot5: bytes=00 10 48 bc value=-0.012210845947265625
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #9203 offset=275562 cmd=0x22 len=28
+frame: fe 55 22 1c 80 8c c7 3e 88 7a 28 c0 00 4a 1f 3f 00 08 90 3b 40 09 93 3d 00 0b b4 3c 00 00 00 00 1b 4a
+payload: 80 8c c7 3e 88 7a 28 c0 00 4a 1f 3f 00 08 90 3b 40 09 93 3d 00 0b b4 3c 00 00 00 00
+slot0: bytes=80 8c c7 3e value=0.3897438049316406
+slot1: bytes=88 7a 28 c0 value=-2.632478713989258
+slot2: bytes=00 4a 1f 3f value=0.622222900390625
+slot3: bytes=00 08 90 3b value=0.004395484924316406
+slot4: bytes=40 09 93 3d value=0.07179498672485352
+slot5: bytes=00 0b b4 3c value=0.021977901458740234
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #9730 offset=291364 cmd=0x24 len=14
+frame: fe 55 24 0e 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00 1c d3
+payload: 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00
+slot0: bytes=18 00 value=24
+slot1: bytes=19 00 value=25
+slot2: bytes=18 00 value=24
+slot3: bytes=1a 00 value=26
+slot4: bytes=1a 00 value=26
+slot5: bytes=1a 00 value=26
+slot6: bytes=00 00 value=0
+
+frame #9959 offset=298204 cmd=0x20 len=28
+frame: fe 55 20 1c 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00 21 51
+payload: 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00
+slot0: bytes=00 79 02 bd value=-0.031853675842285156
+slot1: bytes=70 9c ad 3f value=1.3563365936279297
+slot2: bytes=68 e0 aa bf value=-1.3349733352661133
+slot3: bytes=00 40 0a bb value=-0.002109527587890625
+slot4: bytes=00 20 f5 bb value=-0.007480621337890625
+slot5: bytes=00 40 e2 ba value=-0.0017261505126953125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #10948 offset=327822 cmd=0x21 len=28
+frame: fe 55 21 1c 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 48 bc 00 10 48 3c 00 10 48 bc 00 00 00 00 8d 7e
+payload: 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 48 bc 00 10 48 3c 00 10 48 bc 00 00 00 00
+slot0: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot1: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot2: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot3: bytes=00 10 48 bc value=-0.012210845947265625
+slot4: bytes=00 10 48 3c value=0.012210845947265625
+slot5: bytes=00 10 48 bc value=-0.012210845947265625
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #11222 offset=336025 cmd=0x22 len=28
+frame: fe 55 22 1c c0 89 9d 3e 30 3a 23 c0 c0 c9 1b 3f 00 0a 28 3c 80 08 87 3d 00 0a 28 bc 00 00 00 00 8d 95
+payload: c0 89 9d 3e 30 3a 23 c0 c0 c9 1b 3f 00 0a 28 3c 80 08 87 3d 00 0a 28 bc 00 00 00 00
+slot0: bytes=c0 89 9d 3e value=0.3076915740966797
+slot1: bytes=30 3a 23 c0 value=-2.550426483154297
+slot2: bytes=c0 c9 1b 3f value=0.6085472106933594
+slot3: bytes=00 0a 28 3c value=0.010256290435791016
+slot4: bytes=80 08 87 3d value=0.0659341812133789
+slot5: bytes=00 0a 28 bc value=-0.010256290435791016
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #11956 offset=358030 cmd=0x24 len=14
+frame: fe 55 24 0e 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00 1c d3
+payload: 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00
+slot0: bytes=18 00 value=24
+slot1: bytes=19 00 value=25
+slot2: bytes=18 00 value=24
+slot3: bytes=1a 00 value=26
+slot4: bytes=1a 00 value=26
+slot5: bytes=1a 00 value=26
+slot6: bytes=00 00 value=0
+

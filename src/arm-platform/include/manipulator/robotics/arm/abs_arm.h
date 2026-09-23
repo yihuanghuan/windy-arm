@@ -51,6 +51,9 @@ class AbsArm : public IArm {
    * 意味着关节反馈已经陈旧，基于模型算出的力矩不可信。
    */
   virtual bool IsLinkAlive(double /*timeout_sec*/) const { return true; }
+  virtual bool HasFreshFeedback(double /*timeout_sec*/) const { return true; }
+  // Zero denotes a simulated arm with no serial frame sequence.
+  virtual uint64_t GetFeedbackSequence() const { return 0; }
   virtual void SetBaseState(const FloatingBaseState& /*state*/) {}
   virtual void SetModelPath(const std::string& /*model_path*/) {}
   virtual void SetInitialJointPositions(

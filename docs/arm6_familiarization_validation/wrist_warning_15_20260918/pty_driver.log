@@ -1,0 +1,21 @@
+add motor
+add motor
+add motor
+add motor
+add motor
+add motor
+[INFO] [1789723825.563674344] [student_arm_node]: Arm type 'a_l1' initialized from config
+[INFO] [1789723825.564146164] [student_arm_node]: Direct-effort fallback hold: gravity feedforward enabled
+[INFO] [1789723825.564156583] [student_arm_node]: SmoothPositionController: max_velocity=0.500, velocity_feedforward=false, ff_gain=0.700, fb_tau=0.150, fb_vel_limit=0.500, acceleration_limit=true, max_acceleration=5.000
+[INFO] [1789723825.564946156] [student_arm_node]: StudentArmNode started: six-axis familiarization; position commands disabled
+[INFO] [1789723825.564959050] [student_arm_node]: Direct effort command topic /student/joint_effort_command is enabled
+[INFO] [1789723825.585035566] [student_arm_node]: Direct effort startup: serial heartbeat and 3 feedback frames confirmed; ready for configured effort/hold mode
+[INFO] [1789723826.299139284] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=0
+[INFO] [1789723837.344942450] [student_arm_node]: NO_TOUCH_PASS: completed handovers=1
+[INFO] [1789723838.074384638] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=1
+[INFO] [1789723838.855733900] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=1
+[INFO] [1789723849.894837656] [student_arm_node]: NO_TOUCH_PASS: completed handovers=2
+[INFO] [1789723850.663225495] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=2
+[INFO] [1789723851.734798733] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=2
+[ERROR] [1789723852.244770010] [student_arm_node]: HANDOVER command timeout: fault latched
+[INFO] [1789723863.575278660] [rclcpp]: signal_handler(signum=2)

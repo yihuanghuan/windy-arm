@@ -1,0 +1,43 @@
+[INFO] [launch]: All log files can be found below /home/yihuang/.ros/log/2026-09-18-12-06-03-207719-JIAOLONG-Series-23296
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [student_arm_node-1]: process started with pid [23320]
+[INFO] [robot_state_publisher-2]: process started with pid [23322]
+[INFO] [rviz2-3]: process started with pid [23324]
+[INFO] [manual_guidance.py-4]: process started with pid [23326]
+[robot_state_publisher-2] [WARN] [1789704363.520475122] [kdl_parser]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.
+[robot_state_publisher-2] [INFO] [1789704363.521039056] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1789704363.521617727] [robot_state_publisher]: got segment link1
+[robot_state_publisher-2] [INFO] [1789704363.521892050] [robot_state_publisher]: got segment link2
+[robot_state_publisher-2] [INFO] [1789704363.522144551] [robot_state_publisher]: got segment link3
+[robot_state_publisher-2] [INFO] [1789704363.522402533] [robot_state_publisher]: got segment link4
+[robot_state_publisher-2] [INFO] [1789704363.522667749] [robot_state_publisher]: got segment link5
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[robot_state_publisher-2] [INFO] [1789704363.522940548] [robot_state_publisher]: got segment link6
+[student_arm_node-1] [INFO] [1789704363.538901790] [student_arm_node]: Arm type 'a_l1' initialized from config
+[student_arm_node-1] [INFO] [1789704363.543106145] [student_arm_node]: Direct-effort fallback hold: gravity feedforward enabled
+[student_arm_node-1] [INFO] [1789704363.544281942] [student_arm_node]: SmoothPositionController: max_velocity=0.500, velocity_feedforward=false, ff_gain=0.700, fb_tau=0.150, fb_vel_limit=0.500, acceleration_limit=true, max_acceleration=5.000
+[student_arm_node-1] [INFO] [1789704363.545459152] [student_arm_node]: StudentArmNode started: six-axis familiarization; position commands disabled
+[student_arm_node-1] [INFO] [1789704363.546635269] [student_arm_node]: Direct effort command topic /student/joint_effort_command is enabled
+[student_arm_node-1] [INFO] [1789704363.568147141] [student_arm_node]: Direct effort startup: serial heartbeat and 3 feedback frames confirmed; ready for configured effort/hold mode
+[manual_guidance.py-4] [INFO] [1789704364.016263030] [arm6_manual_guidance]: gravity = g_arm6(q + explicit_offset), ratio=1; damping only in MIT Kd
+[manual_guidance.py-4] [INFO] [1789704364.045272540] [arm6_manual_guidance]: ACTIVE RAMP_GRAVITY
+[rviz2-3] [INFO] [1789704365.337427641] [rviz2]: Stereo is NOT SUPPORTED
+[rviz2-3] [INFO] [1789704365.337579885] [rviz2]: OpenGl version: 4.6 (GLSL 4.6)
+[rviz2-3] [INFO] [1789704365.714643437] [rviz2]: Stereo is NOT SUPPORTED
+[manual_guidance.py-4] [INFO] [1789704367.055031900] [arm6_manual_guidance]: ACTIVE RELEASE_STIFFNESS
+[manual_guidance.py-4] [INFO] [1789704370.045328276] [arm6_manual_guidance]: ACTIVE GUIDE
+[student_arm_node-1] [ERROR] [1789704380.465724342] [student_arm_node]: feedback stale/invalid/overspeed: fault latched, restart required
+[manual_guidance.py-4] [ERROR] [1789704380.474970779] [arm6_manual_guidance]: GUIDANCE STOPPED: guidance velocity exceeded; restart required
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[rviz2-3] [INFO] [1789704554.660613999] [rclcpp]: signal_handler(signum=2)
+[robot_state_publisher-2] [INFO] [1789704554.660618427] [rclcpp]: signal_handler(signum=2)
+[student_arm_node-1] [INFO] [1789704554.660626092] [rclcpp]: signal_handler(signum=2)
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 23322]
+[INFO] [manual_guidance.py-4]: process has finished cleanly [pid 23326]
+[INFO] [student_arm_node-1]: process has finished cleanly [pid 23320]
+[INFO] [rviz2-3]: process has finished cleanly [pid 23324]

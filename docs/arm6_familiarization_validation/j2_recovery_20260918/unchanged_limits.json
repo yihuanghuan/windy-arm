@@ -1,0 +1,44 @@
+[
+  {
+    "joint": "joint1",
+    "model_lower": -4.0,
+    "model_upper": 4.0,
+    "normal_safe_lower": -3.9,
+    "normal_safe_upper": 3.9
+  },
+  {
+    "joint": "joint2",
+    "model_lower": -3.14,
+    "model_upper": 1.57,
+    "normal_safe_lower": -3.04,
+    "normal_safe_upper": 1.47
+  },
+  {
+    "joint": "joint3",
+    "model_lower": -1.57,
+    "model_upper": 1.57,
+    "normal_safe_lower": -1.47,
+    "normal_safe_upper": 1.47
+  },
+  {
+    "joint": "joint4",
+    "model_lower": -4.0,
+    "model_upper": 4.0,
+    "normal_safe_lower": -3.9,
+    "normal_safe_upper": 3.9
+  },
+  {
+    "joint": "joint5",
+    "model_lower": -2.0,
+    "model_upper": 2.0,
+    "normal_safe_lower": -1.9,
+    "normal_safe_upper": 1.9
+  },
+  {
+    "joint": "joint6",
+    "model_lower": -4.0,
+    "model_upper": 4.0,
+    "normal_safe_lower": -3.9,
+    "normal_safe_upper": 3.9
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "support": "independent raw FE55 checksum, six-axis maxima and 10/20/30ms displacement checked",
+  "no_support": "independent raw FE55 checksum, six-axis maxima and 10/20/30ms displacement checked",
+  "program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd",
+  "control_code_changed": false,
+  "ratios_verified": true,
+  "unobserved_windows_not_extrapolated": true,
+  "hardware_attempts_this_authorization": 1,
+  "retries": 0
+}

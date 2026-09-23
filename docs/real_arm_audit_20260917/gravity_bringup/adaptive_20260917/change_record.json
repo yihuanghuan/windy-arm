@@ -1,0 +1,43 @@
+{
+  "previous": "offline-only low-gain, lambda0.1 proposed; NOT EXECUTED",
+  "new": {
+    "kp": [
+      30.0,
+      30.0,
+      30.0,
+      5.0,
+      5.0,
+      5.0
+    ],
+    "kd": [
+      1.0,
+      1.0,
+      1.0,
+      0.1,
+      0.1,
+      0.1
+    ],
+    "lambda_preview": 0.99,
+    "envelope": [
+      0.0128,
+      0.0128,
+      0.0128,
+      0.019200000000000002,
+      0.019200000000000002,
+      0.019200000000000002
+    ],
+    "minimum_joint_margin": 0.05,
+    "duration_short_s": 0.25,
+    "maximum_same_command_settle_after_short_s": 0.75
+  },
+  "rationale": [
+    "Historical Phase2 HOLD_P/HOLD_D and Phase4 L0 gains; source references, no historical alpha or offsets",
+    "URDF/hardware limits intersection; author desk geometry and site clearance, exact mesh and conservative continuous-box certification",
+    "Static error bounded below half four-quantum settle tolerance; skip infeasible lambda",
+    "Restore reference is already q_start: keep reference continuous and wait for measured stable return; no unnecessary position excursion"
+  ],
+  "program_sha256": "7a7cffcd7c71050a453b8adac2987207ebc6c64cadea6dfeb1802ea3c9e82505",
+  "offline_tests_passed": 17,
+  "dry_run_serial_open": 0,
+  "dry_run_serial_write": 0
+}

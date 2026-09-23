@@ -1,0 +1,9 @@
+{
+  "onsite_observation": "User confirmed joint5 did move slightly. Actual support is a stand under the link between J2 and J3, preventing that link from falling as J2 turns; user suspects unsupported J5/downstream gravity.",
+  "onsite_abnormality": true,
+  "actual_support_scope": "Link between J2 and J3 only, per user clarification. Independent weight support for J5/downstream assembly not established.",
+  "precondition_correction": "The earlier load-bearing-support-all-links assertion is not established for wrist/distal joints. Preserve original execution review as historical assertion, not verified physical fact.",
+  "causal_assessment": "Joint5 physical motion confirmed. Unsupported downstream gravity and changed takeover forces are plausible explanations, not established exclusive causes. Cannot treat the displacement as only numerical/encoder noise.",
+  "power_isolation_confirmation": "UNKNOWN \u2014 user has not explicitly reported completion of power isolation.",
+  "no_new_control_authorization": true
+}

@@ -1,0 +1,6 @@
+{
+  "joint1": "Operator confirms easy to push and stays after release.",
+  "joint2": "Operator confirms normal manual push during sustained abort.",
+  "scope_update": "Operator explicitly requested widening range after examining run; increase GUIDE sustained only from 0.8 to 1.0 rad/s. Instant remains1.2, duration80ms, transition0.5, gains/model unchanged.",
+  "run02": "Operator confirms completely no contact during startup; no further abnormality after fault hold."
+}

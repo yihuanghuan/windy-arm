@@ -1,0 +1,47 @@
+captured_unix_sec: 1789720962.325106
+command:
+  current:
+  - 0.5765201220263918
+  - -0.6597408260248664
+  - 1.1184055253700542
+  - 0
+  - 0.1364951811596128
+  - 0.0001879912857941418
+  d:
+  - 1
+  - 1
+  - 1
+  - 0.1
+  - 0.1
+  - 0.1
+  p:
+  - 30
+  - 30
+  - 30
+  - 5
+  - 5
+  - 5
+  position:
+  - -0.10509681701660156
+  - 0.5910959243774414
+  - -0.9546422958374023
+  - 1.006021499633789
+  - 0.10453510284423828
+  - -0.6481113433837891
+  velocity:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+port: /dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0
+q:
+- -0.10318946838378906
+- 0.5773630142211914
+- -0.9538793563842773
+- 1.0102415084838867
+- 0.12026214599609375
+- -0.6481113433837891
+source: actual applied fault-HOLD command, fresh stationary feedback; operator explicitly
+  authorized restart after manual overspeed

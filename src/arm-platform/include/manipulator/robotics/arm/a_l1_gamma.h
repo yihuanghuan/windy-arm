@@ -19,6 +19,12 @@ class AL1Gamma final : public AbsArm {
   bool IsLinkAlive(double timeout_sec) const override {
     return protocol_ && protocol_->IsLinkAlive(timeout_sec);
   }
+  bool HasFreshFeedback(double timeout_sec) const override {
+    return protocol_ && protocol_->HasFreshFeedback(timeout_sec);
+  }
+  uint64_t GetFeedbackSequence() const override {
+    return protocol_ ? protocol_->GetFeedbackSequence() : 0;
+  }
 
  private:
   protocol::ProtocolV1::SharedPtr protocol_;

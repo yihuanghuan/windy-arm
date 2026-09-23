@@ -1,0 +1,8 @@
+[INFO] [1789716843.858833320] [arm6_manual_guidance]: gravity = g_arm6(q + explicit_offset), ratio=1; damping only in MIT Kd
+[INFO] [1789716844.906853954] [arm6_manual_guidance]: ACTIVE HANDOVER_START
+[INFO] [1789716844.916546464] [arm6_manual_guidance]: ACTIVE HANDOVER_GRAVITY_MATCH
+[INFO] [1789716847.916911339] [arm6_manual_guidance]: ACTIVE KP_WITHDRAWAL
+[INFO] [1789716850.916495447] [arm6_manual_guidance]: ACTIVE GUIDE
+[INFO] [1789716949.988044679] [arm6_manual_guidance]: MANUAL_PUSH: operator request acknowledged by driver
+[INFO] [1789716949.996591389] [arm6_manual_guidance]: ACTIVE MANUAL_PUSH
+[ERROR] [1789717032.426544156] [arm6_manual_guidance]: GUIDANCE STOPPED: joint limit margin reached; restart required

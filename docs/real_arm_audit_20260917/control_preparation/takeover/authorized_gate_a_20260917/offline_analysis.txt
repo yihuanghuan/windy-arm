@@ -1,0 +1,192 @@
+{
+  "verdict": "FAIL",
+  "reason": "continuous position displacement in 50ms window",
+  "post_command_observation_s": 0.030695669000124326,
+  "displacement_guard_trigger": {
+    "t": 1.0318510149991198,
+    "relative_t": 0.030695669000124326,
+    "window_start": 0.9821193709976797,
+    "window_span": 0.049731644001440145,
+    "delta": [
+      0.0,
+      0.0019073486328125,
+      0.0,
+      0.0,
+      0.0011510848999023438,
+      0.0
+    ],
+    "threshold": 0.00153350830078125,
+    "joints": [
+      2
+    ]
+  },
+  "tx_counts": {
+    "0x10": 3,
+    "0x11": 3,
+    "0x12": 3,
+    "0x13": 3,
+    "0x14": 3
+  },
+  "checksum_errors": 0,
+  "malformed": 0,
+  "whole_run": [
+    {
+      "joint": "joint1",
+      "q_hold": -0.031853675842285156,
+      "max_displacement": 0.0,
+      "peak_to_peak": 0.0,
+      "final_displacement": 0.0,
+      "max_velocity": 0.014652252197265625,
+      "max_torque_proxy": 0.004395675659179687,
+      "max_raw_proxy_finite_difference": 18.478699106953343,
+      "max_guard_50ms_mean_slew": null,
+      "minimum_joint_limit_margin": 3.968146324157715,
+      "position_guard_utilization": 0.0,
+      "velocity_guard_utilization": 0.04999739664688118,
+      "proxy_guard_utilization": 0.03524370549805476
+    },
+    {
+      "joint": "joint2",
+      "q_hold": 1.3563365936279297,
+      "max_displacement": 0.0019073486328125,
+      "peak_to_peak": 0.0019073486328125,
+      "final_displacement": 0.0019073486328125,
+      "max_velocity": 0.16117286682128906,
+      "max_torque_proxy": 0.05979595184326172,
+      "max_raw_proxy_finite_difference": 122.50786876473973,
+      "max_guard_50ms_mean_slew": null,
+      "minimum_joint_limit_margin": 0.6417560577392578,
+      "position_guard_utilization": 0.31094527363184077,
+      "velocity_guard_utilization": 0.549964854732896,
+      "proxy_guard_utilization": 0.4794327607722234
+    },
+    {
+      "joint": "joint3",
+      "q_hold": -1.3349733352661133,
+      "max_displacement": 0.0,
+      "peak_to_peak": 0.0,
+      "final_displacement": 0.0,
+      "max_velocity": 0.014652252197265625,
+      "max_torque_proxy": 0.004395675659179687,
+      "max_raw_proxy_finite_difference": 17.500147729203942,
+      "max_guard_50ms_mean_slew": null,
+      "minimum_joint_limit_margin": 0.2358266647338867,
+      "position_guard_utilization": 0.0,
+      "velocity_guard_utilization": 0.04999739664688118,
+      "proxy_guard_utilization": 0.03524370549805476
+    },
+    {
+      "joint": "joint4",
+      "q_hold": 0.0017261505126953125,
+      "max_displacement": 0.0,
+      "peak_to_peak": 0.0,
+      "final_displacement": 0.0,
+      "max_velocity": 0.08546829223632812,
+      "max_torque_proxy": 0.0025640487670898437,
+      "max_raw_proxy_finite_difference": 23.098915146114262,
+      "max_guard_50ms_mean_slew": null,
+      "minimum_joint_limit_margin": 3.9982738494873047,
+      "position_guard_utilization": 0.0,
+      "velocity_guard_utilization": 0.2916406331354785,
+      "proxy_guard_utilization": 0.17178586763172424
+    },
+    {
+      "joint": "joint5",
+      "q_hold": 0.008631706237792969,
+      "max_displacement": 0.000766754150390625,
+      "peak_to_peak": 0.0011510848999023438,
+      "final_displacement": 0.000766754150390625,
+      "max_velocity": 0.13431167602539062,
+      "max_torque_proxy": 0.004063453674316406,
+      "max_raw_proxy_finite_difference": 9.239710395091723,
+      "max_guard_50ms_mean_slew": null,
+      "minimum_joint_limit_margin": 1.9906015396118164,
+      "position_guard_utilization": 0.125,
+      "velocity_guard_utilization": 0.4583072998021452,
+      "proxy_guard_utilization": 0.272242838741336
+    },
+    {
+      "joint": "joint6",
+      "q_hold": 0.0017261505126953125,
+      "max_displacement": 0.0003833770751953125,
+      "peak_to_peak": 0.0003833770751953125,
+      "final_displacement": 0.0,
+      "max_velocity": 0.03662872314453125,
+      "max_torque_proxy": 0.0010988616943359375,
+      "max_raw_proxy_finite_difference": 8.540874793196652,
+      "max_guard_50ms_mean_slew": null,
+      "minimum_joint_limit_margin": 3.9978904724121094,
+      "position_guard_utilization": 0.0625,
+      "velocity_guard_utilization": 0.12498698323440592,
+      "proxy_guard_utilization": 0.07362141937066798
+    }
+  ],
+  "transient": {
+    "20ms": {
+      "complete_window": true,
+      "observed_duration_s": 0.02,
+      "position_samples": 4,
+      "velocity_samples": 4,
+      "max_abs_displacement": [
+        0,
+        0,
+        0,
+        0,
+        0.00038433074951171875,
+        0.0003833770751953125
+      ],
+      "max_abs_velocity": [
+        0.0048847198486328125,
+        0.0634918212890625,
+        0.014652252197265625,
+        0.03662872314453125,
+        0.13431167602539062,
+        0.03662872314453125
+      ]
+    },
+    "50ms": {
+      "complete_window": false,
+      "observed_duration_s": 0.030695669000124326,
+      "position_samples": 7,
+      "velocity_samples": 6,
+      "max_abs_displacement": [
+        0,
+        0.0019073486328125,
+        0,
+        0,
+        0.000766754150390625,
+        0.0003833770751953125
+      ],
+      "max_abs_velocity": [
+        0.014652252197265625,
+        0.16117286682128906,
+        0.014652252197265625,
+        0.08546829223632812,
+        0.13431167602539062,
+        0.03662872314453125
+      ]
+    },
+    "100ms": {
+      "complete_window": false,
+      "observed_duration_s": 0.030695669000124326,
+      "position_samples": 7,
+      "velocity_samples": 6,
+      "max_abs_displacement": [
+        0,
+        0.0019073486328125,
+        0,
+        0,
+        0.000766754150390625,
+        0.0003833770751953125
+      ],
+      "max_abs_velocity": [
+        0.014652252197265625,
+        0.16117286682128906,
+        0.014652252197265625,
+        0.08546829223632812,
+        0.13431167602539062,
+        0.03662872314453125
+      ]
+    }
+  }
+}

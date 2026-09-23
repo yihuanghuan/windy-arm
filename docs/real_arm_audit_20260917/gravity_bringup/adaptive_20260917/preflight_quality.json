@@ -1,0 +1,18 @@
+{
+  "required_stream_max_gaps_s": {
+    "0x20": 0.006123502000264125,
+    "0x21": 0.009720663001644425,
+    "0x22": 0.008805815999949118,
+    "0x24": 0.00879258100030711
+  },
+  "feedback_age_at_last_receive_s": {
+    "0x20": 0.0002058159989246633,
+    "0x21": 0.0002058159989246633,
+    "0x22": 0.0,
+    "0x24": 0.0
+  },
+  "raw_reader_post_close_assertion": "The scratch reader checked freshness AFTER closing the UART; this is not a valid live age check. All in-capture gaps and final receive ages separately validated. No active control occurred.",
+  "checksum": 0,
+  "malformed": 0,
+  "nonfinite": 0
+}

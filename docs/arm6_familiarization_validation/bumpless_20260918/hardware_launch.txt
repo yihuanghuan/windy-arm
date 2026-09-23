@@ -1,0 +1,48 @@
+[INFO] [launch]: All log files can be found below /home/yihuang/.ros/log/2026-09-18-15-29-51-395964-JIAOLONG-Series-38606
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [student_arm_node-1]: process started with pid [38630]
+[INFO] [robot_state_publisher-2]: process started with pid [38632]
+[INFO] [rviz2-3]: process started with pid [38634]
+[robot_state_publisher-2] [WARN] [1789716591.720705765] [kdl_parser]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.
+[robot_state_publisher-2] [INFO] [1789716591.720849943] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1789716591.721113592] [robot_state_publisher]: got segment link1
+[robot_state_publisher-2] [INFO] [1789716591.721377001] [robot_state_publisher]: got segment link2
+[robot_state_publisher-2] [INFO] [1789716591.721576230] [robot_state_publisher]: got segment link3
+[robot_state_publisher-2] [INFO] [1789716591.721775811] [robot_state_publisher]: got segment link4
+[robot_state_publisher-2] [INFO] [1789716591.722034951] [robot_state_publisher]: got segment link5
+[robot_state_publisher-2] [INFO] [1789716591.722264908] [robot_state_publisher]: got segment link6
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] [INFO] [1789716591.740059368] [student_arm_node]: Arm type 'a_l1' initialized from config
+[student_arm_node-1] [INFO] [1789716591.741009140] [student_arm_node]: Direct-effort fallback hold: gravity feedforward enabled
+[student_arm_node-1] [INFO] [1789716591.741148078] [student_arm_node]: SmoothPositionController: max_velocity=0.500, velocity_feedforward=false, ff_gain=0.700, fb_tau=0.150, fb_vel_limit=0.500, acceleration_limit=true, max_acceleration=5.000
+[student_arm_node-1] [INFO] [1789716591.745209895] [student_arm_node]: StudentArmNode started: six-axis familiarization; position commands disabled
+[student_arm_node-1] [INFO] [1789716591.745335969] [student_arm_node]: Direct effort command topic /student/joint_effort_command is enabled
+[student_arm_node-1] [WARN] [1789716591.755660938] [student_arm_node]: Direct effort startup: waiting for serial heartbeat/feedback; no motor command is sent
+[student_arm_node-1] [INFO] [1789716591.775619814] [student_arm_node]: Direct effort startup: serial heartbeat and 3 feedback frames confirmed; ready for configured effort/hold mode
+[rviz2-3] [INFO] [1789716593.271907306] [rviz2]: Stereo is NOT SUPPORTED
+[rviz2-3] [INFO] [1789716593.272057505] [rviz2]: OpenGl version: 4.6 (GLSL 4.6)
+[rviz2-3] [INFO] [1789716593.631361449] [rviz2]: Stereo is NOT SUPPORTED
+[student_arm_node-1] [INFO] [1789716770.372992961] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=0
+[student_arm_node-1] [INFO] [1789716781.422296645] [student_arm_node]: NO_TOUCH_PASS: completed handovers=1
+[student_arm_node-1] [INFO] [1789716795.973408479] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=1
+[student_arm_node-1] [INFO] [1789716810.559768272] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=1
+[student_arm_node-1] [INFO] [1789716821.611598831] [student_arm_node]: NO_TOUCH_PASS: completed handovers=2
+[student_arm_node-1] [INFO] [1789716836.340794872] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=2
+[student_arm_node-1] [INFO] [1789716844.899974467] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=2
+[student_arm_node-1] [INFO] [1789716855.940997210] [student_arm_node]: NO_TOUCH_PASS: completed handovers=3
+[student_arm_node-1] [INFO] [1789716949.985986187] [student_arm_node]: MANUAL_PUSH: explicit operator request accepted
+[student_arm_node-1] [ERROR] [1789717032.418589742] [student_arm_node]: feedback stale/invalid/overspeed: fault latched, restart required
+[student_arm_node-1] [WARN] [1789717032.428366901] [student_arm_node]: SPEED WARNING joint2 phase=TRANSITION dq=0.620268
+[student_arm_node-1] [ERROR] [1789717032.428487235] [student_arm_node]: SPEED HARD_ABORT joint2 phase=TRANSITION type=transition dq=0.620268 duration=0.000000
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[rviz2-3] [INFO] [1789717908.906102209] [rclcpp]: signal_handler(signum=2)
+[robot_state_publisher-2] [INFO] [1789717908.906127285] [rclcpp]: signal_handler(signum=2)
+[student_arm_node-1] [INFO] [1789717908.906138406] [rclcpp]: signal_handler(signum=2)
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 38632]
+[INFO] [student_arm_node-1]: process has finished cleanly [pid 38630]
+[INFO] [rviz2-3]: process has finished cleanly [pid 38634]

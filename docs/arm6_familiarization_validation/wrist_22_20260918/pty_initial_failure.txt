@@ -1,0 +1,51 @@
+............F                                                            [100%]
+=================================== FAILURES ===================================
+___________ test_three_warm_handovers_unlock_explicit_manual_profile ___________
+
+rig_factory = <function rig_factory.<locals>.make at 0x7ec9ac6c4820>
+tmp_path = PosixPath('/tmp/pytest-of-yihuang/pytest-19/test_three_warm_handovers_unlo0')
+
+    def test_three_warm_handovers_unlock_explicit_manual_profile(rig_factory,tmp_path):
+        rig=rig_factory(False,phase_speed=True,bumpless=True)
+        rig.feed=True;rig.spin(.5);rig.node.destroy_publisher(rig.pub)
+        cfg=yaml.safe_load((ROOT/'config/arm6_familiarization.yaml').read_text())
+        cfg.update(urdf_path=str(ROOT/'config/arm6.urdf'),hardware_enabled=True,manual_push_test=True)
+        path=tmp_path/'warm_guidance.yaml'
+        path.write_text(yaml.safe_dump({'arm6_manual_guidance':{'ros__parameters':cfg}}))
+        exe=Path(get_package_prefix('manipulator'))/'lib/manipulator/manual_guidance.py'
+        stop=rig.node.create_client(Trigger,'/arm6_manual_guidance/stop')
+        manual=rig.node.create_client(Trigger,'/arm6_manual_guidance/begin_manual_push')
+        for trial in range(3):
+            with (tmp_path/f'warm_{trial}.log').open('w') as log:
+                proc=subprocess.Popen([str(exe),'--ros-args','--params-file',str(path)],stdout=log,stderr=subprocess.STDOUT)
+                try:
+                    rig.spin(12.)
+                    assert proc.poll() is None,(tmp_path/f'warm_{trial}.log').read_text()
+                    assert [v for c,v in rig.packets() if c==0x13][-1]==(0.,)*7
+                    if trial==2:
+                        assert manual.wait_for_service(timeout_sec=2.)
+                        f=manual.call_async(Trigger.Request());rig.spin(.15)
+                        assert f.done() and f.result().success
+                        rig.dq[1]=1.;rig.spin(.2)
+                        assert [v for c,v in rig.packets() if c==0x13][-1]==(0.,)*7
+                        # New profile permits 1.7 rad/s for longer than 120 ms.
+                        rig.dq[1]=1.7;rig.spin(.2)
+                        assert [v for c,v in rig.packets() if c==0x13][-1]==(0.,)*7
+                        # Wrist-only instantaneous extension still permits only short bursts.
+                        rig.dq[3]=2.1;rig.spin(.04)
+                        assert [v for c,v in rig.packets() if c==0x13][-1]==(0.,)*7
+                        rig.dq[3]=0.;rig.spin(.05)
+                        rig.dq[1]=1.9;rig.spin(.04)
+>                       assert [v for c,v in rig.packets() if c==0x13][-1]==(0.,)*7
+E                       assert (30.0, 30.0, ...5.0, 5.0, ...) == (0.0, 0.0, 0....0.0, 0.0, ...)
+E                         At index 0 diff: 30.0 != 0.0
+E                         Full diff:
+E                         - (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+E                         ?                 ^    ^    ^
+E                         + (30.0, 30.0, 30.0, 5.0, 5.0, 5.0, 0.0)
+E                         ?  +     +     +     ^    ^    ^
+
+src/arm-platform/test/test_familiarization_pty.py:419: AssertionError
+=========================== short test summary info ============================
+FAILED src/arm-platform/test/test_familiarization_pty.py::test_three_warm_handovers_unlock_explicit_manual_profile
+1 failed, 12 passed in 59.73s

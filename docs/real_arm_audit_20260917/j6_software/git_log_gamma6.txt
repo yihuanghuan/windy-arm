@@ -1,0 +1,5 @@
+commit ef84a9db6730c935153df81900869b1f9a6d19bf
+Author: chnchenfan <chnchenfan@users.noreply.github.com>
+Date:   Tue Aug 4 17:23:06 2026 -0700
+
+    Update 6DOF SMC and Vicon integration

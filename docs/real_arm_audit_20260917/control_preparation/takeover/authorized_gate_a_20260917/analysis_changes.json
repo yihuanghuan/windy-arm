@@ -1,0 +1,9 @@
+{
+  "hardware_program_modified": false,
+  "analysis_only_changes": [
+    "Added offline JSONL decoder/statistics/CSV/plots tool.",
+    "Restricted stale evaluation to the four reviewed feedback streams; 0x23 voltage at approximately 2Hz is not a 50ms required stream.",
+    "Persisted user report of slight downward joint2 motion and no other observed abnormal phenomena."
+  ],
+  "hardware_retries": 0
+}

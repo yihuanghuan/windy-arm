@@ -1,0 +1,16 @@
+Arguments (pass arguments as '<name>:=<value>'):
+
+    'port_name':
+        Verified real-arm serial path; no guessed default
+
+    'mode':
+        readonly=no motor writes; hold=PD hold; guidance=active gravity/hand guiding. Valid choices are: ['readonly', 'hold', 'guidance']
+        (default: 'readonly')
+
+    'config':
+        no description given
+        (default: '/tmp/windy-arm6-speed-install/manipulator/share/manipulator/arm6_familiarization.yaml')
+
+    'use_rviz':
+        One of: ['true', 'false']
+        (default: 'true')

@@ -1,0 +1,255 @@
+docs/arm_calibration_handoff_20260814/parameters/arm6_calibration_candidate.yaml:51:    note: zero_offset and first_moment_ratio frozen; official YAML untouched
+docs/arm_calibration_handoff_20260814/parameters/arm6_calibration_candidate.yaml:64:    first_moment_ratio: 1.0232823692371213
+docs/arm_calibration_handoff_20260814/parameters/arm6_calibration_candidate.yaml:90:      first_moment_ratio: 0.8722546983907368
+docs/arm_calibration_handoff_20260814/parameters/arm6_calibration_candidate.yaml:247:first_moment_ratio:
+docs/arm_calibration_handoff_20260814/launch/student_arm6.launch.py:17:    限制: ArmPlatform::ExecuteControlCycle 对 dt < 0.01 直接抛异常,
+docs/arm_calibration_handoff_20260814/launch/student_arm6.launch.py:68:            '(ExecuteControlCycle 拒绝 dt < 0.01); '
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase_candidate_yaml.py:81:    ratio = ensure_vec(data, "first_moment_ratio", 1.0)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase_candidate_yaml.py:136:    print("first_moment_ratio:", [round(float(v), 4) for v in data["first_moment_ratio"]])
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase3_gravity_calibration.py:79:    ratio = raw.get("first_moment_ratio")
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase3_gravity_calibration.py:82:        raise ValueError(f"{path}: first_moment_ratio must have {N_ARM} values")
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase3_gravity_calibration.py:129:        self.pub = self.create_publisher(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase3_gravity_calibration.py:131:        self.create_subscription(JointState, "/joint_states", self._cb, 50)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase3_j5_leso_observer_tune.py:224:        fitted_parameters="J5 zero_offset, first_moment_ratio, F+, F- only",
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase3_j5_leso_observer_tune.py:277:        self.pub = self.create_publisher(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase3_j5_leso_observer_tune.py:279:        self.create_subscription(JointState, "/joint_states", self._cb, 100)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase3_j5_leso_observer_tune.py:744:    ratio = np.asarray(cal["first_moment_ratio"], dtype=float)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase3_j5_leso_observer_tune.py:776:    plan["frozen_first_moment_ratio"] = ratio.tolist()
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase3_j5_leso_observer_tune.py:778:    plan["control_first_moment_ratio"] = control_ratio.tolist()
+docs/arm_calibration_handoff_20260814/code/task_space_smc/core/model.py:51:        return dict(zero_offset_rad=[0.0] * n, first_moment_ratio=[1.0] * n,
+docs/arm_calibration_handoff_20260814/code/task_space_smc/core/model.py:77:        first_moment_ratio=vec("first_moment_ratio", 1.0),
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/whole_task_smc_ros_runner.py:573:        self.command_pub = self.create_publisher(MotorControl, "/student/joint_effort_command", 10)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/whole_task_smc_ros_runner.py:574:        self.base_truth_pub = self.create_publisher(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/whole_task_smc_ros_runner.py:577:            self.create_publisher(JointState, "/joint_states", 10)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/whole_task_smc_ros_runner.py:581:        self.reference_marker_pub = self.create_publisher(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/whole_task_smc_ros_runner.py:583:        self.marker_pub = self.create_publisher(MarkerArray, "/task_space_smc/markers", 10)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/whole_task_smc_ros_runner.py:584:        self.tracking_pub = self.create_publisher(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/whole_task_smc_ros_runner.py:586:        self.torque_pub = self.create_publisher(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/whole_task_smc_ros_runner.py:589:        self.create_subscription(JointState, "/joint_states", self._joint_state_cb, 10)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/whole_task_smc_ros_runner.py:596:            self.create_subscription(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/whole_task_smc_ros_runner.py:599:            self.create_subscription(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase2_torque_probe.py:86:        self.pub = self.create_publisher(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase2_torque_probe.py:88:        self.create_subscription(JointState, "/joint_states", self._cb, 50)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:20:重力前馈发的是 g_urdf(q + zero_offset)，【不】再乘 first_moment_ratio：
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:231:        self.pub = self.create_publisher(MotorControl, "/student/joint_effort_command", 10)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:232:        self.create_subscription(JointState, "/joint_states", self._joint_cb, 50)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:233:        self.create_subscription(PoseStamped, base_topic, self._base_cb, 200)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:234:        self.create_subscription(PoseStamped, ee_topic, self._ee_cb, 200)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:713:            gravity_feedforward="g(arm6.urdf) at q_fk, no first_moment_ratio "
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase4_gravity_compensation.py:86:        self.ratio = np.array(cal["first_moment_ratio"], dtype=float)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase4_gravity_compensation.py:95:        self.pub = self.create_publisher(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase4_gravity_compensation.py:97:        self.create_subscription(JointState, "/joint_states", self._cb, 50)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase4_gravity_compensation.py:102:            f"first_moment_ratio: {np.round(self.ratio, 4).tolist()}")
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase4_gravity_compensation.py:293:    print(f"ratio      : {cal['first_moment_ratio']}")
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase5_inertia_id.py:65:        self.ratio = np.array(cal["first_moment_ratio"], dtype=float)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase5_inertia_id.py:72:        self.pub = self.create_publisher(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase5_inertia_id.py:74:        self.create_subscription(JointState, "/joint_states", self._cb, 50)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/phase5_inertia_id.py:79:            f"first_moment_ratio: {np.round(self.ratio, 4).tolist()}")
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/fk_gravity_verify.py:152:        return pin.computeGeneralizedGravity(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/fk_gravity_verify.py:338:        self.pub = self.create_publisher(JointState, '/student/joint_command', 10)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/fk_gravity_verify.py:339:        self.create_subscription(JointState, '/joint_states', self._on_joint_state, 10)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/fk_gravity_verify.py:340:        self.create_subscription(MotorState, '/student/joint_feedback',
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_floating_base_bridge.py:281:        self.pub = self.create_publisher(FloatingBaseState, self.output_topic, 10)
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_floating_base_bridge.py:285:        self.sub = self.create_subscription(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_floating_base_bridge.py:292:            self.twist_sub = self.create_subscription(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_floating_base_bridge.py:295:            self.accel_sub = self.create_subscription(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_floating_base_bridge.py:302:            self.ee_sub = self.create_subscription(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_floating_base_bridge.py:307:            self.ee_pub = self.create_publisher(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_floating_base_bridge.py:311:                self.ee_twist_sub = self.create_subscription(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_floating_base_bridge.py:315:                self.ee_accel_sub = self.create_subscription(
+docs/arm_calibration_handoff_20260814/code/task_space_smc/hw/vicon_floating_base_bridge.py:318:        self.diag_pub = self.create_publisher(
+src/arm-platform/test/test_torque_sim_arm.cc:30:  ASSERT_TRUE(arm.SetMotorCommand(command));
+src/arm-platform/test/test_torque_sim_arm.cc:54:  ASSERT_TRUE(arm.SetMotorCommand(command));
+src/arm-platform/test/hw/test_phase2_probe.py:111:    # 修正过（first_moment_ratio 已烘进 URDF），model.gravity() 返回的
+src/arm-platform/test/hw/test_phase2_probe.py:305:    MakeHoldPositionCommand()，而后者以【当前】位置为目标。于是本周期
+src/arm-platform/config/arm6_calibration_candidate.yaml:51:    note: zero_offset and first_moment_ratio frozen; official YAML untouched
+src/arm-platform/config/arm6_calibration_candidate.yaml:64:    first_moment_ratio: 1.0232823692371213
+src/arm-platform/config/arm6_calibration_candidate.yaml:90:      first_moment_ratio: 0.8722546983907368
+src/arm-platform/config/arm6_calibration_candidate.yaml:247:first_moment_ratio:
+src/arm-platform/config/arm6_calibration.yaml:9:#   前馈重力   = first_moment_ratio × g_model(q)
+src/arm-platform/config/arm6_calibration.yaml:44:first_moment_ratio: [1.265, 1.349, 1.228, 0.972, 1.021, 1.0]
+src/arm-platform/test/core/test_arm6_model.py:151:    for key in ('zero_offset_rad', 'first_moment_ratio', 'stiction_nm'):
+src/arm-platform/test/core/test_arm6_model.py:162:    assert c['first_moment_ratio'] == [1.0] * n
+src/arm-platform/test/core/test_arm6_model.py:171:    assert c['first_moment_ratio'][5] == 1.0
+src/arm-platform/include/manipulator/planning/abs_motion_planner.h:32:  void Reset();
+src/arm-platform/task_space_smc/hw/wrist_prepose.py:43:        self.create_subscription(JointState, "/joint_states", self._cb, 10)
+src/arm-platform/task_space_smc/hw/wrist_prepose.py:45:        self.pub = self.create_publisher(
+src/arm-platform/src/controller/gravity_controller.cc:110:    pinocchio::computeGeneralizedGravity(model_, data_, q);
+src/arm-platform/task_space_smc/hw/vicon_timing_diagnostic.py:35:        self.create_subscription(PoseStamped, "/vrpn/arm_base/pose",
+src/arm-platform/task_space_smc/hw/vicon_timing_diagnostic.py:37:        self.create_subscription(PoseStamped, "/vrpn/arm_ee/pose",
+src/arm-platform/task_space_smc/hw/vicon_timing_diagnostic.py:39:        self.create_subscription(FloatingBaseState, "/floating_base/vicon",
+src/arm-platform/task_space_smc/hw/vicon_timing_diagnostic.py:41:        self.create_subscription(FloatingBaseState, "/vicon/arm_ee",
+src/arm-platform/task_space_smc/hw/vicon_timing_diagnostic.py:43:        self.create_subscription(Float64MultiArray, "/floating_base/vicon_timing",
+src/arm-platform/task_space_smc/hw/vicon_timing_diagnostic.py:45:        self.create_subscription(Float64MultiArray,
+src/arm-platform/include/manipulator/ros_nodes/master_arm_node.h:41:  void Reset();
+src/arm-platform/launch/student_arm6.launch.py:17:    限制: ArmPlatform::ExecuteControlCycle 对 dt < 0.01 直接抛异常,
+src/arm-platform/launch/student_arm6.launch.py:68:            '(ExecuteControlCycle 拒绝 dt < 0.01); '
+src/arm-platform/include/manipulator/ros_nodes/student_arm_node.h:57:  dummy_interface::msg::MotorControl MakeHoldPositionCommand(
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:283:            "标定模型: source=%s zero_offset_rad=%s first_moment_ratio=%s"
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:286:               np.round(self.model.first_moment_ratio, 9).tolist()))
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:608:        self.command_pub = self.create_publisher(MotorControl, "/student/joint_effort_command", 10)
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:609:        self.base_truth_pub = self.create_publisher(
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:612:            self.create_publisher(JointState, "/joint_states", 10)
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:616:        self.reference_marker_pub = self.create_publisher(
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:618:        self.marker_pub = self.create_publisher(MarkerArray, "/task_space_smc/markers", 10)
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:619:        self.tracking_pub = self.create_publisher(
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:621:        self.torque_pub = self.create_publisher(
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:624:        self.create_subscription(JointState, "/joint_states", self._joint_state_cb, 10)
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:625:        self.timing_pub = self.create_publisher(
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:636:            self.create_subscription(
+src/arm-platform/task_space_smc/hw/whole_task_smc_ros_runner.py:639:            self.create_subscription(
+src/arm-platform/include/manipulator/robotics/bus/serial_bus.h:33:  void SendCore(const std::vector<uint8_t>& data) override;
+src/arm-platform/task_space_smc/hw/torque_interface_probe.py:55:        self.pub = self.create_publisher(MotorControl, "/student/joint_effort_command", 10)
+src/arm-platform/task_space_smc/hw/torque_interface_probe.py:56:        self.create_subscription(JointState, "/joint_states", self._joint_state_cb, 10)
+src/arm-platform/launch/vicon_moving_base_candidate_test.launch.py:47:    ratio = data.get("first_moment_ratio")
+src/arm-platform/launch/vicon_moving_base_candidate_test.launch.py:51:                       ("first_moment_ratio", ratio),
+src/arm-platform/launch/vicon_moving_base_candidate_test.launch.py:113:          "first_moment_ratio scales only the RNEA gravity term. "
+src/arm-platform/src/planning/abs_motion_planner.cc:11:void AbsMotionPlanner::Reset() {
+src/arm-platform/task_space_smc/hw/vicon_link_check.py:184:            self.create_subscription(PoseStamped, topic, self._cb, 300)
+src/arm-platform/src/planning/reset_motion_planner.cc:6:  Reset();
+src/arm-platform/include/manipulator/robotics/bus/abs_bus.h:32:   * by encoding data with protocol and calling SendCore.
+src/arm-platform/include/manipulator/robotics/bus/abs_bus.h:54:  virtual void SendCore(const std::vector<uint8_t>& data) = 0;
+src/arm-platform/task_space_smc/hw/serial_tap.py:190:            n = os.write(fd, view)
+src/arm-platform/task_space_smc/hw/serial_tap.py:375:            " —— 帧被截断，板子会直接丢弃。查 SerialBus::SendCore 的写返回值。")
+src/arm-platform/task_space_smc/hw/serial_tap.py:408:    print("          SerialBus::SendCore）已排除。HANDOFF 10.3 的嫌疑收敛到")
+src/arm-platform/task_space_smc/hw/serial_tap.py:645:    port = serial.Serial(args.port, args.baud, timeout=0)
+src/arm-platform/task_space_smc/hw/serial_tap.py:794:            n = os.write(a_slave, payload[sent:sent + 2048])
+src/arm-platform/task_space_smc/hw/serial_tap.py:832:        port = serial.Serial(os.ttyname(slave_fd), 921600, timeout=0)
+src/arm-platform/task_space_smc/hw/serial_tap.py:833:        os.write(master_fd, b"\xfe\x55ping")
+src/arm-platform/include/manipulator/robotics/arm/i_arm.h:22:  virtual bool SetMotorCommand(const dummy_interface::msg::MotorControl& cmd) = 0;
+src/arm-platform/src/ros_nodes/student_arm_node.cc:38:  pub_joint_state_ = this->create_publisher<sensor_msgs::msg::JointState>("/joint_states", 10);
+src/arm-platform/src/ros_nodes/student_arm_node.cc:39:  pub_joint_feedback_ = this->create_publisher<dummy_interface::msg::MotorState>(
+src/arm-platform/src/ros_nodes/student_arm_node.cc:42:  sub_student_cmd_ = this->create_subscription<sensor_msgs::msg::JointState>(
+src/arm-platform/src/ros_nodes/student_arm_node.cc:47:  sub_student_effort_cmd_ = this->create_subscription<dummy_interface::msg::MotorControl>(
+src/arm-platform/src/ros_nodes/student_arm_node.cc:53:      this->create_subscription<dummy_interface::msg::FloatingBaseState>(
+src/arm-platform/src/ros_nodes/student_arm_node.cc:294:dummy_interface::msg::MotorControl StudentArmNode::MakeHoldPositionCommand(
+src/arm-platform/src/ros_nodes/student_arm_node.cc:319:        MakeHoldPositionCommand(false), effort_control_period_sec_);
+src/arm-platform/src/ros_nodes/student_arm_node.cc:331:    last_effort_command_ = MakeHoldPositionCommand();
+src/arm-platform/src/ros_nodes/student_arm_node.cc:422:      arm_platform_->ExecuteControlCycle(effort_control_period_sec_);
+src/arm-platform/src/ros_nodes/student_arm_node.cc:430:        last_effort_command_ = MakeHoldPositionCommand();
+src/arm-platform/src/ros_nodes/student_arm_node.cc:438:      last_effort_command_ = MakeHoldPositionCommand();
+src/arm-platform/src/ros_nodes/student_arm_node.cc:462:  arm_platform_->ExecuteControlCycle(effort_control_period_sec_);
+src/arm-platform/task_space_smc/hw/pose_check_readonly.py:136:    with serial.Serial(args.port, args.baud, timeout=0.05) as port:
+src/arm-platform/task_space_smc/hw/fk_gravity_verify.py:152:        return pin.computeGeneralizedGravity(
+src/arm-platform/task_space_smc/hw/fk_gravity_verify.py:338:        self.pub = self.create_publisher(JointState, '/student/joint_command', 10)
+src/arm-platform/task_space_smc/hw/fk_gravity_verify.py:339:        self.create_subscription(JointState, '/joint_states', self._on_joint_state, 10)
+src/arm-platform/task_space_smc/hw/fk_gravity_verify.py:340:        self.create_subscription(MotorState, '/student/joint_feedback',
+src/arm-platform/src/ros_nodes/robot_health_aggregator.cc:26:  pub_health_ = create_publisher<std_msgs::msg::String>("/health/robot", 10);
+src/arm-platform/src/ros_nodes/robot_health_aggregator.cc:34:    subscriptions_.push_back(create_subscription<std_msgs::msg::String>(
+src/arm-platform/include/manipulator/robotics/arm_platform.h:36:  bool ExecuteControlCycle(double dt);
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:86:        self.ratio = np.array(cal["first_moment_ratio"], dtype=float)
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:95:        self.pub = self.create_publisher(
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:97:        self.create_subscription(JointState, "/joint_states", self._cb, 50)
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:102:            f"first_moment_ratio: {np.round(self.ratio, 4).tolist()}")
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:293:    print(f"ratio      : {cal['first_moment_ratio']}")
+src/arm-platform/include/manipulator/robotics/arm/abs_arm.h:31:  bool SetMotorCommand(const dummy_interface::msg::MotorControl& cmd) override;
+src/arm-platform/src/ros_nodes/arm_hardware_node.cc:29:  pub_joint_feedback_ = this->create_publisher<dummy_interface::msg::MotorState>(
+src/arm-platform/src/ros_nodes/arm_hardware_node.cc:31:  sub_joint_ctrl_ = this->create_subscription<sensor_msgs::msg::JointState>(
+src/arm-platform/src/ros_nodes/arm_hardware_node.cc:38:      [this]() { return arm_platform_->ExecuteControlCycle(kControlPeriodMs/1000.0f); });
+src/arm-platform/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:20:重力前馈发的是 g_urdf(q + zero_offset)，【不】再乘 first_moment_ratio：
+src/arm-platform/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:301:        self.pub = self.create_publisher(MotorControl, "/student/joint_effort_command", 10)
+src/arm-platform/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:302:        self.create_subscription(JointState, "/joint_states", self._joint_cb, 50)
+src/arm-platform/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:303:        self.create_subscription(PoseStamped, base_topic, self._base_cb, 200)
+src/arm-platform/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:304:        self.create_subscription(PoseStamped, ee_topic, self._ee_cb, 200)
+src/arm-platform/task_space_smc/hw/vicon_base_extrinsic_calibrate.py:837:            gravity_feedforward="g(arm6.urdf) at q_fk, no first_moment_ratio "
+src/arm-platform/include/manipulator/robotics/arm/torque_sim_arm.h:24:  bool SetMotorCommand(
+src/arm-platform/src/ros_nodes/flight_status_bridge.cc:24:    armed_pub_ = create_publisher<std_msgs::msg::Bool>(armed_topic, 10);
+src/arm-platform/src/ros_nodes/flight_status_bridge.cc:25:    battery_pub_ = create_publisher<sensor_msgs::msg::BatteryState>(battery_topic, 10);
+src/arm-platform/src/ros_nodes/flight_status_bridge.cc:27:    state_sub_ = create_subscription<mavros_msgs::msg::State>(
+src/arm-platform/src/ros_nodes/flight_status_bridge.cc:36:    battery_sub_ = create_subscription<sensor_msgs::msg::BatteryState>(
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:79:    ratio = raw.get("first_moment_ratio")
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:82:        raise ValueError(f"{path}: first_moment_ratio must have {N_ARM} values")
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:129:        self.pub = self.create_publisher(
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:131:        self.create_subscription(JointState, "/joint_states", self._cb, 50)
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:65:        self.ratio = np.array(cal["first_moment_ratio"], dtype=float)
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:72:        self.pub = self.create_publisher(
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:74:        self.create_subscription(JointState, "/joint_states", self._cb, 50)
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:79:            f"first_moment_ratio: {np.round(self.ratio, 4).tolist()}")
+src/arm-platform/src/ros_nodes/slave_arm_node.cc:25:  pub_joint_state_ = this->create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
+src/arm-platform/src/ros_nodes/slave_arm_node.cc:26:  pub_joint_feedback_ = this->create_publisher<dummy_interface::msg::MotorState>("joint_feedback", 10);
+src/arm-platform/src/ros_nodes/slave_arm_node.cc:28:  pub_collision_markers_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("collision_obstacles", marker_qos);
+src/arm-platform/src/ros_nodes/slave_arm_node.cc:29:  pub_health_ = this->create_publisher<std_msgs::msg::String>("/health/slave_arm", 10);
+src/arm-platform/src/ros_nodes/slave_arm_node.cc:34:  sub_master_state_ = this->create_subscription<sensor_msgs::msg::JointState>(
+src/arm-platform/src/ros_nodes/slave_arm_node.cc:45:      [this]() { return arm_platform_->ExecuteControlCycle(kControlPeriodMs/1000.0f); });
+src/arm-platform/task_space_smc/hw/full_prepose.py:40:        self.create_subscription(JointState, "/joint_states", self._cb, 10)
+src/arm-platform/task_space_smc/hw/full_prepose.py:41:        self.pub = self.create_publisher(
+src/arm-platform/src/ros_nodes/master_arm_node.cc:19:  pub_joint_state_ = this->create_publisher<sensor_msgs::msg::JointState>("joint_states", 10); 
+src/arm-platform/src/ros_nodes/master_arm_node.cc:20:  pub_joint_feedback_ = this->create_publisher<dummy_interface::msg::MotorState>("joint_feedback", 10);
+src/arm-platform/src/ros_nodes/master_arm_node.cc:21:  pub_health_ = this->create_publisher<std_msgs::msg::String>("/health/master_arm", 10);
+src/arm-platform/src/ros_nodes/master_arm_node.cc:26:  sub_slave_state_ = this->create_subscription<sensor_msgs::msg::JointState>(
+src/arm-platform/src/ros_nodes/master_arm_node.cc:39:      [this]() { return arm_platform_->ExecuteControlCycle(kControlPeriodMs/1000.0f); });
+src/arm-platform/src/ros_nodes/master_arm_node.cc:85:    Reset();
+src/arm-platform/src/ros_nodes/master_arm_node.cc:89:void MasterArmNode::Reset() {
+src/arm-platform/src/ros_nodes/master_arm_node.cc:98:  while (!arm_platform_->ExecuteControlCycle(kControlPeriodMs/1000.0f)) {
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:86:        self.pub = self.create_publisher(
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:88:        self.create_subscription(JointState, "/joint_states", self._cb, 50)
+src/arm-platform/task_space_smc/hw/vicon_floating_base_bridge.py:281:        self.pub = self.create_publisher(FloatingBaseState, self.output_topic, 10)
+src/arm-platform/task_space_smc/hw/vicon_floating_base_bridge.py:285:        self.sub = self.create_subscription(
+src/arm-platform/task_space_smc/hw/vicon_floating_base_bridge.py:292:            self.twist_sub = self.create_subscription(
+src/arm-platform/task_space_smc/hw/vicon_floating_base_bridge.py:295:            self.accel_sub = self.create_subscription(
+src/arm-platform/task_space_smc/hw/vicon_floating_base_bridge.py:302:            self.ee_sub = self.create_subscription(
+src/arm-platform/task_space_smc/hw/vicon_floating_base_bridge.py:307:            self.ee_pub = self.create_publisher(
+src/arm-platform/task_space_smc/hw/vicon_floating_base_bridge.py:311:                self.ee_twist_sub = self.create_subscription(
+src/arm-platform/task_space_smc/hw/vicon_floating_base_bridge.py:315:                self.ee_accel_sub = self.create_subscription(
+src/arm-platform/task_space_smc/hw/vicon_floating_base_bridge.py:318:        self.diag_pub = self.create_publisher(
+src/arm-platform/task_space_smc/hw/vicon_floating_base_bridge.py:322:        self.timing_pub = self.create_publisher(
+src/arm-platform/src/robotics/bus/abs_bus.cc:11:  SendCore(bytes);
+src/arm-platform/src/robotics/bus/serial_bus.cc:28:void SerialBus::SendCore(const std::vector<uint8_t>& data) {
+src/arm-platform/src/robotics/arm_platform.cc:51:bool ArmPlatform::ExecuteControlCycle(double dt) {
+src/arm-platform/src/robotics/arm_platform.cc:79:      arm_->SetMotorCommand(cmd_);
+src/arm-platform/src/robotics/arm_platform.cc:104:  if (!arm_->SetMotorCommand(cmd_)) {
+src/arm-platform/src/robotics/arm/torque_sim_arm.cc:233:bool TorqueSimArm::SetMotorCommand(
+src/arm-platform/demo/ll100_workspace_probe.py:116:        self.reachable_pub = self.create_publisher(MarkerArray, "/ll100_workspace/reachable", latched)
+src/arm-platform/demo/ll100_workspace_probe.py:117:        self.obstacle_pub = self.create_publisher(MarkerArray, "/ll100_workspace/obstacles", latched)
+src/arm-platform/task_space_smc/core/model.py:51:        return dict(zero_offset_rad=[0.0] * n, first_moment_ratio=[1.0] * n,
+src/arm-platform/task_space_smc/core/model.py:77:        first_moment_ratio=vec("first_moment_ratio", 1.0),
+src/arm-platform/task_space_smc/core/model.py:159:        self.first_moment_ratio = _calibration_vector("first_moment_ratio", 1.0)
+src/arm-platform/task_space_smc/core/model.py:225:        gravity = pin.computeGeneralizedGravity(self.model, self.data, q_full)
+src/arm-platform/task_space_smc/core/model.py:230:                * self.first_moment_ratio)
+src/arm-platform/task_space_smc/core/model.py:232:    def _apply_gravity_ratio(self, tau_arm: np.ndarray,
+src/arm-platform/task_space_smc/core/model.py:337:        return self._apply_gravity_ratio(tau_full[6:], q_full)
+src/arm-platform/task_space_smc/core/model.py:350:        n_full_arm = self._apply_gravity_ratio(n_full[6:], q_full)
+src/arm-platform/demo/move_base_circle_visual_demo.py:36:        self.pub = self.create_publisher(JointState, '/student/joint_command', 10)
+src/arm-platform/demo/move_base_circle_visual_demo.py:37:        self.actual_marker_pub = self.create_publisher(Marker, '/ee_traj_marker', 10)
+src/arm-platform/demo/move_base_circle_visual_demo.py:38:        self.target_marker_pub = self.create_publisher(Marker, '/ee_target_traj_marker', 10)
+src/arm-platform/demo/move_base_circle_visual_demo.py:39:        self.create_subscription(JointState, '/joint_states', self._joint_states_callback, 10)
+src/arm-platform/demo/move_arm_mpc_ik_demo.py:76:        self.pub = self.create_publisher(JointState, "/student/joint_command", 10)
+src/arm-platform/demo/move_arm_mpc_ik_demo.py:78:        self.create_subscription(JointState, "/joint_states", self._joint_states_callback, 10)
+src/arm-platform/src/robotics/arm/abs_arm.cc:22:bool AbsArm::SetMotorCommand(const dummy_interface::msg::MotorControl& cmd) {
+src/arm-platform/demo/trajectory_visualizer_demo.py:451:        self.expected_pub = self.create_publisher(
+src/arm-platform/demo/trajectory_visualizer_demo.py:453:        self.actual_pub = self.create_publisher(
+src/arm-platform/demo/trajectory_visualizer_demo.py:455:        self.command_fk_pub = self.create_publisher(
+src/arm-platform/demo/trajectory_visualizer_demo.py:457:        self.current_target_pub = self.create_publisher(
+src/arm-platform/demo/trajectory_visualizer_demo.py:459:        self.current_actual_pub = self.create_publisher(
+src/arm-platform/demo/trajectory_visualizer_demo.py:461:        self.disturbance_marker_pub = self.create_publisher(
+src/arm-platform/demo/trajectory_visualizer_demo.py:464:        self.create_subscription(JointState, self.actual_topic, self._joint_state_cb, 10)
+src/arm-platform/demo/trajectory_visualizer_demo.py:465:        self.create_subscription(JointState, self.command_topic, self._command_cb, 10)
+src/arm-platform/demo/trajectory_visualizer_demo.py:469:        self.create_subscription(
+src/arm-platform/demo/trajectory_visualizer_demo.py:473:            self.create_subscription(JointState, self.control_signal_topic, self._control_signal_cb, 10)
+src/arm-platform/demo/ll100_lh420_zero_joint_state_publisher.py:27:        self.pub = self.create_publisher(JointState, "/joint_states", 10)
+src/arm-platform/demo/move_arm_line_demo.py:33:        self.pub = self.create_publisher(JointState, '/student/joint_command', 10)
+src/arm-platform/demo/move_arm_ik_demo.py:33:        self.pub = self.create_publisher(JointState, '/student/joint_command', 10)
+src/arm-platform/demo/ll100_lh420_rotor_joint_state_publisher.py:20:        self.pub = self.create_publisher(JointState, "/joint_states", 10)
+src/arm-platform/demo/ll100_traj_pub.py:162:        self.goal_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
+src/arm-platform/demo/ll100_traj_pub.py:163:        self.path_marker_pub = self.create_publisher(MarkerArray, "/ll100_traj_pub/markers", 10)
+src/arm-platform/demo/ll100_traj_pub.py:164:        self.create_subscription(Bool, "/ll100_nmpc_goal/reached", self._reached_callback, 10)
+src/arm-platform/demo/ll100_lh420_plant_node.py:122:        self.pub = self.create_publisher(JointState, "/joint_states", 10)
+src/arm-platform/demo/ll100_lh420_plant_node.py:123:        self.sub = self.create_subscription(
+src/arm-platform/demo/move_arm_demo.py:27:        self.pub = self.create_publisher(JointState, '/student/joint_command', 10)
+src/arm-platform/demo/move_ll100_lh420_nmpc_demo.py:549:        self.command_pub = self.create_publisher(JointState, "/student/joint_command", 10)
+src/arm-platform/demo/move_ll100_lh420_nmpc_demo.py:550:        self.marker_pub = self.create_publisher(MarkerArray, "/ll100_nmpc_path/markers", 10)
+src/arm-platform/demo/move_ll100_lh420_nmpc_demo.py:551:        self.joint_state_sub = self.create_subscription(JointState, "/joint_states", self._joint_state_callback, 10)
+src/arm-platform/demo/ll100_trajectory_visualizer_demo.py:143:        self.expected_pub = self.create_publisher(Marker, "/ll100_trajectory/expected", marker_qos)
+src/arm-platform/demo/ll100_trajectory_visualizer_demo.py:144:        self.actual_pub = self.create_publisher(Marker, "/ll100_trajectory/actual", marker_qos)
+src/arm-platform/demo/ll100_trajectory_visualizer_demo.py:145:        self.command_fk_pub = self.create_publisher(Marker, "/ll100_trajectory/command_fk", marker_qos)
+src/arm-platform/demo/ll100_trajectory_visualizer_demo.py:146:        self.current_target_pub = self.create_publisher(Marker, "/ll100_trajectory/current_target", marker_qos)
+src/arm-platform/demo/ll100_trajectory_visualizer_demo.py:147:        self.current_actual_pub = self.create_publisher(Marker, "/ll100_trajectory/current_actual", marker_qos)
+src/arm-platform/demo/ll100_trajectory_visualizer_demo.py:148:        self.obstacle_pub = self.create_publisher(MarkerArray, "/ll100_trajectory/obstacles", marker_qos)
+src/arm-platform/demo/ll100_trajectory_visualizer_demo.py:149:        self.markers_pub = self.create_publisher(MarkerArray, "/ll100_trajectory/markers", marker_qos)
+src/arm-platform/demo/ll100_trajectory_visualizer_demo.py:151:        self.create_subscription(JointState, "/joint_states", self._joint_state_cb, 10)
+src/arm-platform/demo/ll100_trajectory_visualizer_demo.py:152:        self.create_subscription(JointState, "/student/joint_command", self._command_cb, 10)
+src/arm-platform/demo/move_base_circle_mpc_ik_demo.py:1081:        self.pub = self.create_publisher(JointState, '/student/joint_command', 10)
+src/arm-platform/demo/move_base_circle_mpc_ik_demo.py:1082:        self.actual_marker_pub = self.create_publisher(Marker, '/ee_traj_marker', 10)
+src/arm-platform/demo/move_base_circle_mpc_ik_demo.py:1083:        self.target_marker_pub = self.create_publisher(Marker, '/ee_target_traj_marker', 10)
+src/arm-platform/demo/move_base_circle_mpc_ik_demo.py:1087:        self.path_progress_pub = self.create_publisher(
+src/arm-platform/demo/move_base_circle_mpc_ik_demo.py:1091:        self.create_subscription(

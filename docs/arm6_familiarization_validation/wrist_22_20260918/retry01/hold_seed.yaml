@@ -1,0 +1,46 @@
+captured_unix_sec: 1789721194.6643865
+command:
+  current:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  d:
+  - 1
+  - 1
+  - 1
+  - 0.1
+  - 0.1
+  - 0.1
+  p:
+  - 30
+  - 30
+  - 30
+  - 5
+  - 5
+  - 5
+  position:
+  - -0.10318946838378906
+  - 0.5773630142211914
+  - -0.9538793563842773
+  - 1.010624885559082
+  - 0.12026214599609375
+  - -0.6477279663085938
+  velocity:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+port: /dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0
+q:
+- -0.10853004455566406
+- 0.5773630142211914
+- -0.9752426147460938
+- 1.010624885559082
+- 0.11834430694580078
+- -0.6477279663085938
+source: actual currently applied fault HOLD, operator requested one no-touch retry

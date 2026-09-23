@@ -5,8 +5,10 @@
 # 方法与依据：task_space_smc/PHASE1_FINDINGS.md
 #
 # 使用方式：
-#   实际关节角 = 命令角 + zero_offset_rad
-#   前馈重力   = first_moment_ratio × g_model(q)
+#   历史语义：q_model = q_encoder + zero_offset_rad；不是写电机零位。
+#   first_moment_ratio 是相对原CAD模型的历史拟合记录，已烘入 arm6/arm6_tool 惯性；运行时不可再乘。
+#   当前URDF前馈 = g_urdf(q_encoder + 显式验证的model_offset)，默认offset=0。
+#   本文件历史offset/惯量/摩擦/alpha不构成跨硬件有效的标定。
 #
 # ⚠️ 标定值与机械状态绑定。以下任一情况发生后必须重测：
 #   - 拆装关节、更换电机、调整预紧
@@ -37,10 +39,10 @@ zero_offset_uncertainty_deg: [0.141, 0.316, 0.163, 2.0, 1.161, null]
 # 一阶质量矩比值 = A_实测 / A_【CAD名义】模型。URDF 偏轻则 >1。
 #
 # ⚠️⚠️ 【此比值已烘进 arm6.urdf 与 arm6_tool.urdf 的连杆惯性参数】。
-# 那两个 URDF 算出的重力【就是实机重力】，不要再乘这个系数 —— 会重复修正。
+# 那两个 URDF 算出的重力是历史拟合后的模型估计，不保证新硬件准确；不可重复乘系数。
 # 保留此字段是为了记录来源与供复测对照：若按修正后的 URDF 重跑阶段 3，
 # 应当测得比值 ≈ 1.0（j1/j2/j3 偏差 2.3~3.6%）。
-# config/arm.urdf (7 关节) 未修正，对它这个系数仍然适用。
+# config/arm.urdf (7 关节) 未修正；不得自动将这组六轴拟合值移植过去。
 first_moment_ratio: [1.265, 1.349, 1.228, 0.972, 1.021, 1.0]
 
 # 静摩擦（启动力矩），阶段 2 双向测量的半和。

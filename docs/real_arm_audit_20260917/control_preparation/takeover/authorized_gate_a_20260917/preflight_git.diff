@@ -1,0 +1,281 @@
+diff --git a/src/arm-platform/config/arm6_calibration.yaml b/src/arm-platform/config/arm6_calibration.yaml
+index 703a988..4433c16 100644
+--- a/src/arm-platform/config/arm6_calibration.yaml
++++ b/src/arm-platform/config/arm6_calibration.yaml
+@@ -5,8 +5,10 @@
+ # 方法与依据：task_space_smc/PHASE1_FINDINGS.md
+ #
+ # 使用方式：
+-#   实际关节角 = 命令角 + zero_offset_rad
+-#   前馈重力   = first_moment_ratio × g_model(q)
++#   历史语义：q_model = q_encoder + zero_offset_rad；不是写电机零位。
++#   first_moment_ratio 是相对原CAD模型的历史拟合记录，已烘入 arm6/arm6_tool 惯性；运行时不可再乘。
++#   当前URDF前馈 = g_urdf(q_encoder + 显式验证的model_offset)，默认offset=0。
++#   本文件历史offset/惯量/摩擦/alpha不构成跨硬件有效的标定。
+ #
+ # ⚠️ 标定值与机械状态绑定。以下任一情况发生后必须重测：
+ #   - 拆装关节、更换电机、调整预紧
+@@ -37,10 +39,10 @@ zero_offset_uncertainty_deg: [0.141, 0.316, 0.163, 2.0, 1.161, null]
+ # 一阶质量矩比值 = A_实测 / A_【CAD名义】模型。URDF 偏轻则 >1。
+ #
+ # ⚠️⚠️ 【此比值已烘进 arm6.urdf 与 arm6_tool.urdf 的连杆惯性参数】。
+-# 那两个 URDF 算出的重力【就是实机重力】，不要再乘这个系数 —— 会重复修正。
++# 那两个 URDF 算出的重力是历史拟合后的模型估计，不保证新硬件准确；不可重复乘系数。
+ # 保留此字段是为了记录来源与供复测对照：若按修正后的 URDF 重跑阶段 3，
+ # 应当测得比值 ≈ 1.0（j1/j2/j3 偏差 2.3~3.6%）。
+-# config/arm.urdf (7 关节) 未修正，对它这个系数仍然适用。
++# config/arm.urdf (7 关节) 未修正；不得自动将这组六轴拟合值移植过去。
+ first_moment_ratio: [1.265, 1.349, 1.228, 0.972, 1.021, 1.0]
+ 
+ # 静摩擦（启动力矩），阶段 2 双向测量的半和。
+diff --git a/src/arm-platform/launch/student_arm6.launch.py b/src/arm-platform/launch/student_arm6.launch.py
+index d7ce9a3..25c041a 100644
+--- a/src/arm-platform/launch/student_arm6.launch.py
++++ b/src/arm-platform/launch/student_arm6.launch.py
+@@ -147,9 +147,9 @@ def generate_launch_description():
+             # 直驱力矩消息超时后的驱动兜底保位也叠加重力前馈。否则 joint2/3
+             # 会在任何控制器退出或 ROS 短暂抖动后仅靠 PD 下垂。
+             'gravity_hold_enabled': True,
++            # Never inherit another machine's encoder-to-model calibration.
+             'gravity_hold_zero_offset_rad': [
+-                0.039576, -0.297745, -0.020218,
+-                -0.192988, -0.111667, 0.0,
++                0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+             ],
+             'gravity_hold_torque_limit': [9.0, 9.0, 9.0, 1.6, 1.6, 1.6],
+         }],
+diff --git a/src/arm-platform/src/controller/gravity_controller.cc b/src/arm-platform/src/controller/gravity_controller.cc
+index 0760f41..1844d0b 100755
+--- a/src/arm-platform/src/controller/gravity_controller.cc
++++ b/src/arm-platform/src/controller/gravity_controller.cc
+@@ -107,6 +107,8 @@ JointCommand GravityController::Compute(const JointStates& joint_states,
+       q(i) = joint_states.position[i];
+     }
+ 
++    // URDF inertias are authoritative (arm6 mass fit is already baked in).
++    // No historical first_moment_ratio multiplier; q must be model coordinates.
+     pinocchio::computeGeneralizedGravity(model_, data_, q);
+ 
+     std::array<double, 7> tau_gravity = {0, 0, 0, 0, 0, 0, 0};
+diff --git a/src/arm-platform/task_space_smc/core/model.py b/src/arm-platform/task_space_smc/core/model.py
+index 29ef975..b2c7e15 100644
+--- a/src/arm-platform/task_space_smc/core/model.py
++++ b/src/arm-platform/task_space_smc/core/model.py
+@@ -8,6 +8,7 @@ import numpy as np
+ import pinocchio as pin
+ 
+ from .quaternion_math import quat_normalize
++from .gravity_semantics import explicit_offsets
+ 
+ 
+ DEFAULT_ARM_JOINT_NAMES = ("joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7")
+@@ -99,14 +100,17 @@ def model_from_config(config: dict) -> "FloatingBaseArmModel":
+             urdf_path=arm6_tool_urdf_path(),
+             ee_frame_name=ee_frame or ARM6_TOOL_EE_FRAME,
+             arm_joint_names=ARM6_JOINT_NAMES,
++            zero_offset_rad=config.get("model_zero_offset_rad"),
+         )
+     if urdf in ("arm6", ARM6_URDF_NAME):
+         return FloatingBaseArmModel(
+             urdf_path=arm6_urdf_path(),
+             ee_frame_name=ee_frame or ARM6_EE_FRAME,
+             arm_joint_names=ARM6_JOINT_NAMES,
++            zero_offset_rad=config.get("model_zero_offset_rad"),
+         )
+-    return FloatingBaseArmModel(urdf_path=urdf, ee_frame_name=ee_frame)
++    return FloatingBaseArmModel(urdf_path=urdf, ee_frame_name=ee_frame,
++                                zero_offset_rad=config.get("model_zero_offset_rad"))
+ 
+ 
+ @dataclass
+@@ -136,6 +140,7 @@ class FloatingBaseArmModel:
+         ee_frame_name: str | None = None,
+         arm_joint_names: tuple[str, ...] | None = None,
+         apply_armature: bool = True,
++        zero_offset_rad=None,
+     ):
+         self.urdf_path = urdf_path or default_urdf_path()
+         self.model = pin.buildModelFromUrdf(self.urdf_path, pin.JointModelFreeFlyer())
+@@ -144,9 +149,8 @@ class FloatingBaseArmModel:
+ 
+         self.n_arm = self.model.nv - 6
+ 
+-        # Calibration is loaded once at model construction.  The same model
+-        # angle and gravity scaling are then used by FK, Jacobians, task bias,
+-        # and RNEA; callers continue to provide encoder-space joint angles.
++        # Historical calibration remains available for armature/provenance.
++        # Offsets require explicit per-machine input; URDF gravity is not scaled.
+         self.calibration = load_arm6_calibration()
+         self.calibration_source = self.calibration.get("source")
+         def _calibration_vector(key, default):
+@@ -155,8 +159,9 @@ class FloatingBaseArmModel:
+                 return np.full(self.n_arm, default, dtype=float)
+             return np.asarray(values, dtype=float).reshape(self.n_arm)
+ 
+-        self.zero_offset_rad = _calibration_vector("zero_offset_rad", 0.0)
+-        self.first_moment_ratio = _calibration_vector("first_moment_ratio", 1.0)
++        self.zero_offset_rad = explicit_offsets(self.n_arm, zero_offset_rad)
++        self.historical_first_moment_ratio = _calibration_vector("first_moment_ratio", 1.0)
++        self.first_moment_ratio = np.ones(self.n_arm)  # compatibility: effective ratio
+ 
+ 
+         # 电机转子惯量经减速比折算到关节侧，加在质量阵对角：M_aa ← M_aa + diag(armature)
+@@ -220,21 +225,19 @@ class FloatingBaseArmModel:
+                 + self.zero_offset_rad)
+ 
+     def gravity_arm_torque(self, q_full: np.ndarray) -> np.ndarray:
+-        """Return the unscaled arm gravity term at a model-coordinate q."""
++        """Return gravity of the selected URDF at model-coordinate q (already fitted for arm6)."""
+         q_full = np.asarray(q_full, dtype=float).reshape(self.model.nq)
+         gravity = pin.computeGeneralizedGravity(self.model, self.data, q_full)
+         return np.asarray(gravity[6:]).reshape(self.n_arm).copy()
+ 
+     def scale_gravity_arm_torque(self, gravity_arm: np.ndarray) -> np.ndarray:
+-        return (np.asarray(gravity_arm, dtype=float).reshape(self.n_arm)
+-                * self.first_moment_ratio)
++        # Compatibility API: never multiply the historical CAD-to-fit ratio.
++        return np.asarray(gravity_arm, dtype=float).reshape(self.n_arm).copy()
+ 
+     def _apply_gravity_ratio(self, tau_arm: np.ndarray,
+                               q_full: np.ndarray) -> np.ndarray:
+-        """Keep inertial/Coriolis terms and replace only gravity by ratio*g."""
+-        tau_arm = np.asarray(tau_arm, dtype=float).reshape(self.n_arm)
+-        gravity = self.gravity_arm_torque(q_full)
+-        return tau_arm - gravity + self.scale_gravity_arm_torque(gravity)
++        """RNEA already contains the selected URDF gravity exactly once."""
++        return np.asarray(tau_arm, dtype=float).reshape(self.n_arm).copy()
+ 
+     # base_velocity 表达在【基座体系】，不是世界系
+     def make_v_full(self, base_velocity_lwa: np.ndarray, qd_arm: np.ndarray) -> np.ndarray:
+diff --git a/src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py b/src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py
+index 64a2f94..79f91ec 100644
+--- a/src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py
++++ b/src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py
+@@ -4,7 +4,7 @@
+ 
+     kp = kp_frac · BASE_P,   kd = kd_frac · BASE_D
+ 
+-前馈始终为 tau_ff = ratio ⊙ g(q)。kp_frac 从 1.00 一路降到 0（L4「悬浮」级，
++前馈始终为 tau_ff = g_urdf(q + explicit_offset)（不重复乘历史 ratio）。kp_frac 从 1.00 一路降到 0（L4「悬浮」级，
+ 位置比例项完全撤掉，只留阻尼），记录各级的稳态残差
+ 
+     residual = mean(q_measured) − q_hold
+@@ -40,6 +40,7 @@ from task_space_smc.hw.fk_gravity_verify import (
+     FENCE_CLEARANCE,
+ )
+ from task_space_smc.core.model import load_arm6_calibration
++from task_space_smc.core.gravity_semantics import explicit_offsets, urdf_feedforward
+ 
+ OUT = Path(__file__).resolve().parent / "data" / "phase4"
+ 
+@@ -78,12 +79,12 @@ def desk_margin(model: GravityModel, q: np.ndarray) -> float:
+ 
+ class Compensator(Node):
+     def __init__(self, *, ignore_workspace_guard: bool = False,
+-                 calibration_yaml: str | None = None):
++                 calibration_yaml: str | None = None, model_zero_offset_rad=None):
+         super().__init__("phase4_gravity_compensation")
+         self.model = GravityModel()
+         cal = load_arm6_calibration(calibration_yaml)
+-        self.offset = np.array(cal["zero_offset_rad"], dtype=float)
+-        self.ratio = np.array(cal["first_moment_ratio"], dtype=float)
++        self.offset = explicit_offsets(N_ARM, model_zero_offset_rad)
++        self.ratio = np.ones(N_ARM)  # URDF already includes historical mass fit
+         self.stiction = np.array(cal["stiction_nm"], dtype=float)
+         self.cal_source = cal["source"]
+         # 仅供动捕标定场地（确认四周无桌面/围栏）使用。关节限位、速度和
+@@ -112,8 +113,7 @@ class Compensator(Node):
+             self.tau = np.array(m.effort)
+ 
+     def feedforward(self, q: np.ndarray) -> np.ndarray:
+-        qc = np.asarray(q, float) + self.offset
+-        return self.model.gravity(qc) * self.ratio
++        return urdf_feedforward(self.model, q, self.offset)
+ 
+     def send(self, posture, kp, kd, tff):
+         msg = MotorControl()
+@@ -289,8 +289,8 @@ def parse_posture(text: str | None) -> np.ndarray | None:
+     print("PLAN (dry run — nothing is commanded)")
+     print("=" * 74)
+     print(f"标定来源: {cal['source']}")
+-    print(f"零位偏差(°): {[round(np.degrees(v), 2) for v in cal['zero_offset_rad']]}")
+-    print(f"ratio      : {cal['first_moment_ratio']}")
++    print("默认模型零偏: 全零；历史零偏不会自动应用")
++    print("gravity: 所选URDF直接计算，不乘历史first_moment_ratio")
+     print(f"\n起始位姿: {np.round(q, 4).tolist()}")
+     print(f"  桌面/围栏余量 {info['desk_margin']:.4f} m  (要求 >= {DESK_MARGIN_MIN})")
+     print(f"  限位最小余量  {info['limit_room']:.3f} rad  (要求 >= 0.30)")
+@@ -318,6 +318,8 @@ def main() -> int:
+                          '不关闭关节限位、速度或漂移保护')
+     ap.add_argument('--calibration-yaml', default=None,
+                     help='candidate arm6 calibration YAML used for feedforward')
++    ap.add_argument('--model-zero-offset-rad', nargs=6, type=float, default=None,
++                    help='Explicit verified encoder-to-model offsets; default all zero')
+     ap.add_argument('--dry-run', action='store_true')
+     args = ap.parse_args()
+ 
+@@ -332,7 +334,8 @@ def main() -> int:
+     stamp = time.strftime('%Y%m%d_%H%M%S')
+     rclpy.init()
+     node = Compensator(ignore_workspace_guard=args.ignore_workspace_guard,
+-                       calibration_yaml=args.calibration_yaml)
++                       calibration_yaml=args.calibration_yaml,
++                       model_zero_offset_rad=args.model_zero_offset_rad)
+     results = []
+     try:
+         if not node.wait_state():
+diff --git a/src/arm-platform/task_space_smc/hw/phase5_inertia_id.py b/src/arm-platform/task_space_smc/hw/phase5_inertia_id.py
+index 1fe0315..f29a987 100644
+--- a/src/arm-platform/task_space_smc/hw/phase5_inertia_id.py
++++ b/src/arm-platform/task_space_smc/hw/phase5_inertia_id.py
+@@ -39,6 +39,7 @@ from task_space_smc.hw.phase4_gravity_compensation import (
+     desk_margin, BASE_P, BASE_D,
+ )
+ from task_space_smc.core.model import load_arm6_calibration
++from task_space_smc.core.gravity_semantics import explicit_offsets, urdf_feedforward
+ 
+ OUT = Path(__file__).resolve().parent / "data" / "phase5"
+ 
+@@ -57,12 +58,12 @@ DESK_MARGIN_MIN = 0.10
+ 
+ 
+ class InertiaId(Node):
+-    def __init__(self, calibration_yaml: str | None = None):
++    def __init__(self, calibration_yaml: str | None = None, model_zero_offset_rad=None):
+         super().__init__("phase5_inertia_id")
+         self.model = GravityModel()
+         cal = load_arm6_calibration(calibration_yaml)
+-        self.offset = np.array(cal["zero_offset_rad"], dtype=float)
+-        self.ratio = np.array(cal["first_moment_ratio"], dtype=float)
++        self.offset = explicit_offsets(N_ARM, model_zero_offset_rad)
++        self.ratio = np.ones(N_ARM)
+         self.stiction = np.array(cal["stiction_nm"], dtype=float)
+         self.cal_source = cal["source"]
+         self.q = None
+@@ -90,7 +91,7 @@ class InertiaId(Node):
+         self.stamp = time.time()
+ 
+     def feedforward(self, q):
+-        return self.model.gravity(np.asarray(q, float) + self.offset) * self.ratio
++        return urdf_feedforward(self.model, q, self.offset)
+ 
+     def send(self, posture, kp, kd, tff):
+         msg = MotorControl()
+@@ -434,6 +435,8 @@ def main() -> int:
+         description=__doc__,
+         formatter_class=argparse.RawDescriptionHelpFormatter)
+     ap.add_argument('--joints', default='2')
++    ap.add_argument('--model-zero-offset-rad', nargs=6, type=float, default=None,
++                    help='Explicit verified model offsets; defaults to zero')
+     ap.add_argument('--calibration-yaml', default=None,
+                     help='candidate arm6 calibration YAML used for feedforward/stiction')
+     ap.add_argument('--posture', default=None, help='逗号分隔的 6 个安全初始角度')
+@@ -469,7 +472,7 @@ def main() -> int:
+     OUT.mkdir(parents=True, exist_ok=True)
+     stamp = time.strftime('%Y%m%d_%H%M%S')
+     rclpy.init()
+-    node = InertiaId(args.calibration_yaml)
++    node = InertiaId(args.calibration_yaml, args.model_zero_offset_rad)
+     results = []
+     try:
+         if not node.wait_state():

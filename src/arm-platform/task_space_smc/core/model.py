@@ -8,6 +8,7 @@ import numpy as np
 import pinocchio as pin
 
 from .quaternion_math import quat_normalize
+from .gravity_semantics import explicit_offsets
 
 
 DEFAULT_ARM_JOINT_NAMES = ("joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7")
@@ -99,14 +100,17 @@ def model_from_config(config: dict) -> "FloatingBaseArmModel":
             urdf_path=arm6_tool_urdf_path(),
             ee_frame_name=ee_frame or ARM6_TOOL_EE_FRAME,
             arm_joint_names=ARM6_JOINT_NAMES,
+            zero_offset_rad=config.get("model_zero_offset_rad"),
         )
     if urdf in ("arm6", ARM6_URDF_NAME):
         return FloatingBaseArmModel(
             urdf_path=arm6_urdf_path(),
             ee_frame_name=ee_frame or ARM6_EE_FRAME,
             arm_joint_names=ARM6_JOINT_NAMES,
+            zero_offset_rad=config.get("model_zero_offset_rad"),
         )
-    return FloatingBaseArmModel(urdf_path=urdf, ee_frame_name=ee_frame)
+    return FloatingBaseArmModel(urdf_path=urdf, ee_frame_name=ee_frame,
+                                zero_offset_rad=config.get("model_zero_offset_rad"))
 
 
 @dataclass
@@ -136,6 +140,7 @@ class FloatingBaseArmModel:
         ee_frame_name: str | None = None,
         arm_joint_names: tuple[str, ...] | None = None,
         apply_armature: bool = True,
+        zero_offset_rad=None,
     ):
         self.urdf_path = urdf_path or default_urdf_path()
         self.model = pin.buildModelFromUrdf(self.urdf_path, pin.JointModelFreeFlyer())
@@ -144,9 +149,8 @@ class FloatingBaseArmModel:
 
         self.n_arm = self.model.nv - 6
 
-        # Calibration is loaded once at model construction.  The same model
-        # angle and gravity scaling are then used by FK, Jacobians, task bias,
-        # and RNEA; callers continue to provide encoder-space joint angles.
+        # Historical calibration remains available for armature/provenance.
+        # Offsets require explicit per-machine input; URDF gravity is not scaled.
         self.calibration = load_arm6_calibration()
         self.calibration_source = self.calibration.get("source")
         def _calibration_vector(key, default):
@@ -155,8 +159,9 @@ class FloatingBaseArmModel:
                 return np.full(self.n_arm, default, dtype=float)
             return np.asarray(values, dtype=float).reshape(self.n_arm)
 
-        self.zero_offset_rad = _calibration_vector("zero_offset_rad", 0.0)
-        self.first_moment_ratio = _calibration_vector("first_moment_ratio", 1.0)
+        self.zero_offset_rad = explicit_offsets(self.n_arm, zero_offset_rad)
+        self.historical_first_moment_ratio = _calibration_vector("first_moment_ratio", 1.0)
+        self.first_moment_ratio = np.ones(self.n_arm)  # compatibility: effective ratio
 
 
         # 电机转子惯量经减速比折算到关节侧，加在质量阵对角：M_aa ← M_aa + diag(armature)
@@ -220,21 +225,19 @@ class FloatingBaseArmModel:
                 + self.zero_offset_rad)
 
     def gravity_arm_torque(self, q_full: np.ndarray) -> np.ndarray:
-        """Return the unscaled arm gravity term at a model-coordinate q."""
+        """Return gravity of the selected URDF at model-coordinate q (already fitted for arm6)."""
         q_full = np.asarray(q_full, dtype=float).reshape(self.model.nq)
         gravity = pin.computeGeneralizedGravity(self.model, self.data, q_full)
         return np.asarray(gravity[6:]).reshape(self.n_arm).copy()
 
     def scale_gravity_arm_torque(self, gravity_arm: np.ndarray) -> np.ndarray:
-        return (np.asarray(gravity_arm, dtype=float).reshape(self.n_arm)
-                * self.first_moment_ratio)
+        # Compatibility API: never multiply the historical CAD-to-fit ratio.
+        return np.asarray(gravity_arm, dtype=float).reshape(self.n_arm).copy()
 
     def _apply_gravity_ratio(self, tau_arm: np.ndarray,
                               q_full: np.ndarray) -> np.ndarray:
-        """Keep inertial/Coriolis terms and replace only gravity by ratio*g."""
-        tau_arm = np.asarray(tau_arm, dtype=float).reshape(self.n_arm)
-        gravity = self.gravity_arm_torque(q_full)
-        return tau_arm - gravity + self.scale_gravity_arm_torque(gravity)
+        """RNEA already contains the selected URDF gravity exactly once."""
+        return np.asarray(tau_arm, dtype=float).reshape(self.n_arm).copy()
 
     # base_velocity 表达在【基座体系】，不是世界系
     def make_v_full(self, base_velocity_lwa: np.ndarray, qd_arm: np.ndarray) -> np.ndarray:

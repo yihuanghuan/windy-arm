@@ -1,0 +1,8 @@
+{
+  "scope": "offline preview strace; no real-time hardware/node actions in this preparation turn",
+  "serial_device_syscalls": 0,
+  "socket_connect_syscalls": 0,
+  "serial_tx_frames": 0,
+  "MotorControl_publishers_created": 0,
+  "hardware_nodes_started": 0
+}

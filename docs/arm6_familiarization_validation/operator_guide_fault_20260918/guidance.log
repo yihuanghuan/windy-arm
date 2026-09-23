@@ -1,0 +1,8 @@
+[INFO] [1789722425.296913964] [arm6_manual_guidance]: gravity = g_arm6(q + explicit_offset), ratio=1; damping only in MIT Kd
+[INFO] [1789722425.315924314] [arm6_manual_guidance]: ACTIVE HANDOVER_START
+[INFO] [1789722425.325788758] [arm6_manual_guidance]: ACTIVE HANDOVER_GRAVITY_MATCH
+[INFO] [1789722428.315921320] [arm6_manual_guidance]: ACTIVE KP_WITHDRAWAL
+[INFO] [1789722431.316100368] [arm6_manual_guidance]: ACTIVE GUIDE
+[WARN] [1789722446.145934731] [arm6_manual_guidance]: SPEED WARNING joint3 phase=GUIDE dq=-0.512821
+[WARN] [1789722449.066003736] [arm6_manual_guidance]: SPEED WARNING joint4 phase=GUIDE dq=-0.622711
+[ERROR] [1789722449.115816207] [arm6_manual_guidance]: GUIDANCE STOPPED: speed HARD_ABORT joint4 phase=GUIDE type=instantaneous dq=-1.501831 duration=0.009970s; restart required

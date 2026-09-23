@@ -1,0 +1,25 @@
+{
+  "gate": "A",
+  "firmware_version": "UNKNOWN",
+  "authorization_reference": "Current user explicit reauthorization: external load-bearing support now installed; strict A/B with previous no-support run; unchanged exact cc9f0220 Gate A revision, 2s Run 1; no retries after any abort.",
+  "power_off_procedure": "On-site user operates their confirmed physical motor-power isolation/disconnection with independent mechanical load support. Stop TX and close UART do not disable motors. Normal/abort output directs physical isolation; exact switch location not observable to assistant.",
+  "note": "User corrected prior support assertion: previous run had NO independent distal load-bearing support. This run has user-confirmed stable external forearm/distal support that bears weight without changing pose. Operator on site, power isolation available. Firmware UNKNOWN unchanged. physical_power_cut_tested means user-confirmed availability, not an assistant-performed test.",
+  "explicit_current_session_gate_a_authorization": true,
+  "operator_present": true,
+  "load_bearing_support_all_links": true,
+  "physical_power_cut_tested": true,
+  "slot_mapping_signs_confirmed": true,
+  "partial_frame_update_risk_reviewed": true,
+  "previous_control_state_and_gain_switch_reviewed": true,
+  "normal_and_abort_power_isolation_agreed": true,
+  "exclusive_port_confirmed": true,
+  "reviewed_program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd",
+  "unknowns": {
+    "exact_board_firmware_version": "UNKNOWN",
+    "board_internal_total_torque_limit": "UNKNOWN",
+    "actual_0x12_torque_scale": "UNKNOWN",
+    "disconnect_behavior": "UNKNOWN",
+    "persistent_board_state": "UNKNOWN"
+  },
+  "unknown_board_risks_acknowledged": true
+}

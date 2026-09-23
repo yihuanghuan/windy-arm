@@ -1,0 +1,14 @@
+Starting >>> manipulator
+[0.231s] WARNING:colcon.colcon_core.shell:The following packages are in the workspace but haven't been built:
+- dummy_description
+- dummy_interface
+- serial
+They are being used from the following locations instead:
+- /tmp/windy-familiarization-install/dummy_description
+- /tmp/windy-familiarization-install/dummy_interface
+- /tmp/windy-familiarization-install/serial
+To suppress this warning ignore these packages in the workspace:
+--packages-ignore dummy_description dummy_interface serial
+Finished <<< manipulator [0.18s]
+
+Summary: 1 package finished [0.36s]

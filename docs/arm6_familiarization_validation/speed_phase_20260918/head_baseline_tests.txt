@@ -1,0 +1,42 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+__________ test_extrinsics_yaml_still_carries_both_vectors_unswapped ___________
+
+    def test_extrinsics_yaml_still_carries_both_vectors_unswapped():
+        """配置文件里的两个向量不许被互换或对齐成同一个值。"""
+        path = os.path.join(os.path.dirname(__file__), "..", "..",
+                            "task_space_smc", "config", "vicon_extrinsics.yaml")
+        with open(path, "r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle)
+        base = np.asarray(data["arm_base_from_base_link"]["translation_m"], dtype=float)
+        ee = np.asarray(data["arm_ee_from_link6"]["translation_m"], dtype=float)
+>       assert np.allclose(base, R_BASE, atol=1e-6)
+E       assert False
+E        +  where False = <function allclose at 0x770672a1d120>(array([ 0.03568773, -0.04163857, -0.01788785]), array([ 0.019621, -0.026358, -0.003764]), atol=1e-06)
+E        +    where <function allclose at 0x770672a1d120> = np.allclose
+
+/tmp/windy-arm6-speed-baseline/src/arm-platform/test/core/test_base_state_fusion.py:127: AssertionError
+_________________________ test_hwtest_gains_are_frozen _________________________
+
+    def test_hwtest_gains_are_frozen():
+        """把 2026-08-04 那 15 组实测出来的最优点钉死在 CI 里。
+    
+        交接后位置 RMS 2.95~3.02 mm、末端 0.8~6 Hz 抖动 0.856~0.908 mm。
+        ⚠️ 这是【实测的硬件天花板附近】：Λ=21(c1=36) 与 Λ=25(c1=35.5) 都当场触发
+        看门狗，而解析判据对这两组给出 σ=−11.8"很安全"。动它就丢掉基线。
+        """
+        p = _config("hwtest")["position"]
+>       assert p["lambda"] == [18.0] * 3
+E       assert [14.0, 14.0, 14.0] == [18.0, 18.0, 18.0]
+E         At index 0 diff: 14.0 != 18.0
+E         Full diff:
+E         - [18.0, 18.0, 18.0]
+E         ?   ^     ^     ^
+E         + [14.0, 14.0, 14.0]
+E         ?   ^     ^     ^
+
+/tmp/windy-arm6-speed-baseline/src/arm-platform/test/core/test_state_estimator.py:780: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../../tmp/windy-arm6-speed-baseline/src/arm-platform/test/core/test_base_state_fusion.py::test_extrinsics_yaml_still_carries_both_vectors_unswapped
+FAILED ../../../../tmp/windy-arm6-speed-baseline/src/arm-platform/test/core/test_state_estimator.py::test_hwtest_gains_are_frozen
+2 failed in 0.17s

@@ -1,0 +1,90 @@
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:36:    GravityModel, check_setpoint, N_ARM, JOINT_LOWER, JOINT_UPPER,
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:84:        if len(m.position) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:86:        if len(m.velocity) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:88:        if len(m.effort) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:99:        msg.velocity = [0.0] * N_ARM
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:129:        kp = [BASE_P[i] * kp_frac for i in range(N_ARM)]
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:130:        kd = [BASE_D[i] * kd_frac for i in range(N_ARM)]
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:188:        kp = [0.0] * N_ARM
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:189:        kd = [BASE_D[i] * 0.2 for i in range(N_ARM)]
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:278:    for lag in range(-max_lag, max_lag + 1):
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:488:            if len(vals) != N_ARM:
+src/arm-platform/task_space_smc/hw/phase5_inertia_id.py:489:                print(f"REFUSED: --posture expects {N_ARM} values", file=sys.stderr)
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:38:    GravityModel, check_setpoint, N_ARM, JOINT_LOWER, JOINT_UPPER,
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:107:        if len(m.position) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:109:        if len(m.velocity) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:111:        if len(m.effort) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:122:        msg.velocity = [0.0] * N_ARM
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:215:        kp = [BASE_P[i] * level["kp_frac"] for i in range(N_ARM)]
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:216:        kd = [BASE_D[i] * level["kd_frac"] for i in range(N_ARM)]
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:233:                                else np.zeros(N_ARM)))
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:256:    for _ in range(20000):
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:286:    if len(vals) != N_ARM:
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:287:        raise ValueError(f"--posture expects {N_ARM} comma separated values")
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:395:                for _ in range(300):
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:397:                              [BASE_P[k] * safe['kp_frac'] for k in range(N_ARM)],
+src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py:398:                              [BASE_D[k] * safe['kd_frac'] for k in range(N_ARM)],
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:40:    zero_offset, JOINT_LOWER, JOINT_UPPER, N_ARM, SWEEP_PLAN,
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:75:        print(f"[CAL] ratio      : {[RATIO[i] for i in range(1, N_ARM + 1)]}")
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:76:        print(f"[CAL] stiction_nm: {[STICTION[i] for i in range(1, N_ARM + 1)]}")
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:81:    if ratio is None or len(ratio) != N_ARM:
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:82:        raise ValueError(f"{path}: first_moment_ratio must have {N_ARM} values")
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:83:    if stiction is None or len(stiction) != N_ARM:
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:84:        raise ValueError(f"{path}: stiction_nm must have {N_ARM} values")
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:85:    for i in range(N_ARM):
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:89:    print(f"[CAL] ratio      : {[RATIO[i] for i in range(1, N_ARM + 1)]}")
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:90:    print(f"[CAL] stiction_nm: {[STICTION[i] for i in range(1, N_ARM + 1)]}")
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:97:            posture[5] = float(j6_rad)
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:99:    print(f"[CAL] holding J6 in Phase3 sweep postures: {float(j6_rad):.6f} rad")
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:136:        if len(m.position) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:138:        if len(m.velocity) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:140:        if len(m.effort) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:172:        return np.array([g[i] * RATIO[i + 1] for i in range(N_ARM)])
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:178:        msg.velocity = [0.0] * N_ARM
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:179:        msg.current = [0.0] * N_ARM if tff is None else [float(v) for v in tff]
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:231:                self.send(cmd, self.feedforward(cmd), [RAMP_KD] * N_ARM)
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:480:    for s in range(warmup + max_sweeps):
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:523:        if j == 6:
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:524:            print(f"joint6   —— 无重力信号（link6 质心在转轴上），跳过")
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:537:        if j == 6:
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:558:    offsets = [None] * N_ARM
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:602:                    help='override non-calibrated J6 in sweep postures')
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:644:            if j == 6:
+src/arm-platform/task_space_smc/hw/phase3_gravity_calibration.py:645:                node.get_logger().info("joint6 has no gravity signal, skipping")
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:45:    GravityModel, check_setpoint, JOINT_LOWER, JOINT_UPPER, N_ARM,
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:91:        if len(m.position) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:93:        if len(m.velocity) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:95:        if len(m.effort) == N_ARM:
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:126:        msg.velocity = [0.0] * N_ARM
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:169:                             if self.tau is not None else np.zeros(N_ARM)))
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:190:    return [float(g[i] * GRAV_RATIO[i + 1]) for i in range(N_ARM)]
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:194:                        for j in range(1, N_ARM + 1)])
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:245:                      d_gains=[RAMP_KD] * N_ARM)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:254:        node.send(target, [0.0] * N_ARM)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:281:                      d_gains=[ESCAPE_KD] * N_ARM)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:299:                          d_gains=[ESCAPE_KD] * N_ARM)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:330:                          d_gains=[ESCAPE_KD] * N_ARM)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:334:                node.send(node.q, [0.0] * N_ARM, d_gains=[ESCAPE_KD] * N_ARM)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:377:    base, why = node.run_level(posture, [0.0] * N_ARM, 1.0)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:386:        tff = [0.0] * N_ARM
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:403:                node.run_level(posture, [0.0] * N_ARM, 0.5)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:409:                node.run_level(posture, [0.0] * N_ARM, 0.5)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:419:            node.run_level(posture, [0.0] * N_ARM, 1.0)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:422:    node.run_level(posture, [0.0] * N_ARM, 1.0)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:440:        tff = [0.0] * N_ARM
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:446:    node.run_level(posture, [0.0] * N_ARM, 1.0)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:483:                node.send(target, [0.0] * N_ARM)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:492:            node.send(cmd, [0.0] * N_ARM)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:546:    base, why = node.run_level(posture, [0.0] * N_ARM, dwell)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:554:        tff = [0.0] * N_ARM
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:559:            node.run_level(posture, [0.0] * N_ARM, 0.5)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:572:                node.run_level(posture, [0.0] * N_ARM, 0.5)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:662:        if len(vals) != N_ARM:
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:663:            print(f"--posture needs {N_ARM} values, got {len(vals)}", file=sys.stderr)
+src/arm-platform/task_space_smc/hw/phase2_torque_probe.py:742:        node.run_level(PROBE_POSTURE, [0.0] * N_ARM, 1.0)
+src/arm-platform/config/arm6_calibration.yaml:21:  temperature_c: [28, 29, 27, 31, 32, 31]   # 标定时各关节温度
+src/arm-platform/config/arm6_calibration.yaml:57:  joint1: "收敛，漂移 0.141°。扫描区间 [-0.88, 1.40]（原区间起点会让 joint6 撞围栏）"
+src/arm-platform/config/arm6_calibration.yaml:75:  joint6: "无重力信号 —— link6 质心在 joint6 转轴上（径向偏移 0.113 mm），
+src/arm-platform/config/arm6_calibration.yaml:108:# joint6 无法辨识：其惯量仅为转子惯量，任何可测的脉冲时长下加速度都过大
+src/arm-platform/config/arm6_calibration.yaml:110:# 信号是同一根源 —— link6 质心在 joint6 转轴上。
+src/arm-platform/config/arm6_calibration.yaml:121:# joint6 未辨识（惯量仅转子、加速度过大测不了），按同型号 joint5 取值。

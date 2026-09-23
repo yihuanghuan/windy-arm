@@ -27,6 +27,12 @@ class ProtocolV1 : public AbsProtocol {
    * @brief Default constructor
    */
   ProtocolV1();
+
+  // V1 has seven wire slots; only configured physical motors are validated.
+  void SetActiveMotorCount(size_t count);
+  bool HasFreshFeedback(double timeout_sec) const;
+  uint64_t GetFeedbackSequence() const;
+  bool HasPositionFeedback() const { return feedback_count_[0] != 0; }
   
   /**
    * @brief Virtual destructor
@@ -277,6 +283,9 @@ class ProtocolV1 : public AbsProtocol {
   std::chrono::steady_clock::time_point last_heartbeat_;
   uint64_t unhandled_frame_count_ = 0;
   uint8_t last_unhandled_cmd_ = 0;
+  size_t active_motor_count_ = 7;
+  uint64_t feedback_count_[3] = {0, 0, 0};  // q, dq, effort
+  std::chrono::steady_clock::time_point feedback_stamp_[3]{};
 };
 
 } // namespace manipulator::protocol

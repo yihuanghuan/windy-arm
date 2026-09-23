@@ -32,6 +32,7 @@ double DMMotor::GetRatedTorque() const {
 }
 
 void DMMotor::UpdateState() {
+  if (!protocol_->HasPositionFeedback()) return;
   double raw_position = protocol_->GetPosition(id_);
   double raw_velocity = protocol_->GetVelocity(id_);
   double raw_torque = protocol_->GetCurrent(id_);
@@ -61,9 +62,15 @@ void DMMotor::UpdateState() {
 void DMMotor::UpdateCommand(const dummy_interface::msg::MotorControl& cmd) {
   if (not is_received_) return;
 
-  if (id_ >= cmd.p.size() or id_ >= cmd.d.size() or id_ >= cmd.current.size()) {
+  if (id_ >= cmd.p.size() or id_ >= cmd.d.size() or id_ >= cmd.current.size() ||
+      id_ >= cmd.position.size() || id_ >= cmd.velocity.size()) {
     return;
   }
+  for (double value : {cmd.p[id_], cmd.d[id_], cmd.current[id_],
+                       cmd.position[id_], cmd.velocity[id_]}) {
+    if (!std::isfinite(value)) return;
+  }
+  if (cmd.p[id_] < 0.0 || cmd.d[id_] < 0.0) return;
 
   protocol_->SetKp(id_, cmd.p[id_]);
   protocol_->SetKd(id_, cmd.d[id_]);

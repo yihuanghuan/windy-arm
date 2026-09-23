@@ -1,0 +1,12 @@
+{
+  "serial_write_syscall_count": 0,
+  "serial_opens": [
+    "19355 openat(AT_FDCWD</home/yihuang/westlake/windy-arm>, \"/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0\", O_RDWR|O_NOCTTY|O_NONBLOCK <unfinished ...>"
+  ],
+  "serial_closes": [
+    "19355 close(21</dev/ttyUSB0<char 188:0>> <unfinished ...>"
+  ],
+  "write_lines": [],
+  "mode": "readonly",
+  "scope": "payload writes; tty open/configuration is not physical TX isolation"
+}

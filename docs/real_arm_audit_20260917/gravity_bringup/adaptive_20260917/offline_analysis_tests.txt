@@ -1,0 +1,12 @@
+test_changed_command_rejected (__main__.AnalysisTests) ... ok
+test_checksum_error (__main__.AnalysisTests) ... ok
+test_chunk_boundaries (__main__.AnalysisTests) ... ok
+test_incomplete_tail_not_telemetry (__main__.AnalysisTests) ... ok
+test_run01_not_treated_as_active (__main__.AnalysisTests) ... ok
+test_run02_includes_abort_sample (__main__.AnalysisTests) ... ok
+test_saved_captures_match_audited_decoder (__main__.AnalysisTests) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.038s
+
+OK

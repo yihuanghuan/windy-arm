@@ -1,0 +1,219 @@
+frame #137 offset=4058 cmd=0x20 len=28
+frame: fe 55 20 1c 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 90 e8 bb 00 40 e2 ba 00 00 00 00 84 9f
+payload: 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 90 e8 bb 00 40 e2 ba 00 00 00 00
+slot0: bytes=00 79 02 bd value=-0.031853675842285156
+slot1: bytes=70 9c ad 3f value=1.3563365936279297
+slot2: bytes=68 e0 aa bf value=-1.3349733352661133
+slot3: bytes=00 40 0a bb value=-0.002109527587890625
+slot4: bytes=00 90 e8 bb value=-0.0070972442626953125
+slot5: bytes=00 40 e2 ba value=-0.0017261505126953125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #949 offset=28395 cmd=0x21 len=28
+frame: fe 55 21 1c 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 08 16 bd 00 08 16 bd 00 08 16 3d 00 00 00 00 e2 b5
+payload: 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 08 16 bd 00 08 16 bd 00 08 16 3d 00 00 00 00
+slot0: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot1: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot2: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot3: bytes=00 08 16 bd value=-0.03662872314453125
+slot4: bytes=00 08 16 bd value=-0.03662872314453125
+slot5: bytes=00 08 16 3d value=0.03662872314453125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #1516 offset=45377 cmd=0x22 len=28
+frame: fe 55 22 1c 00 09 13 3e 18 7a 21 c0 00 4a 1f 3f 00 0e 58 3c c0 08 8d 3d 00 0d cc bc 00 00 00 00 cf 45
+payload: 00 09 13 3e 18 7a 21 c0 00 4a 1f 3f 00 0e 58 3c c0 08 8d 3d 00 0d cc bc 00 00 00 00
+slot0: bytes=00 09 13 3e value=0.14358901977539062
+slot1: bytes=18 7a 21 c0 value=-2.5230770111083984
+slot2: bytes=00 4a 1f 3f value=0.622222900390625
+slot3: bytes=00 0e 58 3c value=0.013186931610107422
+slot4: bytes=c0 08 8d 3d value=0.06886434555053711
+slot5: bytes=00 0d cc bc value=-0.02490854263305664
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #2452 offset=73402 cmd=0x24 len=14
+frame: fe 55 24 0e 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00 1c d3
+payload: 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00
+slot0: bytes=18 00 value=24
+slot1: bytes=19 00 value=25
+slot2: bytes=18 00 value=24
+slot3: bytes=1a 00 value=26
+slot4: bytes=1a 00 value=26
+slot5: bytes=1a 00 value=26
+slot6: bytes=00 00 value=0
+
+frame #2734 offset=81835 cmd=0x20 len=28
+frame: fe 55 20 1c 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 90 e8 bb 00 00 b0 ba 00 00 00 00 12 b3
+payload: 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 90 e8 bb 00 00 b0 ba 00 00 00 00
+slot0: bytes=00 79 02 bd value=-0.031853675842285156
+slot1: bytes=70 9c ad 3f value=1.3563365936279297
+slot2: bytes=68 e0 aa bf value=-1.3349733352661133
+slot3: bytes=00 40 0a bb value=-0.002109527587890625
+slot4: bytes=00 90 e8 bb value=-0.0070972442626953125
+slot5: bytes=00 00 b0 ba value=-0.0013427734375
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #3112 offset=93156 cmd=0x21 len=28
+frame: fe 55 21 1c 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 08 16 3d 00 0a af 3d 00 10 48 3c 00 00 00 00 b6 24
+payload: 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 08 16 3d 00 0a af 3d 00 10 48 3c 00 00 00 00
+slot0: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot1: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot2: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot3: bytes=00 08 16 3d value=0.03662872314453125
+slot4: bytes=00 0a af 3d value=0.08546829223632812
+slot5: bytes=00 10 48 3c value=0.012210845947265625
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #3875 offset=116022 cmd=0x22 len=28
+frame: fe 55 22 1c 00 8c c0 3e 98 5a 29 c0 00 4a 1f 3f 00 10 c0 ba c0 08 8d 3d 00 10 f0 3b 00 00 00 00 f5 14
+payload: 00 8c c0 3e 98 5a 29 c0 00 4a 1f 3f 00 10 c0 ba c0 08 8d 3d 00 10 f0 3b 00 00 00 00
+slot0: bytes=00 8c c0 3e value=0.376068115234375
+slot1: bytes=98 5a 29 c0 value=-2.6461544036865234
+slot2: bytes=00 4a 1f 3f value=0.622222900390625
+slot3: bytes=00 10 c0 ba value=-0.0014653205871582031
+slot4: bytes=c0 08 8d 3d value=0.06886434555053711
+slot5: bytes=00 10 f0 3b value=0.0073261260986328125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #4741 offset=141959 cmd=0x24 len=14
+frame: fe 55 24 0e 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00 1c d3
+payload: 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00
+slot0: bytes=18 00 value=24
+slot1: bytes=19 00 value=25
+slot2: bytes=18 00 value=24
+slot3: bytes=1a 00 value=26
+slot4: bytes=1a 00 value=26
+slot5: bytes=1a 00 value=26
+slot6: bytes=00 00 value=0
+
+frame #5546 offset=166045 cmd=0x20 len=28
+frame: fe 55 20 1c 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00 21 51
+payload: 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00
+slot0: bytes=00 79 02 bd value=-0.031853675842285156
+slot1: bytes=70 9c ad 3f value=1.3563365936279297
+slot2: bytes=68 e0 aa bf value=-1.3349733352661133
+slot3: bytes=00 40 0a bb value=-0.002109527587890625
+slot4: bytes=00 20 f5 bb value=-0.007480621337890625
+slot5: bytes=00 40 e2 ba value=-0.0017261505126953125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #5938 offset=177800 cmd=0x21 len=28
+frame: fe 55 21 1c 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 7a 3d 00 08 16 3d 00 10 48 bc 00 00 00 00 07 84
+payload: 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 7a 3d 00 08 16 3d 00 10 48 bc 00 00 00 00
+slot0: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot1: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot2: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot3: bytes=00 10 7a 3d value=0.0610504150390625
+slot4: bytes=00 08 16 3d value=0.03662872314453125
+slot5: bytes=00 10 48 bc value=-0.012210845947265625
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #6784 offset=203127 cmd=0x22 len=28
+frame: fe 55 22 1c 40 8a a4 3e 08 9a 20 c0 c0 c9 1b 3f 00 08 90 3b 40 0a a5 3d 00 0a 9c 3c 00 00 00 00 83 03
+payload: 40 8a a4 3e 08 9a 20 c0 c0 c9 1b 3f 00 08 90 3b 40 0a a5 3d 00 0a 9c 3c 00 00 00 00
+slot0: bytes=40 8a a4 3e value=0.3213672637939453
+slot1: bytes=08 9a 20 c0 value=-2.509401321411133
+slot2: bytes=c0 c9 1b 3f value=0.6085472106933594
+slot3: bytes=00 08 90 3b value=0.004395484924316406
+slot4: bytes=40 0a a5 3d value=0.08058595657348633
+slot5: bytes=00 0a 9c 3c value=0.01904773712158203
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #7383 offset=221085 cmd=0x24 len=14
+frame: fe 55 24 0e 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00 1c d3
+payload: 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00
+slot0: bytes=18 00 value=24
+slot1: bytes=19 00 value=25
+slot2: bytes=18 00 value=24
+slot3: bytes=1a 00 value=26
+slot4: bytes=1a 00 value=26
+slot5: bytes=1a 00 value=26
+slot6: bytes=00 00 value=0
+
+frame #7672 offset=229701 cmd=0x20 len=28
+frame: fe 55 20 1c 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00 21 51
+payload: 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00
+slot0: bytes=00 79 02 bd value=-0.031853675842285156
+slot1: bytes=70 9c ad 3f value=1.3563365936279297
+slot2: bytes=68 e0 aa bf value=-1.3349733352661133
+slot3: bytes=00 40 0a bb value=-0.002109527587890625
+slot4: bytes=00 20 f5 bb value=-0.007480621337890625
+slot5: bytes=00 40 e2 ba value=-0.0017261505126953125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #8300 offset=248520 cmd=0x21 len=28
+frame: fe 55 21 1c 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 48 3c 00 10 48 3c 00 10 48 bc 00 00 00 00 0d fe
+payload: 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 48 3c 00 10 48 3c 00 10 48 bc 00 00 00 00
+slot0: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot1: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot2: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot3: bytes=00 10 48 3c value=0.012210845947265625
+slot4: bytes=00 10 48 3c value=0.012210845947265625
+slot5: bytes=00 10 48 bc value=-0.012210845947265625
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #9203 offset=275562 cmd=0x22 len=28
+frame: fe 55 22 1c 80 8c c7 3e 88 7a 28 c0 00 4a 1f 3f 00 08 90 3b 40 09 93 3d 00 0b b4 3c 00 00 00 00 1b 4a
+payload: 80 8c c7 3e 88 7a 28 c0 00 4a 1f 3f 00 08 90 3b 40 09 93 3d 00 0b b4 3c 00 00 00 00
+slot0: bytes=80 8c c7 3e value=0.3897438049316406
+slot1: bytes=88 7a 28 c0 value=-2.632478713989258
+slot2: bytes=00 4a 1f 3f value=0.622222900390625
+slot3: bytes=00 08 90 3b value=0.004395484924316406
+slot4: bytes=40 09 93 3d value=0.07179498672485352
+slot5: bytes=00 0b b4 3c value=0.021977901458740234
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #9730 offset=291364 cmd=0x24 len=14
+frame: fe 55 24 0e 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00 1c d3
+payload: 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00
+slot0: bytes=18 00 value=24
+slot1: bytes=19 00 value=25
+slot2: bytes=18 00 value=24
+slot3: bytes=1a 00 value=26
+slot4: bytes=1a 00 value=26
+slot5: bytes=1a 00 value=26
+slot6: bytes=00 00 value=0
+
+frame #9959 offset=298204 cmd=0x20 len=28
+frame: fe 55 20 1c 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00 21 51
+payload: 00 79 02 bd 70 9c ad 3f 68 e0 aa bf 00 40 0a bb 00 20 f5 bb 00 40 e2 ba 00 00 00 00
+slot0: bytes=00 79 02 bd value=-0.031853675842285156
+slot1: bytes=70 9c ad 3f value=1.3563365936279297
+slot2: bytes=68 e0 aa bf value=-1.3349733352661133
+slot3: bytes=00 40 0a bb value=-0.002109527587890625
+slot4: bytes=00 20 f5 bb value=-0.007480621337890625
+slot5: bytes=00 40 e2 ba value=-0.0017261505126953125
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #10948 offset=327822 cmd=0x21 len=28
+frame: fe 55 21 1c 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 48 bc 00 10 48 3c 00 10 48 bc 00 00 00 00 8d 7e
+payload: 00 10 a0 bb 00 10 a0 bb 00 10 a0 bb 00 10 48 bc 00 10 48 3c 00 10 48 bc 00 00 00 00
+slot0: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot1: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot2: bytes=00 10 a0 bb value=-0.0048847198486328125
+slot3: bytes=00 10 48 bc value=-0.012210845947265625
+slot4: bytes=00 10 48 3c value=0.012210845947265625
+slot5: bytes=00 10 48 bc value=-0.012210845947265625
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #11222 offset=336025 cmd=0x22 len=28
+frame: fe 55 22 1c c0 89 9d 3e 30 3a 23 c0 c0 c9 1b 3f 00 0a 28 3c 80 08 87 3d 00 0a 28 bc 00 00 00 00 8d 95
+payload: c0 89 9d 3e 30 3a 23 c0 c0 c9 1b 3f 00 0a 28 3c 80 08 87 3d 00 0a 28 bc 00 00 00 00
+slot0: bytes=c0 89 9d 3e value=0.3076915740966797
+slot1: bytes=30 3a 23 c0 value=-2.550426483154297
+slot2: bytes=c0 c9 1b 3f value=0.6085472106933594
+slot3: bytes=00 0a 28 3c value=0.010256290435791016
+slot4: bytes=80 08 87 3d value=0.0659341812133789
+slot5: bytes=00 0a 28 bc value=-0.010256290435791016
+slot6: bytes=00 00 00 00 value=0.0
+
+frame #11956 offset=358030 cmd=0x24 len=14
+frame: fe 55 24 0e 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00 1c d3
+payload: 18 00 19 00 18 00 1a 00 1a 00 1a 00 00 00
+slot0: bytes=18 00 value=24
+slot1: bytes=19 00 value=25
+slot2: bytes=18 00 value=24
+slot3: bytes=1a 00 value=26
+slot4: bytes=1a 00 value=26
+slot5: bytes=1a 00 value=26
+slot6: bytes=00 00 value=0

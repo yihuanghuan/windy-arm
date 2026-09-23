@@ -1,0 +1,1410 @@
+{
+  "trials": [
+    {
+      "trial": 1,
+      "first_command": {
+        "t": 86.23232697300045,
+        "wall_ns": 1789718733783247373,
+        "kind": "policy",
+        "phase": "HOLD",
+        "trial": 0,
+        "policy_phase": "HANDOVER_START",
+        "position": [
+          0.043766148885091144,
+          1.207550303141276,
+          -1.3263995488484701,
+          0.0033662605285644533,
+          0.006116037368774414,
+          0.004628829956054688
+        ],
+        "velocity": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "current": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "p": [
+          30.0,
+          30.0,
+          30.0,
+          5.0,
+          5.0,
+          5.0
+        ],
+        "d": [
+          1.0,
+          1.0,
+          1.0,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "enable": 1,
+        "q": [
+          0.06427860260009766,
+          1.2617301940917969,
+          -1.3529033660888672,
+          0.00019168853759765625,
+          0.00019168853759765625,
+          0.0005750656127929688
+        ],
+        "dq": [
+          -0.0048847198486328125,
+          -0.0048847198486328125,
+          -0.0048847198486328125,
+          0.03662872314453125,
+          -0.0610504150390625,
+          0.03662872314453125
+        ],
+        "gravity": [
+          -0.0015333805826415053,
+          -2.067318391235615,
+          1.0468700423912074,
+          -0.0012993938933111402,
+          0.011112668372368583,
+          0.00013480668033717048
+        ],
+        "estimated_pd_torque": [
+          -0.6104888916015625,
+          -1.620512008666994,
+          0.7999992370605451,
+          0.012209987640380861,
+          0.03572678565979004,
+          0.01660594940185547
+        ],
+        "estimated_total_torque": [
+          -0.6104888916015625,
+          -1.620512008666994,
+          0.7999992370605451,
+          0.012209987640380861,
+          0.03572678565979004,
+          0.01660594940185547
+        ],
+        "delta_total_command_from_previous_cycle": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "handover": {
+        "duration_sec": 5.999922344,
+        "max_abs_dq": [
+          0.0048847198486328125,
+          0.014652252197265625,
+          0.0048847198486328125,
+          0.13431167602539062,
+          0.15872955322265625,
+          0.13431167602539062
+        ],
+        "q_span_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.000766754150390625,
+          0.000766754150390625,
+          0.0011510848999023438
+        ],
+        "net_delta_q_rad": [
+          0.0,
+          0.0,
+          0.0,
+          -0.0003833770751953125,
+          -0.0003833770751953125,
+          -0.0003833770751953125
+        ],
+        "max_same_feedback_command_step_Nm": [
+          0.0030909661897043916,
+          0.0022669385208482495,
+          0.0012427488212735094,
+          0.0001429230208946572,
+          0.0001387319066691317,
+          0.00013404324619660166
+        ]
+      },
+      "first_five_seconds": {
+        "duration_sec": 5.009909035,
+        "max_abs_dq": [
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.15872955322265625,
+          0.15872955322265625,
+          0.1831512451171875
+        ],
+        "q_span_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.000766754150390625,
+          0.000766754150390625,
+          0.0003833770751953125
+        ],
+        "net_delta_q_rad": [
+          0.0,
+          0.0,
+          0.0,
+          -0.000766754150390625,
+          -0.0003833770751953125,
+          0.0
+        ],
+        "max_same_feedback_command_step_Nm": [
+          7.498076634987472e-05,
+          5.431193139671109e-08,
+          5.431193161875569e-08,
+          7.46695142592891e-05,
+          7.163844649508977e-05,
+          1.9487919931861913e-07
+        ]
+      }
+    },
+    {
+      "trial": 2,
+      "first_command": {
+        "t": 124.44600227500268,
+        "wall_ns": 1789718771996922825,
+        "kind": "policy",
+        "phase": "HOLD",
+        "trial": 1,
+        "policy_phase": "HANDOVER_START",
+        "position": [
+          0.06414834340413411,
+          1.2615999348958333,
+          -1.3530336252848307,
+          -0.0018482589721679687,
+          0.00017459869384765634,
+          0.0001745986938476563
+        ],
+        "velocity": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "current": [
+          -0.0015631935201865649,
+          -2.0673183802265753,
+          1.0468700534002466,
+          -0.0013290830704581012,
+          0.010843930542801193,
+          0.0001342127505463389
+        ],
+        "p": [
+          30.0,
+          30.0,
+          30.0,
+          5.0,
+          5.0,
+          5.0
+        ],
+        "d": [
+          1.0,
+          1.0,
+          1.0,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "enable": 1,
+        "q": [
+          0.06427860260009766,
+          1.2617301940917969,
+          -1.3529033660888672,
+          -0.0013427734375,
+          -0.00019168853759765625,
+          -0.00019168853759765625
+        ],
+        "dq": [
+          -0.0048847198486328125,
+          -0.0048847198486328125,
+          -0.0048847198486328125,
+          -0.08546829223632812,
+          -0.0610504150390625,
+          -0.012210845947265625
+        ],
+        "gravity": [
+          -0.0015631935201865649,
+          -2.0673183802265753,
+          1.0468700534002466,
+          -0.0013290830704581012,
+          0.010843930542801193,
+          0.0001342127505463389
+        ],
+        "estimated_pd_torque": [
+          0.0009769439697264737,
+          0.0009769439697264737,
+          0.0009769439697264737,
+          0.006019401550292969,
+          0.007936477661132812,
+          0.003052520751953125
+        ],
+        "estimated_total_torque": [
+          -0.0005862495504600912,
+          -2.066341436256849,
+          1.047846997369973,
+          0.004690318479834868,
+          0.018780408203934007,
+          0.003186733502499464
+        ],
+        "delta_total_command_from_previous_cycle": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "handover": {
+        "duration_sec": 5.999864341,
+        "max_abs_dq": [
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.13431167602539062,
+          0.15872955322265625,
+          0.15872955322265625
+        ],
+        "q_span_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0007677078247070312,
+          0.000766754150390625,
+          0.000766754150390625
+        ],
+        "net_delta_q_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.00038433074951171875,
+          0.0,
+          0.0
+        ],
+        "max_same_feedback_command_step_Nm": [
+          7.316698793837948e-05,
+          5.0025936726427744e-08,
+          5.0025937170516954e-08,
+          8.286646686164398e-05,
+          7.677120724062202e-05,
+          3.989510508527541e-05
+        ]
+      },
+      "first_five_seconds": {
+        "duration_sec": 5.000140471,
+        "max_abs_dq": [
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.10988998413085938,
+          0.10988998413085938,
+          0.10988998413085938
+        ],
+        "q_span_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0007677078247070312,
+          0.0003833770751953125,
+          0.000766754150390625
+        ],
+        "net_delta_q_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_same_feedback_command_step_Nm": [
+          7.498433211511335e-05,
+          3.4663034220727695e-08,
+          3.466303399868309e-08,
+          7.467309568004845e-05,
+          7.180496998314412e-05,
+          1.9499770185973236e-07
+        ]
+      }
+    },
+    {
+      "trial": 3,
+      "first_command": {
+        "t": 167.37602636700103,
+        "wall_ns": 1789718814926946907,
+        "kind": "policy",
+        "phase": "HOLD",
+        "trial": 2,
+        "policy_phase": "HANDOVER_START",
+        "position": [
+          0.06414834340413411,
+          1.2615999348958333,
+          -1.3530336252848307,
+          -0.0009764862060546875,
+          -6.958007812500012e-05,
+          0.0001745986938476563
+        ],
+        "velocity": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "current": [
+          -0.0015631935201865649,
+          -2.0673183802265753,
+          1.0468700534002466,
+          -0.0013290830704581012,
+          0.010843930542801193,
+          0.0001342127505463389
+        ],
+        "p": [
+          30.0,
+          30.0,
+          30.0,
+          5.0,
+          5.0,
+          5.0
+        ],
+        "d": [
+          1.0,
+          1.0,
+          1.0,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "enable": 1,
+        "q": [
+          0.06427860260009766,
+          1.2617301940917969,
+          -1.3529033660888672,
+          -0.0013427734375,
+          -0.00019168853759765625,
+          -0.0005750656127929688
+        ],
+        "dq": [
+          -0.0048847198486328125,
+          -0.0048847198486328125,
+          -0.0048847198486328125,
+          -0.03662872314453125,
+          0.012210845947265625,
+          -0.10988998413085938
+        ],
+        "gravity": [
+          -0.0015632914396794678,
+          -2.067318384355265,
+          1.046870049271557,
+          -0.0013291805590567012,
+          0.010843921368437282,
+          0.00013411526115574433
+        ],
+        "estimated_pd_torque": [
+          0.0009769439697264737,
+          0.0009769439697264737,
+          0.0009769439697264737,
+          0.005494308471679688,
+          -0.0006105422973632819,
+          0.014737319946289063
+        ],
+        "estimated_total_torque": [
+          -0.0005862495504600912,
+          -2.066341436256849,
+          1.047846997369973,
+          0.004165225401221587,
+          0.01023338824543791,
+          0.014871532696835402
+        ],
+        "delta_total_command_from_previous_cycle": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "handover": {
+        "duration_sec": 5.990021327,
+        "max_abs_dq": [
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.13431167602539062,
+          0.1831512451171875,
+          0.13431167602539062
+        ],
+        "q_span_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0007677078247070312,
+          0.000766754150390625,
+          0.000766754150390625
+        ],
+        "net_delta_q_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0003833770751953125
+        ],
+        "max_same_feedback_command_step_Nm": [
+          7.006358508937472e-05,
+          5.285617854511315e-08,
+          5.285617876715776e-08,
+          7.341900865453794e-05,
+          6.44657391164474e-05,
+          3.056437217582343e-05
+        ]
+      },
+      "first_five_seconds": {
+        "duration_sec": 5.000074517,
+        "max_abs_dq": [
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.13431167602539062,
+          0.15872955322265625,
+          0.13431167602539062
+        ],
+        "q_span_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0003833770751953125,
+          0.000766754150390625,
+          0.000766754150390625
+        ],
+        "net_delta_q_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_same_feedback_command_step_Nm": [
+          7.508367204145383e-05,
+          6.621413550789157e-08,
+          6.621413550789157e-08,
+          7.477215976596377e-05,
+          7.16508567711275e-05,
+          2.041700583764114e-07
+        ]
+      }
+    }
+  ],
+  "faults": [],
+  "validated_wire_batches": 68865,
+  "warnings": [
+    {
+      "t": 336.90158040200185,
+      "wall_ns": 1789718984452500631,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=0.964592",
+      "level": 30
+    },
+    {
+      "t": 336.90636115300003,
+      "wall_ns": 1789718984457281583,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=0.964592",
+      "level": 30
+    },
+    {
+      "t": 408.8323069120015,
+      "wall_ns": 1789719056383227251,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=-0.915752",
+      "level": 30
+    },
+    {
+      "t": 408.8364886449999,
+      "wall_ns": 1789719056387409205,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.915752",
+      "level": 30
+    },
+    {
+      "t": 409.1224568739999,
+      "wall_ns": 1789719056673377113,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=-0.989010",
+      "level": 30
+    },
+    {
+      "t": 409.12627770700055,
+      "wall_ns": 1789719056677198267,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.989010",
+      "level": 30
+    },
+    {
+      "t": 411.8062010060021,
+      "wall_ns": 1789719059357121415,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=0.866909",
+      "level": 30
+    },
+    {
+      "t": 411.81233636199977,
+      "wall_ns": 1789719059363256611,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=0.891331",
+      "level": 30
+    },
+    {
+      "t": 413.1626615290006,
+      "wall_ns": 1789719060713581908,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=0.842491",
+      "level": 30
+    },
+    {
+      "t": 413.1662963310009,
+      "wall_ns": 1789719060717216801,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=0.842491",
+      "level": 30
+    },
+    {
+      "t": 413.59247694700025,
+      "wall_ns": 1789719061143397217,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=0.818069",
+      "level": 30
+    },
+    {
+      "t": 413.59628734000216,
+      "wall_ns": 1789719061147207760,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=0.818069",
+      "level": 30
+    },
+    {
+      "t": 416.35280832900025,
+      "wall_ns": 1789719063903728669,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=0.866909",
+      "level": 30
+    },
+    {
+      "t": 416.3562003830011,
+      "wall_ns": 1789719063907120703,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=0.866909",
+      "level": 30
+    },
+    {
+      "t": 420.65303653700175,
+      "wall_ns": 1789719068203956766,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=-0.866909",
+      "level": 30
+    },
+    {
+      "t": 420.65632159000234,
+      "wall_ns": 1789719068207241979,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.866909",
+      "level": 30
+    },
+    {
+      "t": 420.77248381600293,
+      "wall_ns": 1789719068323404076,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=-0.866909",
+      "level": 30
+    },
+    {
+      "t": 420.7763122430006,
+      "wall_ns": 1789719068327232602,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.866909",
+      "level": 30
+    },
+    {
+      "t": 421.15238714800216,
+      "wall_ns": 1789719068703307577,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=-0.915752",
+      "level": 30
+    },
+    {
+      "t": 421.15616022000177,
+      "wall_ns": 1789719068707080649,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.915752",
+      "level": 30
+    },
+    {
+      "t": 422.00237909800126,
+      "wall_ns": 1789719069553299347,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=-0.842491",
+      "level": 30
+    },
+    {
+      "t": 422.00617000400234,
+      "wall_ns": 1789719069557090343,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.842491",
+      "level": 30
+    },
+    {
+      "t": 423.51239499400253,
+      "wall_ns": 1789719071063315343,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint4 phase=GUIDE dq=-0.818069",
+      "level": 30
+    },
+    {
+      "t": 423.51624751599957,
+      "wall_ns": 1789719071067167915,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.818069",
+      "level": 30
+    },
+    {
+      "t": 472.85319873700064,
+      "wall_ns": 1789719120404119066,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=0.915752",
+      "level": 30
+    },
+    {
+      "t": 472.85633835200133,
+      "wall_ns": 1789719120407258751,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.915752",
+      "level": 30
+    },
+    {
+      "t": 473.2329379090006,
+      "wall_ns": 1789719120783858208,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=0.940170",
+      "level": 30
+    },
+    {
+      "t": 473.23634511800265,
+      "wall_ns": 1789719120787265657,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.940170",
+      "level": 30
+    },
+    {
+      "t": 473.58288206600264,
+      "wall_ns": 1789719121133802386,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=0.866909",
+      "level": 30
+    },
+    {
+      "t": 473.5861490710013,
+      "wall_ns": 1789719121137069581,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.866909",
+      "level": 30
+    },
+    {
+      "t": 473.9228910130005,
+      "wall_ns": 1789719121473811272,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=0.818069",
+      "level": 30
+    },
+    {
+      "t": 473.92625928800044,
+      "wall_ns": 1789719121477179688,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.818069",
+      "level": 30
+    },
+    {
+      "t": 474.31293993000145,
+      "wall_ns": 1789719121863860239,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=0.842491",
+      "level": 30
+    },
+    {
+      "t": 474.3162979059998,
+      "wall_ns": 1789719121867218416,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.842491",
+      "level": 30
+    },
+    {
+      "t": 476.2430578370004,
+      "wall_ns": 1789719123793978107,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.866909",
+      "level": 30
+    },
+    {
+      "t": 476.24612333200275,
+      "wall_ns": 1789719123797043702,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.940170",
+      "level": 30
+    },
+    {
+      "t": 476.44309777700255,
+      "wall_ns": 1789719123994018066,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.842491",
+      "level": 30
+    },
+    {
+      "t": 476.44630905600206,
+      "wall_ns": 1789719123997229386,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.842491",
+      "level": 30
+    },
+    {
+      "t": 476.4634482239999,
+      "wall_ns": 1789719124014368483,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-1.013432",
+      "level": 30
+    },
+    {
+      "t": 476.4661488920028,
+      "wall_ns": 1789719124017069301,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-1.013432",
+      "level": 30
+    },
+    {
+      "t": 476.70285974000217,
+      "wall_ns": 1789719124253780019,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.915752",
+      "level": 30
+    },
+    {
+      "t": 476.70613468900046,
+      "wall_ns": 1789719124257055239,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.915752",
+      "level": 30
+    },
+    {
+      "t": 477.0030313180032,
+      "wall_ns": 1789719124553951708,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-1.062271",
+      "level": 30
+    },
+    {
+      "t": 477.0061056500017,
+      "wall_ns": 1789719124557026029,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-1.062271",
+      "level": 30
+    },
+    {
+      "t": 477.15288576199964,
+      "wall_ns": 1789719124703806001,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.866909",
+      "level": 30
+    },
+    {
+      "t": 477.156138489001,
+      "wall_ns": 1789719124707058889,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.866909",
+      "level": 30
+    },
+    {
+      "t": 477.3233073709998,
+      "wall_ns": 1789719124874227720,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.866909",
+      "level": 30
+    },
+    {
+      "t": 477.3263485500029,
+      "wall_ns": 1789719124877268949,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.866909",
+      "level": 30
+    },
+    {
+      "t": 477.4929148950032,
+      "wall_ns": 1789719125043835145,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.818069",
+      "level": 30
+    },
+    {
+      "t": 477.4962404500002,
+      "wall_ns": 1789719125047160970,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-1.062271",
+      "level": 30
+    },
+    {
+      "t": 477.6531242830024,
+      "wall_ns": 1789719125204044512,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.818069",
+      "level": 30
+    },
+    {
+      "t": 477.6563071490018,
+      "wall_ns": 1789719125207227608,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.818069",
+      "level": 30
+    },
+    {
+      "t": 477.85298894399966,
+      "wall_ns": 1789719125403909253,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.842491",
+      "level": 30
+    },
+    {
+      "t": 477.85617600800106,
+      "wall_ns": 1789719125407096448,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.842491",
+      "level": 30
+    },
+    {
+      "t": 478.20292442400023,
+      "wall_ns": 1789719125753844733,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.940170",
+      "level": 30
+    },
+    {
+      "t": 478.2063300490008,
+      "wall_ns": 1789719125757250509,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.940170",
+      "level": 30
+    },
+    {
+      "t": 478.5629706380023,
+      "wall_ns": 1789719126113890967,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.891331",
+      "level": 30
+    },
+    {
+      "t": 478.56623799299996,
+      "wall_ns": 1789719126117158483,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.891331",
+      "level": 30
+    },
+    {
+      "t": 478.862886633,
+      "wall_ns": 1789719126413806872,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.891331",
+      "level": 30
+    },
+    {
+      "t": 478.86634869500267,
+      "wall_ns": 1789719126417269115,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.891331",
+      "level": 30
+    },
+    {
+      "t": 479.19349348400283,
+      "wall_ns": 1789719126744413754,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=-0.964592",
+      "level": 30
+    },
+    {
+      "t": 479.1961727420021,
+      "wall_ns": 1789719126747093251,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.964592",
+      "level": 30
+    },
+    {
+      "t": 532.8433448819997,
+      "wall_ns": 1789719180394265141,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint6 phase=GUIDE dq=-0.989010",
+      "level": 30
+    },
+    {
+      "t": 532.8462781050002,
+      "wall_ns": 1789719180397198404,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint6 phase=MANUAL_PUSH dq=-0.989010",
+      "level": 30
+    },
+    {
+      "t": 533.0734579820019,
+      "wall_ns": 1789719180624378261,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint6 phase=GUIDE dq=-1.086693",
+      "level": 30
+    },
+    {
+      "t": 533.0762754269999,
+      "wall_ns": 1789719180627195816,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint6 phase=MANUAL_PUSH dq=-1.086693",
+      "level": 30
+    },
+    {
+      "t": 533.4032201930022,
+      "wall_ns": 1789719180954140482,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint6 phase=GUIDE dq=-0.989010",
+      "level": 30
+    },
+    {
+      "t": 533.4061505200007,
+      "wall_ns": 1789719180957070859,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint6 phase=MANUAL_PUSH dq=-0.989010",
+      "level": 30
+    },
+    {
+      "t": 534.2735232369996,
+      "wall_ns": 1789719181824443536,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint6 phase=GUIDE dq=-0.915752",
+      "level": 30
+    },
+    {
+      "t": 534.276167105003,
+      "wall_ns": 1789719181827087494,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint6 phase=MANUAL_PUSH dq=-0.915752",
+      "level": 30
+    },
+    {
+      "t": 535.0931375620021,
+      "wall_ns": 1789719182644057831,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint6 phase=GUIDE dq=-1.135532",
+      "level": 30
+    },
+    {
+      "t": 535.0963004370024,
+      "wall_ns": 1789719182647220756,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint6 phase=MANUAL_PUSH dq=-1.135532",
+      "level": 30
+    },
+    {
+      "t": 540.464067320001,
+      "wall_ns": 1789719188014987529,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint6 phase=GUIDE dq=0.818069",
+      "level": 30
+    },
+    {
+      "t": 540.4661358440026,
+      "wall_ns": 1789719188017056294,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint6 phase=MANUAL_PUSH dq=0.818069",
+      "level": 30
+    },
+    {
+      "t": 545.7335546520007,
+      "wall_ns": 1789719193284474941,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint6 phase=GUIDE dq=-1.159950",
+      "level": 30
+    },
+    {
+      "t": 545.7361557680015,
+      "wall_ns": 1789719193287076158,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint6 phase=MANUAL_PUSH dq=-1.159950",
+      "level": 30
+    },
+    {
+      "t": 545.8336631650018,
+      "wall_ns": 1789719193384583484,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint6 phase=GUIDE dq=-0.842491",
+      "level": 30
+    },
+    {
+      "t": 545.8361657960013,
+      "wall_ns": 1789719193387086296,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint6 phase=MANUAL_PUSH dq=-0.842491",
+      "level": 30
+    },
+    {
+      "t": 546.0334784250008,
+      "wall_ns": 1789719193584398724,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint6 phase=GUIDE dq=-0.915752",
+      "level": 30
+    },
+    {
+      "t": 546.0360959520003,
+      "wall_ns": 1789719193587016292,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint6 phase=MANUAL_PUSH dq=-0.915752",
+      "level": 30
+    },
+    {
+      "t": 684.8845273420011,
+      "wall_ns": 1789719332435447601,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=0.964592",
+      "level": 30
+    },
+    {
+      "t": 684.8863913970017,
+      "wall_ns": 1789719332437312367,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.964592",
+      "level": 30
+    },
+    {
+      "t": 686.6744900010017,
+      "wall_ns": 1789719334225410321,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=0.818069",
+      "level": 30
+    },
+    {
+      "t": 686.6762607010023,
+      "wall_ns": 1789719334227181141,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.818069",
+      "level": 30
+    },
+    {
+      "t": 688.7241905560004,
+      "wall_ns": 1789719336275110925,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "student_arm_node",
+      "message": "SPEED WARNING joint5 phase=GUIDE dq=0.842491",
+      "level": 30
+    },
+    {
+      "t": 688.7263708460014,
+      "wall_ns": 1789719336277291346,
+      "kind": "log",
+      "phase": "MANUAL_PUSH",
+      "trial": 3,
+      "name": "arm6_manual_guidance",
+      "message": "SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.842491",
+      "level": 30
+    }
+  ],
+  "operator_results": [
+    {
+      "wall_ns": 1789718944565106355,
+      "joint": 2,
+      "result": "\u5bb9\u6613\u63a8\u52a8\u4e14\u677e\u624b\u4fdd\u6301",
+      "next_joint": 3
+    },
+    {
+      "wall_ns": 1789719021565995850,
+      "joint": 3,
+      "result": "\u5bb9\u6613\u63a8\u52a8\u4e14\u677e\u624b\u4fdd\u6301",
+      "next_joint": 4
+    },
+    {
+      "wall_ns": 1789719105564354743,
+      "joint": 4,
+      "result": "\u53ef\u4ee5\u63a8\u52a8\u4e14\u677e\u624b\u4fdd\u6301",
+      "next_joint": 5
+    },
+    {
+      "wall_ns": 1789719164606215521,
+      "joint": 5,
+      "result": "\u53ef\u4ee5\u63a8\u52a8\u4e14\u677e\u624b\u4fdd\u6301",
+      "next_joint": 6
+    },
+    {
+      "wall_ns": 1789719295727417874,
+      "joint": 6,
+      "result": "\u53ef\u4ee5\u63a8\u52a8\u5e76\u4e14\u677e\u624b\u4fdd\u6301\uff1b\u8981\u6c42\u7ee7\u7eed\u6574\u81c2\u6d4b\u8bd5",
+      "next_joint": null
+    }
+  ]
+}

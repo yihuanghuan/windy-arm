@@ -1,0 +1,5 @@
+{
+  "wall_ns": 1789717987319553091,
+  "confirmation": "机械臂被支撑住了，之前的断电是直接拔了整机的电源",
+  "workflow": "supported motor-power-off manual reposition; unchanged limits; host readonly TX=0"
+}

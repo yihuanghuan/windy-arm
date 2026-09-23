@@ -1,0 +1,43 @@
+[INFO] [launch]: All log files can be found below /home/yihuang/.ros/log/2026-09-18-11-36-10-007452-JIAOLONG-Series-20483
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [student_arm_node-1]: process started with pid [20507]
+[INFO] [robot_state_publisher-2]: process started with pid [20509]
+[INFO] [rviz2-3]: process started with pid [20511]
+[INFO] [manual_guidance.py-4]: process started with pid [20513]
+[robot_state_publisher-2] [WARN] [1789702570.160575899] [kdl_parser]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.
+[robot_state_publisher-2] [INFO] [1789702570.160648765] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1789702570.160691244] [robot_state_publisher]: got segment link1
+[robot_state_publisher-2] [INFO] [1789702570.160703167] [robot_state_publisher]: got segment link2
+[robot_state_publisher-2] [INFO] [1789702570.160713837] [robot_state_publisher]: got segment link3
+[robot_state_publisher-2] [INFO] [1789702570.160724937] [robot_state_publisher]: got segment link4
+[robot_state_publisher-2] [INFO] [1789702570.160735157] [robot_state_publisher]: got segment link5
+[robot_state_publisher-2] [INFO] [1789702570.160745225] [robot_state_publisher]: got segment link6
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] [INFO] [1789702570.177411005] [student_arm_node]: Arm type 'a_l1' initialized from config
+[student_arm_node-1] [INFO] [1789702570.178341194] [student_arm_node]: Direct-effort fallback hold: gravity feedforward enabled
+[student_arm_node-1] [INFO] [1789702570.178373605] [student_arm_node]: SmoothPositionController: max_velocity=0.500, velocity_feedforward=false, ff_gain=0.700, fb_tau=0.150, fb_vel_limit=0.500, acceleration_limit=true, max_acceleration=5.000
+[student_arm_node-1] [INFO] [1789702570.178412057] [student_arm_node]: StudentArmNode started: six-axis familiarization; position commands disabled
+[student_arm_node-1] [INFO] [1789702570.178424991] [student_arm_node]: Direct effort command topic /student/joint_effort_command is enabled
+[student_arm_node-1] [WARN] [1789702570.188533406] [student_arm_node]: Direct effort startup: waiting for serial heartbeat/feedback; no motor command is sent
+[student_arm_node-1] [INFO] [1789702570.218526330] [student_arm_node]: Direct effort startup: serial heartbeat and 3 feedback frames confirmed; ready for configured effort/hold mode
+[manual_guidance.py-4] [INFO] [1789702570.386092170] [arm6_manual_guidance]: gravity = g_arm6(q + explicit_offset), ratio=1; damping only in MIT Kd
+[manual_guidance.py-4] [INFO] [1789702570.405152868] [arm6_manual_guidance]: ACTIVE RAMP_GRAVITY
+[rviz2-3] [INFO] [1789702570.834516564] [rviz2]: Stereo is NOT SUPPORTED
+[rviz2-3] [INFO] [1789702570.834581405] [rviz2]: OpenGl version: 4.6 (GLSL 4.6)
+[rviz2-3] [INFO] [1789702570.926485038] [rviz2]: Stereo is NOT SUPPORTED
+[manual_guidance.py-4] [INFO] [1789702573.405149034] [arm6_manual_guidance]: ACTIVE RELEASE_STIFFNESS
+[student_arm_node-1] [ERROR] [1789702575.988494355] [student_arm_node]: feedback stale/invalid/overspeed: fault latched, restart required
+[manual_guidance.py-4] [ERROR] [1789702575.989575406] [arm6_manual_guidance]: GUIDANCE STOPPED: operator stop; restart required
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[rviz2-3] [INFO] [1789702602.770918058] [rclcpp]: signal_handler(signum=2)
+[student_arm_node-1] [INFO] [1789702602.770934759] [rclcpp]: signal_handler(signum=2)
+[robot_state_publisher-2] [INFO] [1789702602.770935090] [rclcpp]: signal_handler(signum=2)
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 20509]
+[INFO] [manual_guidance.py-4]: process has finished cleanly [pid 20513]
+[INFO] [student_arm_node-1]: process has finished cleanly [pid 20507]
+[INFO] [rviz2-3]: process has finished cleanly [pid 20511]

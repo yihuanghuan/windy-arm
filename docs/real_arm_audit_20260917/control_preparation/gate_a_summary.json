@@ -1,0 +1,2024 @@
+{
+  "verdict": "FAIL",
+  "scope": "External-support Gate A stopped after Run 1 guard abort; no retries",
+  "hardware_program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd",
+  "control_program_identical": true,
+  "runs": {
+    "no_support_previous_run1": {
+      "verdict": "FAIL",
+      "reason": "continuous position displacement in 50ms window",
+      "run": "run1",
+      "program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd",
+      "snapshot": {
+        "kind": "PRE_SEND_SNAPSHOT",
+        "timestamp": 1.0011553459989955,
+        "timestamp_basis": "host monotonic seconds since capture/start; not board sampling time",
+        "measured": {
+          "q": [
+            -0.031853675842285156,
+            1.3563365936279297,
+            -1.3349733352661133,
+            0.0017261505126953125,
+            0.008631706237792969,
+            0.0017261505126953125
+          ],
+          "dq": [
+            -0.0048847198486328125,
+            -0.0048847198486328125,
+            -0.0048847198486328125,
+            0.012210845947265625,
+            0.13431167602539062,
+            0.03662872314453125
+          ],
+          "feedback_age": {
+            "0x20": 0.004174141002295073,
+            "0x21": 0.00400490600077319,
+            "0x22": 0.0030863140018482227,
+            "0x24": 0.0030863140018482227
+          },
+          "timestamp": 1.0011553459989955,
+          "feedback_receive_timestamps": {
+            "0x20": 0.9969812049967004,
+            "0x21": 0.9971504399982223,
+            "0x22": 0.9980690319971472,
+            "0x24": 0.9980690319971472
+          }
+        },
+        "command": {
+          "position": [
+            -0.031853675842285156,
+            1.3563365936279297,
+            -1.3349733352661133,
+            0.0017261505126953125,
+            0.008631706237792969,
+            0.0017261505126953125
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0,
+            -0.0,
+            -0.0,
+            -0.0
+          ],
+          "current": [
+            0.0,
+            0.0,
+            0.0,
+            -0.0,
+            -0.0,
+            -0.0
+          ],
+          "kp": [
+            6.0,
+            6.0,
+            6.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "kd": [
+            0.3,
+            0.3,
+            0.3,
+            0.03,
+            0.03,
+            0.03
+          ]
+        },
+        "difference": {
+          "position_command_minus_measured": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "velocity_command_minus_measured": [
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.0048847198486328125,
+            -0.012210845947265625,
+            -0.13431167602539062,
+            -0.03662872314453125
+          ]
+        },
+        "limits": {
+          "joint_limit_margin": [
+            3.968146324157715,
+            0.6436634063720703,
+            0.2358266647338867,
+            3.9982738494873047,
+            1.991368293762207,
+            3.9982738494873047
+          ],
+          "minimum_margin": 0.15,
+          "position_error_guard": 0.006134033203125,
+          "velocity_guard": 0.293060302734375,
+          "torque_proxy_guard": [
+            0.1247222900390625,
+            0.1247222900390625,
+            0.1247222900390625,
+            0.01492584228515625,
+            0.01492584228515625,
+            0.01492584228515625
+          ],
+          "mean_proxy_slew_guard": [
+            2.49444580078125,
+            2.49444580078125,
+            2.49444580078125,
+            0.298516845703125,
+            0.298516845703125,
+            0.298516845703125
+          ]
+        },
+        "torque_proxy": {
+          "p_term": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "d_term": [
+            0.0014654159545898437,
+            0.0014654159545898437,
+            0.0014654159545898437,
+            -0.00036632537841796875,
+            -0.004029350280761719,
+            -0.0010988616943359375
+          ],
+          "ff_term": [
+            0.0,
+            0.0,
+            0.0,
+            -0.0,
+            -0.0,
+            -0.0
+          ],
+          "total": [
+            0.0014654159545898437,
+            0.0014654159545898437,
+            0.0014654159545898437,
+            -0.00036632537841796875,
+            -0.004029350280761719,
+            -0.0010988616943359375
+          ],
+          "max_abs_tau_proxy": 0.004029350280761719,
+          "max_tau_proxy_ratio_to_guard": 0.2699579831932773
+        },
+        "first_position_equality_tolerance": 0.0,
+        "slew_initialization": "no prior commanded proxy; old board torque UNKNOWN",
+        "unknowns": {
+          "exact_board_firmware_version": "UNKNOWN",
+          "board_internal_total_torque_limit": "UNKNOWN",
+          "actual_0x12_torque_scale": "UNKNOWN",
+          "disconnect_behavior": "UNKNOWN",
+          "persistent_board_state": "UNKNOWN"
+        },
+        "theoretical_arrays": {
+          "0x10": [
+            -0.031853675842285156,
+            1.3563365936279297,
+            -1.3349733352661133,
+            -0.0017261505126953125,
+            -0.008631706237792969,
+            -0.0017261505126953125,
+            0.0
+          ],
+          "0x11": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "0x12": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "0x13": [
+            6.0,
+            6.0,
+            6.0,
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ],
+          "0x14": [
+            0.30000001192092896,
+            0.30000001192092896,
+            0.30000001192092896,
+            0.029999999329447746,
+            0.029999999329447746,
+            0.029999999329447746,
+            0.0
+          ]
+        },
+        "theoretical_packet_hex": "feaa101c007902bd709cad3f68e0aabf0040e2ba006c0dbc0040e2ba00000000a2bcfeaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43",
+        "program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd"
+      },
+      "q_hold": [
+        -0.031853675842285156,
+        1.3563365936279297,
+        -1.3349733352661133,
+        0.0017261505126953125,
+        0.008631706237792969,
+        0.0017261505126953125
+      ],
+      "kp": [
+        6.0,
+        6.0,
+        6.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "kd": [
+        0.3,
+        0.3,
+        0.3,
+        0.03,
+        0.03,
+        0.03
+      ],
+      "current": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "velocity_command": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "first_tx_schedule_t": 1.0011553459989955,
+      "last_feedback_t": 1.0318510149991198,
+      "post_command_observation_s": 0.030695669000124326,
+      "whole_run": [
+        {
+          "joint": "joint1",
+          "q_hold": -0.031853675842285156,
+          "max_displacement": 0.0,
+          "peak_to_peak": 0.0,
+          "final_displacement": 0.0,
+          "max_velocity": 0.014652252197265625,
+          "max_torque_proxy": 0.004395675659179687,
+          "max_raw_proxy_finite_difference": 18.478699106953343,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 3.968146324157715,
+          "position_guard_utilization": 0.0,
+          "velocity_guard_utilization": 0.04999739664688118,
+          "proxy_guard_utilization": 0.03524370549805476
+        },
+        {
+          "joint": "joint2",
+          "q_hold": 1.3563365936279297,
+          "max_displacement": 0.0019073486328125,
+          "peak_to_peak": 0.0019073486328125,
+          "final_displacement": 0.0019073486328125,
+          "max_velocity": 0.16117286682128906,
+          "max_torque_proxy": 0.05979595184326172,
+          "max_raw_proxy_finite_difference": 122.50786876473973,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 0.6417560577392578,
+          "position_guard_utilization": 0.31094527363184077,
+          "velocity_guard_utilization": 0.549964854732896,
+          "proxy_guard_utilization": 0.4794327607722234
+        },
+        {
+          "joint": "joint3",
+          "q_hold": -1.3349733352661133,
+          "max_displacement": 0.0,
+          "peak_to_peak": 0.0,
+          "final_displacement": 0.0,
+          "max_velocity": 0.014652252197265625,
+          "max_torque_proxy": 0.004395675659179687,
+          "max_raw_proxy_finite_difference": 17.500147729203942,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 0.2358266647338867,
+          "position_guard_utilization": 0.0,
+          "velocity_guard_utilization": 0.04999739664688118,
+          "proxy_guard_utilization": 0.03524370549805476
+        },
+        {
+          "joint": "joint4",
+          "q_hold": 0.0017261505126953125,
+          "max_displacement": 0.0,
+          "peak_to_peak": 0.0,
+          "final_displacement": 0.0,
+          "max_velocity": 0.08546829223632812,
+          "max_torque_proxy": 0.0025640487670898437,
+          "max_raw_proxy_finite_difference": 23.098915146114262,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 3.9982738494873047,
+          "position_guard_utilization": 0.0,
+          "velocity_guard_utilization": 0.2916406331354785,
+          "proxy_guard_utilization": 0.17178586763172424
+        },
+        {
+          "joint": "joint5",
+          "q_hold": 0.008631706237792969,
+          "max_displacement": 0.000766754150390625,
+          "peak_to_peak": 0.0011510848999023438,
+          "final_displacement": 0.000766754150390625,
+          "max_velocity": 0.13431167602539062,
+          "max_torque_proxy": 0.004063453674316406,
+          "max_raw_proxy_finite_difference": 9.239710395091723,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 1.9906015396118164,
+          "position_guard_utilization": 0.125,
+          "velocity_guard_utilization": 0.4583072998021452,
+          "proxy_guard_utilization": 0.272242838741336
+        },
+        {
+          "joint": "joint6",
+          "q_hold": 0.0017261505126953125,
+          "max_displacement": 0.0003833770751953125,
+          "peak_to_peak": 0.0003833770751953125,
+          "final_displacement": 0.0,
+          "max_velocity": 0.03662872314453125,
+          "max_torque_proxy": 0.0010988616943359375,
+          "max_raw_proxy_finite_difference": 8.540874793196652,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 3.9978904724121094,
+          "position_guard_utilization": 0.0625,
+          "velocity_guard_utilization": 0.12498698323440592,
+          "proxy_guard_utilization": 0.07362141937066798
+        }
+      ],
+      "transient": {
+        "20ms": {
+          "complete_window": true,
+          "observed_duration_s": 0.02,
+          "position_samples": 4,
+          "velocity_samples": 4,
+          "max_abs_displacement": [
+            0,
+            0,
+            0,
+            0,
+            0.00038433074951171875,
+            0.0003833770751953125
+          ],
+          "max_abs_velocity": [
+            0.0048847198486328125,
+            0.0634918212890625,
+            0.014652252197265625,
+            0.03662872314453125,
+            0.13431167602539062,
+            0.03662872314453125
+          ]
+        },
+        "50ms": {
+          "complete_window": false,
+          "observed_duration_s": 0.030695669000124326,
+          "position_samples": 7,
+          "velocity_samples": 6,
+          "max_abs_displacement": [
+            0,
+            0.0019073486328125,
+            0,
+            0,
+            0.000766754150390625,
+            0.0003833770751953125
+          ],
+          "max_abs_velocity": [
+            0.014652252197265625,
+            0.16117286682128906,
+            0.014652252197265625,
+            0.08546829223632812,
+            0.13431167602539062,
+            0.03662872314453125
+          ]
+        },
+        "100ms": {
+          "complete_window": false,
+          "observed_duration_s": 0.030695669000124326,
+          "position_samples": 7,
+          "velocity_samples": 6,
+          "max_abs_displacement": [
+            0,
+            0.0019073486328125,
+            0,
+            0,
+            0.000766754150390625,
+            0.0003833770751953125
+          ],
+          "max_abs_velocity": [
+            0.014652252197265625,
+            0.16117286682128906,
+            0.014652252197265625,
+            0.08546829223632812,
+            0.13431167602539062,
+            0.03662872314453125
+          ]
+        }
+      },
+      "displacement_guard_trigger": {
+        "t": 1.0318510149991198,
+        "relative_t": 0.030695669000124326,
+        "window_start": 0.9821193709976797,
+        "window_span": 0.049731644001440145,
+        "delta": [
+          0.0,
+          0.0019073486328125,
+          0.0,
+          0.0,
+          0.0011510848999023438,
+          0.0
+        ],
+        "threshold": 0.00153350830078125,
+        "joints": [
+          2
+        ]
+      },
+      "max_feedback_age_at_decoded_events": 0.005865784001798602,
+      "feedback_rates_hz": {
+        "0x20": 203.5204166982459,
+        "0x21": 203.47944872567462,
+        "0x22": 203.29782198022886,
+        "0x24": 203.29782198022886,
+        "0x23": 2.008201232769703
+      },
+      "max_feedback_gaps_s": {
+        "0x20": 0.006035019003320485,
+        "0x21": 0.009182818001136184,
+        "0x22": 0.009016457999678096,
+        "0x24": 0.009021126003062818,
+        "0x23": 0.4979580649996933
+      },
+      "checksum_errors": 0,
+      "malformed": 0,
+      "nonfinite": 0,
+      "incomplete_tail_bytes": 26,
+      "stale_detected": false,
+      "tx_counts": {
+        "0x10": 3,
+        "0x11": 3,
+        "0x12": 3,
+        "0x13": 3,
+        "0x14": 3
+      },
+      "accepted_bytes": 510,
+      "command_batches_identical": true,
+      "tx_batch_interval_rate_hz": 95.26829529756527,
+      "tx_events": [
+        {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0011553459989955,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd709cad3f68e0aabf0040e2ba006c0dbc0040e2ba00000000a2bcfeaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        },
+        {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0120148089990835,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd709cad3f68e0aabf0040e2ba006c0dbc0040e2ba00000000a2bcfeaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        },
+        {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0221486889968219,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd709cad3f68e0aabf0040e2ba006c0dbc0040e2ba00000000a2bcfeaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        }
+      ],
+      "exit": {
+        "kind": "EXIT",
+        "exit_reason": "ABORT EXIT: stop TX; physically isolate power now: continuous position displacement in 50ms window",
+        "accepted_bytes": 510,
+        "last_kernel_accepted_batch": {
+          "t": 1.0221486889968219,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd709cad3f68e0aabf0040e2ba006c0dbc0040e2ba00000000a2bcfeaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        },
+        "state": "ABORT",
+        "reason": "continuous position displacement in 50ms window",
+        "q_hold": [
+          -0.031853675842285156,
+          1.3563365936279297,
+          -1.3349733352661133,
+          0.0017261505126953125,
+          0.008631706237792969,
+          0.0017261505126953125
+        ],
+        "kp": [
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "kd": [
+          0.3,
+          0.3,
+          0.3,
+          0.03,
+          0.03,
+          0.03
+        ],
+        "tau_ff": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "position_bound": 0.006134033203125,
+        "velocity_bound": 0.293060302734375,
+        "proxy_bound": [
+          0.1247222900390625,
+          0.1247222900390625,
+          0.1247222900390625,
+          0.01492584228515625,
+          0.01492584228515625,
+          0.01492584228515625
+        ],
+        "mean_proxy_slew_bound": [
+          2.49444580078125,
+          2.49444580078125,
+          2.49444580078125,
+          0.298516845703125,
+          0.298516845703125,
+          0.298516845703125
+        ],
+        "samples": 211,
+        "qualified_frames": 204,
+        "candidate_batches": 3,
+        "last_proxy": [
+          0.0014654159545898437,
+          -0.05521831512451172,
+          0.004395675659179687,
+          -0.0025640487670898437,
+          -0.0036800765991210935,
+          0.00036632537841796875
+        ],
+        "exit_meaning": "TX stops only; board state unknown until physical power isolation"
+      },
+      "onsite_observation": "User confirmed: joint2 appeared to move downward slightly; no other abnormal phenomena observed.",
+      "power_isolation_confirmation": "UNKNOWN \u2014 user instructed; assistant cannot verify physical isolation",
+      "close_time": "close occurred before EXIT record and process completion; exact close timestamp not logged",
+      "runs_2_3": "NOT EXECUTED: Run 1 guard abort prohibits retry",
+      "reproducibility": "not assessable, only one aborted run",
+      "limitations": [
+        "TX timestamps are scheduling timestamps immediately before pre-write work, not measured UART/board reception times.",
+        "50/100ms windows truncated at abort.",
+        "No pair of post-takeover 50ms mean windows: reviewed mean-slew statistic unavailable; raw finite difference is separate and quantization-sensitive.",
+        "Full stored RX chunk decoded offline may include telemetry not processed by active guard after its first exception.",
+        "Trajectory duration too short to prove sustained acceleration/oscillation or long-term drift.",
+        "No active takeover retry permitted."
+      ],
+      "onsite_abnormality": true,
+      "motion_assessment": {
+        "jump": "No large instantaneous encoder step; small real downward joint2 movement confirmed on site.",
+        "unidirectional_drift": "Joint2 late samples increased monotonically during the short observed post-TX interval; guard triggered. Long-term drift unobserved.",
+        "acceleration": "Joint2 protocol velocity rose during several samples; insufficient duration to establish sustained acceleration.",
+        "oscillation": "No sustained oscillation established; 30.7ms post-TX coverage is insufficient to exclude it.",
+        "communication": "No checksum/malformed/nonfinite/stale detected in saved window.",
+        "guard_margin": "50ms displacement guard exceeded, joint2 ratio 1.243781095. This is a real guard abort, not a logging failure."
+      }
+    },
+    "external_support_run1": {
+      "verdict": "FAIL",
+      "reason": "continuous position displacement in 50ms window",
+      "run": "run1",
+      "program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd",
+      "snapshot": {
+        "kind": "PRE_SEND_SNAPSHOT",
+        "timestamp": 1.0002579860010883,
+        "timestamp_basis": "host monotonic seconds since capture/start; not board sampling time",
+        "measured": {
+          "q": [
+            -0.031853675842285156,
+            1.4929046630859375,
+            -1.3586254119873047,
+            0.0024938583374023438,
+            0.08496952056884766,
+            0.0024938583374023438
+          ],
+          "dq": [
+            -0.0048847198486328125,
+            -0.0048847198486328125,
+            -0.0048847198486328125,
+            -0.03662872314453125,
+            0.012210845947265625,
+            -0.012210845947265625
+          ],
+          "feedback_age": {
+            "0x20": 0.0034312870011490304,
+            "0x21": 0.0031410410010721534,
+            "0x22": 0.0031410410010721534,
+            "0x24": 0.0021328780021576677
+          },
+          "timestamp": 1.0002579860010883,
+          "feedback_receive_timestamps": {
+            "0x20": 0.9968266989999393,
+            "0x21": 0.9971169450000161,
+            "0x22": 0.9971169450000161,
+            "0x24": 0.9981251079989306
+          }
+        },
+        "command": {
+          "position": [
+            -0.031853675842285156,
+            1.4929046630859375,
+            -1.3586254119873047,
+            0.0024938583374023438,
+            0.08496952056884766,
+            0.0024938583374023438
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0,
+            -0.0,
+            -0.0,
+            -0.0
+          ],
+          "current": [
+            0.0,
+            0.0,
+            0.0,
+            -0.0,
+            -0.0,
+            -0.0
+          ],
+          "kp": [
+            6.0,
+            6.0,
+            6.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "kd": [
+            0.3,
+            0.3,
+            0.3,
+            0.03,
+            0.03,
+            0.03
+          ]
+        },
+        "difference": {
+          "position_command_minus_measured": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "velocity_command_minus_measured": [
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.03662872314453125,
+            -0.012210845947265625,
+            0.012210845947265625
+          ]
+        },
+        "limits": {
+          "joint_limit_margin": [
+            3.968146324157715,
+            0.5070953369140625,
+            0.2121745880126953,
+            3.9975061416625977,
+            1.9150304794311523,
+            3.9975061416625977
+          ],
+          "minimum_margin": 0.15,
+          "position_error_guard": 0.006134033203125,
+          "velocity_guard": 0.293060302734375,
+          "torque_proxy_guard": [
+            0.1247222900390625,
+            0.1247222900390625,
+            0.1247222900390625,
+            0.01492584228515625,
+            0.01492584228515625,
+            0.01492584228515625
+          ],
+          "mean_proxy_slew_guard": [
+            2.49444580078125,
+            2.49444580078125,
+            2.49444580078125,
+            0.298516845703125,
+            0.298516845703125,
+            0.298516845703125
+          ]
+        },
+        "torque_proxy": {
+          "p_term": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "d_term": [
+            0.0014654159545898437,
+            0.0014654159545898437,
+            0.0014654159545898437,
+            0.0010988616943359375,
+            -0.00036632537841796875,
+            0.00036632537841796875
+          ],
+          "ff_term": [
+            0.0,
+            0.0,
+            0.0,
+            -0.0,
+            -0.0,
+            -0.0
+          ],
+          "total": [
+            0.0014654159545898437,
+            0.0014654159545898437,
+            0.0014654159545898437,
+            0.0010988616943359375,
+            -0.00036632537841796875,
+            0.00036632537841796875
+          ],
+          "max_abs_tau_proxy": 0.0014654159545898437,
+          "max_tau_proxy_ratio_to_guard": 0.07362141937066798
+        },
+        "first_position_equality_tolerance": 0.0,
+        "slew_initialization": "no prior commanded proxy; old board torque UNKNOWN",
+        "unknowns": {
+          "exact_board_firmware_version": "UNKNOWN",
+          "board_internal_total_torque_limit": "UNKNOWN",
+          "actual_0x12_torque_scale": "UNKNOWN",
+          "disconnect_behavior": "UNKNOWN",
+          "persistent_board_state": "UNKNOWN"
+        },
+        "theoretical_arrays": {
+          "0x10": [
+            -0.031853675842285156,
+            1.4929046630859375,
+            -1.3586254119873047,
+            -0.0024938583374023438,
+            -0.08496952056884766,
+            -0.0024938583374023438,
+            0.0
+          ],
+          "0x11": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "0x12": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "0x13": [
+            6.0,
+            6.0,
+            6.0,
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ],
+          "0x14": [
+            0.30000001192092896,
+            0.30000001192092896,
+            0.30000001192092896,
+            0.029999999329447746,
+            0.029999999329447746,
+            0.029999999329447746,
+            0.0
+          ]
+        },
+        "theoretical_packet_hex": "feaa101c007902bd8017bf3f70e7adbf007023bb8004aebd007023bb00000000ef51feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43",
+        "program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd"
+      },
+      "q_hold": [
+        -0.031853675842285156,
+        1.4929046630859375,
+        -1.3586254119873047,
+        0.0024938583374023438,
+        0.08496952056884766,
+        0.0024938583374023438
+      ],
+      "kp": [
+        6.0,
+        6.0,
+        6.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "kd": [
+        0.3,
+        0.3,
+        0.3,
+        0.03,
+        0.03,
+        0.03
+      ],
+      "current": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "velocity_command": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "first_tx_schedule_t": 1.0002579860010883,
+      "last_feedback_t": 1.0367966269986937,
+      "post_command_observation_s": 0.0365386409976054,
+      "whole_run": [
+        {
+          "joint": "joint1",
+          "q_hold": -0.031853675842285156,
+          "max_displacement": 0.0,
+          "peak_to_peak": 0.0,
+          "final_displacement": 0.0,
+          "max_velocity": 0.0048847198486328125,
+          "max_torque_proxy": 0.0014654159545898437,
+          "max_raw_proxy_finite_difference": 0.0,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 3.968146324157715,
+          "position_guard_utilization": 0.0,
+          "velocity_guard_utilization": 0.016667968343226074,
+          "proxy_guard_utilization": 0.011749431109153637
+        },
+        {
+          "joint": "joint2",
+          "q_hold": 1.4929046630859375,
+          "max_displacement": 0.0003814697265625,
+          "peak_to_peak": 0.0003814697265625,
+          "final_displacement": 0.0003814697265625,
+          "max_velocity": 0.024419784545898438,
+          "max_torque_proxy": 0.00961475372314453,
+          "max_raw_proxy_finite_difference": 8.01757320378535,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 0.5067138671875,
+          "position_guard_utilization": 0.06218905472636816,
+          "velocity_guard_utilization": 0.0833268249505363,
+          "proxy_guard_utilization": 0.07708929751156132
+        },
+        {
+          "joint": "joint3",
+          "q_hold": -1.3586254119873047,
+          "max_displacement": 0.0,
+          "peak_to_peak": 0.0,
+          "final_displacement": 0.0,
+          "max_velocity": 0.0048847198486328125,
+          "max_torque_proxy": 0.0014654159545898437,
+          "max_raw_proxy_finite_difference": 0.0,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 0.2121745880126953,
+          "position_guard_utilization": 0.0,
+          "velocity_guard_utilization": 0.016667968343226074,
+          "proxy_guard_utilization": 0.011749431109153637
+        },
+        {
+          "joint": "joint4",
+          "q_hold": 0.0024938583374023438,
+          "max_displacement": 0.0,
+          "peak_to_peak": 0.0,
+          "final_displacement": 0.0,
+          "max_velocity": 0.0610504150390625,
+          "max_torque_proxy": 0.001831512451171875,
+          "max_raw_proxy_finite_difference": 4.008160473567507,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 3.9975061416625977,
+          "position_guard_utilization": 0.0,
+          "velocity_guard_utilization": 0.20832031656773925,
+          "proxy_guard_utilization": 0.12270747715144453
+        },
+        {
+          "joint": "joint5",
+          "q_hold": 0.08496952056884766,
+          "max_displacement": 0.0015344619750976562,
+          "peak_to_peak": 0.0015344619750976562,
+          "final_displacement": 0.0015344619750976562,
+          "max_velocity": 0.1831512451171875,
+          "max_torque_proxy": 0.006645622253417968,
+          "max_raw_proxy_finite_difference": 8.016320947135013,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 1.9134960174560547,
+          "position_guard_utilization": 0.2501554726368159,
+          "velocity_guard_utilization": 0.6249609497032177,
+          "proxy_guard_utilization": 0.44524269561839336
+        },
+        {
+          "joint": "joint6",
+          "q_hold": 0.0024938583374023438,
+          "max_displacement": 0.00038433074951171875,
+          "peak_to_peak": 0.00038433074951171875,
+          "final_displacement": -0.00038433074951171875,
+          "max_velocity": 0.08546829223632812,
+          "max_torque_proxy": 0.0025640487670898437,
+          "max_raw_proxy_finite_difference": 6.835906399849492,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 3.9975061416625977,
+          "position_guard_utilization": 0.06265547263681592,
+          "velocity_guard_utilization": 0.2916406331354785,
+          "proxy_guard_utilization": 0.17178586763172424
+        }
+      ],
+      "transient": {
+        "20ms": {
+          "complete_window": true,
+          "observed_duration_s": 0.02,
+          "position_samples": 4,
+          "velocity_samples": 4,
+          "max_abs_displacement": [
+            0,
+            0,
+            0,
+            0,
+            0.00038433074951171875,
+            0.00038433074951171875
+          ],
+          "max_abs_velocity": [
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.0610504150390625,
+            0.08546829223632812,
+            0.03662872314453125
+          ]
+        },
+        "50ms": {
+          "complete_window": false,
+          "observed_duration_s": 0.0365386409976054,
+          "position_samples": 8,
+          "velocity_samples": 7,
+          "max_abs_displacement": [
+            0,
+            0.0003814697265625,
+            0,
+            0,
+            0.0015344619750976562,
+            0.00038433074951171875
+          ],
+          "max_abs_velocity": [
+            0.0048847198486328125,
+            0.024419784545898438,
+            0.0048847198486328125,
+            0.0610504150390625,
+            0.1831512451171875,
+            0.08546829223632812
+          ]
+        },
+        "100ms": {
+          "complete_window": false,
+          "observed_duration_s": 0.0365386409976054,
+          "position_samples": 8,
+          "velocity_samples": 7,
+          "max_abs_displacement": [
+            0,
+            0.0003814697265625,
+            0,
+            0,
+            0.0015344619750976562,
+            0.00038433074951171875
+          ],
+          "max_abs_velocity": [
+            0.0048847198486328125,
+            0.024419784545898438,
+            0.0048847198486328125,
+            0.0610504150390625,
+            0.1831512451171875,
+            0.08546829223632812
+          ]
+        }
+      },
+      "displacement_guard_trigger": {
+        "t": 1.0367966269986937,
+        "relative_t": 0.0365386409976054,
+        "window_start": 0.9868547129990475,
+        "window_span": 0.049941913999646204,
+        "delta": [
+          0.0,
+          0.0003814697265625,
+          0.0,
+          0.0,
+          0.0015344619750976562,
+          -0.00038433074951171875
+        ],
+        "threshold": 0.00153350830078125,
+        "joints": [
+          5
+        ],
+        "max_utilization": 1.0006218905472637
+      },
+      "max_feedback_age_at_decoded_events": 0.005230406000919174,
+      "feedback_rates_hz": {
+        "0x24": 203.27462390178826,
+        "0x20": 202.5497424552942,
+        "0x21": 202.54058478420586,
+        "0x22": 202.4931973955917,
+        "0x23": 2.007940747049944
+      },
+      "max_feedback_gaps_s": {
+        "0x24": 0.00883273099680082,
+        "0x20": 0.005520652000996051,
+        "0x21": 0.009010342000692617,
+        "0x22": 0.00889152400122839,
+        "0x23": 0.49802266400001827
+      },
+      "checksum_errors": 0,
+      "malformed": 0,
+      "nonfinite": 0,
+      "incomplete_tail_bytes": 31,
+      "stale_detected": false,
+      "tx_counts": {
+        "0x10": 4,
+        "0x11": 4,
+        "0x12": 4,
+        "0x13": 4,
+        "0x14": 4
+      },
+      "accepted_bytes": 680,
+      "command_batches_identical": true,
+      "tx_batch_interval_rate_hz": 94.66299799068301,
+      "tx_events": [
+        {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0002579860010883,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd8017bf3f70e7adbf007023bb8004aebd007023bb00000000ef51feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        },
+        {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0110481299998355,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd8017bf3f70e7adbf007023bb8004aebd007023bb00000000ef51feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        },
+        {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0211263679993863,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd8017bf3f70e7adbf007023bb8004aebd007023bb00000000ef51feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        },
+        {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0319493550014158,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd8017bf3f70e7adbf007023bb8004aebd007023bb00000000ef51feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        }
+      ],
+      "exit": {
+        "kind": "EXIT",
+        "exit_reason": "ABORT EXIT: stop TX; physically isolate power now: continuous position displacement in 50ms window",
+        "accepted_bytes": 680,
+        "last_kernel_accepted_batch": {
+          "t": 1.0319493550014158,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd8017bf3f70e7adbf007023bb8004aebd007023bb00000000ef51feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        },
+        "state": "ABORT",
+        "reason": "continuous position displacement in 50ms window",
+        "q_hold": [
+          -0.031853675842285156,
+          1.4929046630859375,
+          -1.3586254119873047,
+          0.0024938583374023438,
+          0.08496952056884766,
+          0.0024938583374023438
+        ],
+        "kp": [
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "kd": [
+          0.3,
+          0.3,
+          0.3,
+          0.03,
+          0.03,
+          0.03
+        ],
+        "tau_ff": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "position_bound": 0.006134033203125,
+        "velocity_bound": 0.293060302734375,
+        "proxy_bound": [
+          0.1247222900390625,
+          0.1247222900390625,
+          0.1247222900390625,
+          0.01492584228515625,
+          0.01492584228515625,
+          0.01492584228515625
+        ],
+        "mean_proxy_slew_bound": [
+          2.49444580078125,
+          2.49444580078125,
+          2.49444580078125,
+          0.298516845703125,
+          0.298516845703125,
+          0.298516845703125
+        ],
+        "samples": 211,
+        "qualified_frames": 203,
+        "candidate_batches": 4,
+        "last_proxy": [
+          0.0014654159545898437,
+          -0.0037542343139648437,
+          0.0014654159545898437,
+          -0.00036632537841796875,
+          -0.0037151336669921874,
+          0.0010988616943359375
+        ],
+        "exit_meaning": "TX stops only; board state unknown until physical power isolation"
+      },
+      "onsite_observation": "UNKNOWN \u2014 no user report for this supported run received yet",
+      "power_isolation_confirmation": "UNKNOWN \u2014 user instructed; assistant cannot verify physical isolation",
+      "close_time": "close occurred before EXIT record and process completion; exact close timestamp not logged",
+      "runs_2_3": "NOT EXECUTED: Run 1 guard abort prohibits retry",
+      "reproducibility": "not assessable, only one aborted run",
+      "limitations": [
+        "TX timestamps are scheduling timestamps immediately before pre-write work, not measured UART/board reception times.",
+        "50/100ms windows truncated at abort.",
+        "No pair of post-takeover 50ms mean windows: reviewed mean-slew statistic unavailable; raw finite difference is separate and quantization-sensitive.",
+        "Full stored RX chunk decoded offline may include telemetry not processed by active guard after its first exception.",
+        "Trajectory duration too short to prove sustained acceleration/oscillation or long-term drift.",
+        "No active takeover retry permitted."
+      ]
+    },
+    "external_support_run2": {
+      "state": "NOT EXECUTED",
+      "reason": "Run 1 guard abort"
+    },
+    "external_support_run3": {
+      "state": "NOT EXECUTED",
+      "reason": "Run 1 guard abort; approved program remains fixed at 2s, no 5s change made"
+    },
+    "external_support_j5_observed_retry": {
+      "verdict": "FAIL",
+      "reason": "continuous position displacement in 50ms window",
+      "run": "run1",
+      "program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd",
+      "snapshot": {
+        "kind": "PRE_SEND_SNAPSHOT",
+        "timestamp": 1.0014830450018053,
+        "timestamp_basis": "host monotonic seconds since capture/start; not board sampling time",
+        "measured": {
+          "q": [
+            -0.031853675842285156,
+            1.494049072265625,
+            -1.415846824645996,
+            0.0024938583374023438,
+            0.16706371307373047,
+            0.002109527587890625
+          ],
+          "dq": [
+            -0.0048847198486328125,
+            -0.0048847198486328125,
+            -0.0048847198486328125,
+            0.03662872314453125,
+            0.012210845947265625,
+            -0.0610504150390625
+          ],
+          "feedback_age": {
+            "0x20": 0.004361677001725184,
+            "0x21": 0.003594271001929883,
+            "0x22": 0.003594271001929883,
+            "0x24": 0.003408959000807954
+          },
+          "timestamp": 1.0014830450018053,
+          "feedback_receive_timestamps": {
+            "0x20": 0.9971213680000801,
+            "0x21": 0.9978887739998754,
+            "0x22": 0.9978887739998754,
+            "0x24": 0.9980740860009973
+          }
+        },
+        "command": {
+          "position": [
+            -0.031853675842285156,
+            1.494049072265625,
+            -1.415846824645996,
+            0.0024938583374023438,
+            0.16706371307373047,
+            0.002109527587890625
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0,
+            -0.0,
+            -0.0,
+            -0.0
+          ],
+          "current": [
+            0.0,
+            0.0,
+            0.0,
+            -0.0,
+            -0.0,
+            -0.0
+          ],
+          "kp": [
+            6.0,
+            6.0,
+            6.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "kd": [
+            0.3,
+            0.3,
+            0.3,
+            0.03,
+            0.03,
+            0.03
+          ]
+        },
+        "difference": {
+          "position_command_minus_measured": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "velocity_command_minus_measured": [
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.0048847198486328125,
+            -0.03662872314453125,
+            -0.012210845947265625,
+            0.0610504150390625
+          ]
+        },
+        "limits": {
+          "joint_limit_margin": [
+            3.968146324157715,
+            0.505950927734375,
+            0.15495317535400388,
+            3.9975061416625977,
+            1.8329362869262695,
+            3.9978904724121094
+          ],
+          "minimum_margin": 0.15,
+          "position_error_guard": 0.006134033203125,
+          "velocity_guard": 0.293060302734375,
+          "torque_proxy_guard": [
+            0.1247222900390625,
+            0.1247222900390625,
+            0.1247222900390625,
+            0.01492584228515625,
+            0.01492584228515625,
+            0.01492584228515625
+          ],
+          "mean_proxy_slew_guard": [
+            2.49444580078125,
+            2.49444580078125,
+            2.49444580078125,
+            0.298516845703125,
+            0.298516845703125,
+            0.298516845703125
+          ]
+        },
+        "torque_proxy": {
+          "p_term": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "d_term": [
+            0.0014654159545898437,
+            0.0014654159545898437,
+            0.0014654159545898437,
+            -0.0010988616943359375,
+            -0.00036632537841796875,
+            0.001831512451171875
+          ],
+          "ff_term": [
+            0.0,
+            0.0,
+            0.0,
+            -0.0,
+            -0.0,
+            -0.0
+          ],
+          "total": [
+            0.0014654159545898437,
+            0.0014654159545898437,
+            0.0014654159545898437,
+            -0.0010988616943359375,
+            -0.00036632537841796875,
+            0.001831512451171875
+          ],
+          "max_abs_tau_proxy": 0.001831512451171875,
+          "max_tau_proxy_ratio_to_guard": 0.12270747715144453
+        },
+        "first_position_equality_tolerance": 0.0,
+        "slew_initialization": "no prior commanded proxy; old board torque UNKNOWN",
+        "unknowns": {
+          "exact_board_firmware_version": "UNKNOWN",
+          "board_internal_total_torque_limit": "UNKNOWN",
+          "actual_0x12_torque_scale": "UNKNOWN",
+          "disconnect_behavior": "UNKNOWN",
+          "persistent_board_state": "UNKNOWN"
+        },
+        "theoretical_arrays": {
+          "0x10": [
+            -0.031853675842285156,
+            1.494049072265625,
+            -1.415846824645996,
+            -0.0024938583374023438,
+            -0.16706371307373047,
+            -0.002109527587890625,
+            0.0
+          ],
+          "0x11": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "0x12": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "0x13": [
+            6.0,
+            6.0,
+            6.0,
+            1.0,
+            1.0,
+            1.0,
+            0.0
+          ],
+          "0x14": [
+            0.30000001192092896,
+            0.30000001192092896,
+            0.30000001192092896,
+            0.029999999329447746,
+            0.029999999329447746,
+            0.029999999329447746,
+            0.0
+          ]
+        },
+        "theoretical_packet_hex": "feaa101c007902bd003dbf3f783ab5bf007023bbc0122bbe00400abb000000007bb3feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43",
+        "program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd"
+      },
+      "q_hold": [
+        -0.031853675842285156,
+        1.494049072265625,
+        -1.415846824645996,
+        0.0024938583374023438,
+        0.16706371307373047,
+        0.002109527587890625
+      ],
+      "kp": [
+        6.0,
+        6.0,
+        6.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "kd": [
+        0.3,
+        0.3,
+        0.3,
+        0.03,
+        0.03,
+        0.03
+      ],
+      "current": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "velocity_command": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "first_tx_schedule_t": 1.0014830450018053,
+      "last_feedback_t": 1.0421209710002586,
+      "post_command_observation_s": 0.040637925998453284,
+      "whole_run": [
+        {
+          "joint": "joint1",
+          "q_hold": -0.031853675842285156,
+          "max_displacement": 0.0,
+          "peak_to_peak": 0.0,
+          "final_displacement": 0.0,
+          "max_velocity": 0.0048847198486328125,
+          "max_torque_proxy": 0.0014654159545898437,
+          "max_raw_proxy_finite_difference": 0.0,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 3.968146324157715,
+          "position_guard_utilization": 0.0,
+          "velocity_guard_utilization": 0.016667968343226074,
+          "proxy_guard_utilization": 0.011749431109153637
+        },
+        {
+          "joint": "joint2",
+          "q_hold": 1.494049072265625,
+          "max_displacement": 0.0,
+          "peak_to_peak": 0.0,
+          "final_displacement": 0.0,
+          "max_velocity": 0.0048847198486328125,
+          "max_torque_proxy": 0.0014654159545898437,
+          "max_raw_proxy_finite_difference": 0.0,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 0.505950927734375,
+          "position_guard_utilization": 0.0,
+          "velocity_guard_utilization": 0.016667968343226074,
+          "proxy_guard_utilization": 0.011749431109153637
+        },
+        {
+          "joint": "joint3",
+          "q_hold": -1.415846824645996,
+          "max_displacement": 0.0,
+          "peak_to_peak": 0.0,
+          "final_displacement": 0.0,
+          "max_velocity": 0.014652252197265625,
+          "max_torque_proxy": 0.004395675659179687,
+          "max_raw_proxy_finite_difference": 17.87495784936911,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 0.15495317535400388,
+          "position_guard_utilization": 0.0,
+          "velocity_guard_utilization": 0.04999739664688118,
+          "proxy_guard_utilization": 0.03524370549805476
+        },
+        {
+          "joint": "joint4",
+          "q_hold": 0.0024938583374023438,
+          "max_displacement": 0.00038433074951171875,
+          "peak_to_peak": 0.00038433074951171875,
+          "final_displacement": -0.00038433074951171875,
+          "max_velocity": 0.03662872314453125,
+          "max_torque_proxy": 0.0010988616943359375,
+          "max_raw_proxy_finite_difference": 3.272734748318297,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 3.9975061416625977,
+          "position_guard_utilization": 0.06265547263681592,
+          "velocity_guard_utilization": 0.12498698323440592,
+          "proxy_guard_utilization": 0.07362141937066798
+        },
+        {
+          "joint": "joint5",
+          "q_hold": 0.16706371307373047,
+          "max_displacement": 0.0015344619750976562,
+          "peak_to_peak": 0.001918792724609375,
+          "final_displacement": 0.0015344619750976562,
+          "max_velocity": 0.08546829223632812,
+          "max_torque_proxy": 0.0033659744262695313,
+          "max_raw_proxy_finite_difference": 9.8171818348492,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 1.8314018249511719,
+          "position_guard_utilization": 0.2501554726368159,
+          "velocity_guard_utilization": 0.2916406331354785,
+          "proxy_guard_utilization": 0.22551319797992192
+        },
+        {
+          "joint": "joint6",
+          "q_hold": 0.002109527587890625,
+          "max_displacement": 0.0,
+          "peak_to_peak": 0.0,
+          "final_displacement": 0.0,
+          "max_velocity": 0.0610504150390625,
+          "max_torque_proxy": 0.001831512451171875,
+          "max_raw_proxy_finite_difference": 8.937827976780815,
+          "max_guard_50ms_mean_slew": null,
+          "minimum_joint_limit_margin": 3.9978904724121094,
+          "position_guard_utilization": 0.0,
+          "velocity_guard_utilization": 0.20832031656773925,
+          "proxy_guard_utilization": 0.12270747715144453
+        }
+      ],
+      "transient": {
+        "20ms": {
+          "complete_window": true,
+          "observed_duration_s": 0.02,
+          "position_samples": 4,
+          "velocity_samples": 4,
+          "max_abs_displacement": [
+            0,
+            0,
+            0,
+            0.00038433074951171875,
+            0.00038433074951171875,
+            0
+          ],
+          "max_abs_velocity": [
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.014652252197265625,
+            0.03662872314453125,
+            0.0610504150390625,
+            0.0610504150390625
+          ]
+        },
+        "50ms": {
+          "complete_window": false,
+          "observed_duration_s": 0.040637925998453284,
+          "position_samples": 9,
+          "velocity_samples": 8,
+          "max_abs_displacement": [
+            0,
+            0,
+            0,
+            0.00038433074951171875,
+            0.0015344619750976562,
+            0
+          ],
+          "max_abs_velocity": [
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.014652252197265625,
+            0.03662872314453125,
+            0.08546829223632812,
+            0.0610504150390625
+          ]
+        },
+        "100ms": {
+          "complete_window": false,
+          "observed_duration_s": 0.040637925998453284,
+          "position_samples": 9,
+          "velocity_samples": 8,
+          "max_abs_displacement": [
+            0,
+            0,
+            0,
+            0.00038433074951171875,
+            0.0015344619750976562,
+            0
+          ],
+          "max_abs_velocity": [
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.014652252197265625,
+            0.03662872314453125,
+            0.08546829223632812,
+            0.0610504150390625
+          ]
+        }
+      },
+      "displacement_guard_trigger": {
+        "t": 1.0421209710002586,
+        "relative_t": 0.040637925998453284,
+        "window_start": 0.9971213680000801,
+        "window_span": 0.04499960300017847,
+        "delta": [
+          0.0,
+          0.0,
+          0.0,
+          -0.00038433074951171875,
+          0.0015344619750976562,
+          0.0
+        ],
+        "threshold": 0.00153350830078125,
+        "joints": [
+          5
+        ]
+      },
+      "max_feedback_age_at_decoded_events": 0.005498604001331842,
+      "feedback_rates_hz": {
+        "0x20": 203.43398973628035,
+        "0x21": 203.2550420305992,
+        "0x22": 203.2550420305992,
+        "0x24": 203.2550420305992,
+        "0x23": 2.008008814647139
+      },
+      "max_feedback_gaps_s": {
+        "0x20": 0.0062660100011271425,
+        "0x21": 0.009212592001858866,
+        "0x22": 0.009808562997932313,
+        "0x24": 0.008830808001221158,
+        "0x23": 0.4980057819993817
+      },
+      "checksum_errors": 0,
+      "malformed": 0,
+      "nonfinite": 0,
+      "incomplete_tail_bytes": 32,
+      "stale_detected": false,
+      "tx_counts": {
+        "0x10": 4,
+        "0x11": 4,
+        "0x12": 4,
+        "0x13": 4,
+        "0x14": 4
+      },
+      "accepted_bytes": 680,
+      "command_batches_identical": true,
+      "tx_batch_interval_rate_hz": 97.257172667874,
+      "tx_events": [
+        {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0014830450018053,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd003dbf3f783ab5bf007023bbc0122bbe00400abb000000007bb3feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        },
+        {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0121524810019764,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd003dbf3f783ab5bf007023bbc0122bbe00400abb000000007bb3feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        },
+        {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0222093459997268,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd003dbf3f783ab5bf007023bbc0122bbe00400abb000000007bb3feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        },
+        {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0323290990017995,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd003dbf3f783ab5bf007023bbc0122bbe00400abb000000007bb3feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        }
+      ],
+      "exit": {
+        "kind": "EXIT",
+        "exit_reason": "ABORT EXIT: stop TX; physically isolate power now: continuous position displacement in 50ms window",
+        "accepted_bytes": 680,
+        "last_kernel_accepted_batch": {
+          "t": 1.0323290990017995,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd003dbf3f783ab5bf007023bbc0122bbe00400abb000000007bb3feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c00000000000000000000000000000000000000000000000000000000d69efeaa131c0000c0400000c0400000c0400000803f0000803f0000803f0000000014a1feaa141c9a99993e9a99993e9a99993e8fc2f53c8fc2f53c8fc2f53c000000007c43"
+        },
+        "state": "ABORT",
+        "reason": "continuous position displacement in 50ms window",
+        "q_hold": [
+          -0.031853675842285156,
+          1.494049072265625,
+          -1.415846824645996,
+          0.0024938583374023438,
+          0.16706371307373047,
+          0.002109527587890625
+        ],
+        "kp": [
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "kd": [
+          0.3,
+          0.3,
+          0.3,
+          0.03,
+          0.03,
+          0.03
+        ],
+        "tau_ff": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "position_bound": 0.006134033203125,
+        "velocity_bound": 0.293060302734375,
+        "proxy_bound": [
+          0.1247222900390625,
+          0.1247222900390625,
+          0.1247222900390625,
+          0.01492584228515625,
+          0.01492584228515625,
+          0.01492584228515625
+        ],
+        "mean_proxy_slew_bound": [
+          2.49444580078125,
+          2.49444580078125,
+          2.49444580078125,
+          0.298516845703125,
+          0.298516845703125,
+          0.298516845703125
+        ],
+        "samples": 213,
+        "qualified_frames": 204,
+        "candidate_batches": 4,
+        "last_proxy": [
+          0.0014654159545898437,
+          0.0014654159545898437,
+          0.0014654159545898437,
+          0.00036632537841796875,
+          -0.0025982666015625,
+          -0.00036632537841796875
+        ],
+        "exit_meaning": "TX stops only; board state unknown until physical power isolation"
+      },
+      "onsite_observation": "User confirmed joint5 did move slightly. Actual support is a stand under the link between J2 and J3, preventing that link from falling as J2 turns; user suspects unsupported J5/downstream gravity.",
+      "power_isolation_confirmation": "UNKNOWN \u2014 user has not explicitly reported completion of power isolation.",
+      "close_time": "close occurred before EXIT record and process completion; exact close timestamp not logged",
+      "runs_2_3": "NOT EXECUTED: Run 1 guard abort prohibits retry",
+      "reproducibility": "not assessable, only one aborted run",
+      "limitations": [
+        "TX timestamps are scheduling timestamps immediately before pre-write work, not measured UART/board reception times.",
+        "50/100ms windows truncated at abort.",
+        "No pair of post-takeover 50ms mean windows: reviewed mean-slew statistic unavailable; raw finite difference is separate and quantization-sensitive.",
+        "Full stored RX chunk decoded offline may include telemetry not processed by active guard after its first exception.",
+        "Trajectory duration too short to prove sustained acceleration/oscillation or long-term drift.",
+        "No active takeover retry permitted."
+      ],
+      "extra_risk": "J3 margin 0.154953175354 rad; only 0.004953175354 rad above reviewed minimum. No guard changes.",
+      "onsite_abnormality": true,
+      "actual_support_scope": "Link between J2 and J3 only, per user clarification. Independent weight support for J5/downstream assembly not established.",
+      "precondition_correction": "The earlier load-bearing-support-all-links assertion is not established for wrist/distal joints. Preserve original execution review as historical assertion, not verified physical fact.",
+      "causal_assessment": "Joint5 physical motion confirmed. Unsupported downstream gravity and changed takeover forces are plausible explanations, not established exclusive causes. Cannot treat the displacement as only numerical/encoder noise.",
+      "no_new_control_authorization": true
+    }
+  },
+  "SUPPORT_A_B_COMPARISON": {
+    "timepoint_method": "last received q/dq at or before requested host-relative cutoff, no forward extrapolation; null means observation terminated",
+    "timepoints_ms": {
+      "10": {
+        "2": {
+          "no_support": {
+            "delta_q": 0.0,
+            "dq": -0.0048847198486328125,
+            "torque_proxy": 0.0014654159545898437,
+            "latest_event_ms": 6.096914999943692,
+            "position_age_at_cut_ms": 4.0770390021498315,
+            "velocity_age_at_cut_ms": 3.9030850000563078
+          },
+          "support": {
+            "delta_q": 0.0,
+            "dq": -0.0048847198486328125,
+            "torque_proxy": 0.0014654159545898437,
+            "latest_event_ms": 6.752944998879684,
+            "position_age_at_cut_ms": 3.247055001120316,
+            "velocity_age_at_cut_ms": 3.247055001120316
+          }
+        },
+        "3": {
+          "no_support": {
+            "delta_q": 0.0,
+            "dq": -0.0048847198486328125,
+            "torque_proxy": 0.0014654159545898437,
+            "latest_event_ms": 6.096914999943692,
+            "position_age_at_cut_ms": 4.0770390021498315,
+            "velocity_age_at_cut_ms": 3.9030850000563078
+          },
+          "support": {
+            "delta_q": 0.0,
+            "dq": -0.0048847198486328125,
+            "torque_proxy": 0.0014654159545898437,
+            "latest_event_ms": 6.752944998879684,
+            "position_age_at_cut_ms": 3.247055001120316,
+            "velocity_age_at_cut_ms": 3.247055001120316
+          }
+        }
+      },
+      "20": {
+        "2": {
+          "no_support": {
+            "delta_q": 0.0,
+            "dq": 0.0634918212890625,
+            "torque_proxy": -0.01904754638671875,
+            "latest_event_ms": 16.114678997837473,
+            "position_age_at_cut_ms": 4.052763000363484,
+            "velocity_age_at_cut_ms": 3.8853210021625277
+          },
+          "support": {
+            "delta_q": 0.0,
+            "dq": 0.0048847198486328125,
+            "torque_proxy": -0.0014654159545898437,
+            "latest_event_ms": 16.88653000019258,
+            "position_age_at_cut_ms": 3.4790210006758575,
+            "velocity_age_at_cut_ms": 3.1134699998074216
+          }
+        },
+        "3": {
+          "no_support": {
+            "delta_q": 0.0,
+            "dq": -0.014652252197265625,
+            "torque_proxy": 0.004395675659179687,
+            "latest_event_ms": 16.114678997837473,
+            "position_age_at_cut_ms": 4.052763000363484,
+            "velocity_age_at_cut_ms": 3.8853210021625277
+          },
+          "support": {
+            "delta_q": 0.0,
+            "dq": -0.0048847198486328125,
+            "torque_proxy": 0.0014654159545898437,
+            "latest_event_ms": 16.88653000019258,
+            "position_age_at_cut_ms": 3.4790210006758575,
+            "velocity_age_at_cut_ms": 3.1134699998074216
+          }
+        }
+      },
+      "30": {
+        "2": {
+          "no_support": {
+            "delta_q": 0.0011444091796875,
+            "dq": 0.16117286682128906,
+            "torque_proxy": -0.05521831512451172,
+            "latest_event_ms": 25.988915000198176,
+            "position_age_at_cut_ms": 4.169659999461145,
+            "velocity_age_at_cut_ms": 4.011084999801823
+          },
+          "support": {
+            "delta_q": 0.0003814697265625,
+            "dq": 0.014652252197265625,
+            "torque_proxy": -0.006684494018554687,
+            "latest_event_ms": 26.548399997409433,
+            "position_age_at_cut_ms": 3.451600002590566,
+            "velocity_age_at_cut_ms": 3.451600002590566
+          }
+        },
+        "3": {
+          "no_support": {
+            "delta_q": 0.0,
+            "dq": -0.014652252197265625,
+            "torque_proxy": 0.004395675659179687,
+            "latest_event_ms": 25.988915000198176,
+            "position_age_at_cut_ms": 4.169659999461145,
+            "velocity_age_at_cut_ms": 4.011084999801823
+          },
+          "support": {
+            "delta_q": 0.0,
+            "dq": -0.0048847198486328125,
+            "torque_proxy": 0.0014654159545898437,
+            "latest_event_ms": 26.548399997409433,
+            "position_age_at_cut_ms": 3.451600002590566,
+            "velocity_age_at_cut_ms": 3.451600002590566
+          }
+        }
+      },
+      "50": {
+        "2": {
+          "no_support": null,
+          "support": null
+        },
+        "3": {
+          "no_support": null,
+          "support": null
+        }
+      },
+      "100": {
+        "2": {
+          "no_support": null,
+          "support": null
+        },
+        "3": {
+          "no_support": null,
+          "support": null
+        }
+      },
+      "500": {
+        "2": {
+          "no_support": null,
+          "support": null
+        },
+        "3": {
+          "no_support": null,
+          "support": null
+        }
+      },
+      "2000": {
+        "2": {
+          "no_support": null,
+          "support": null
+        },
+        "3": {
+          "no_support": null,
+          "support": null
+        }
+      }
+    },
+    "previous_abort_time_ms": 30.695669000124326,
+    "at_previous_abort_time": {
+      "2": {
+        "no_support": {
+          "delta_q": 0.0019073486328125,
+          "dq": 0.16117286682128906,
+          "torque_proxy": -0.05979595184326172,
+          "latest_event_ms": 30.695669000124326,
+          "position_age_at_cut_ms": 0.0,
+          "velocity_age_at_cut_ms": 4.70675399992615
+        },
+        "support": {
+          "delta_q": 0.0003814697265625,
+          "dq": 0.014652252197265625,
+          "torque_proxy": -0.006684494018554687,
+          "latest_event_ms": 26.548399997409433,
+          "position_age_at_cut_ms": 4.147269002714893,
+          "velocity_age_at_cut_ms": 4.147269002714893
+        }
+      },
+      "3": {
+        "no_support": {
+          "delta_q": 0.0,
+          "dq": -0.014652252197265625,
+          "torque_proxy": 0.004395675659179687,
+          "latest_event_ms": 30.695669000124326,
+          "position_age_at_cut_ms": 0.0,
+          "velocity_age_at_cut_ms": 4.70675399992615
+        },
+        "support": {
+          "delta_q": 0.0,
+          "dq": -0.0048847198486328125,
+          "torque_proxy": 0.0014654159545898437,
+          "latest_event_ms": 26.548399997409433,
+          "position_age_at_cut_ms": 4.147269002714893,
+          "velocity_age_at_cut_ms": 4.147269002714893
+        }
+      }
+    },
+    "joint2_displacement_ratios": {
+      "30ms": {
+        "support_over_no_support": 0.3333333333333333,
+        "reduction_percent": 66.66666666666667
+      },
+      "previous_abort_time": {
+        "support_over_no_support": 0.2,
+        "reduction_percent": 80.0
+      }
+    },
+    "initial_q_difference_support_minus_no_support": [
+      0.0,
+      0.1365680694580078,
+      -0.023652076721191406,
+      0.0007677078247070312,
+      0.07633781433105469,
+      0.0007677078247070312
+    ],
+    "causal_conclusion": "J2 short-transient displacement and velocity reduced, consistent with support helping load bearing. Neither run completed 2s; supported run aborted on J5. Different initial q and unknown persistent board state confound strict support-only causality; does not prove cause or validate command directions."
+  },
+  "active_code_modified": false,
+  "hardware_retry_count": 0,
+  "latest_run": "external_support_j5_observed_retry",
+  "latest_verdict": "FAIL",
+  "latest_scope": "New explicit user authorization, exactly one attempt, stopped on joint5 guard",
+  "latest_support_correction": {
+    "onsite_observation": "User confirmed joint5 did move slightly. Actual support is a stand under the link between J2 and J3, preventing that link from falling as J2 turns; user suspects unsupported J5/downstream gravity.",
+    "onsite_abnormality": true,
+    "actual_support_scope": "Link between J2 and J3 only, per user clarification. Independent weight support for J5/downstream assembly not established.",
+    "precondition_correction": "The earlier load-bearing-support-all-links assertion is not established for wrist/distal joints. Preserve original execution review as historical assertion, not verified physical fact.",
+    "causal_assessment": "Joint5 physical motion confirmed. Unsupported downstream gravity and changed takeover forces are plausible explanations, not established exclusive causes. Cannot treat the displacement as only numerical/encoder noise.",
+    "power_isolation_confirmation": "UNKNOWN \u2014 user has not explicitly reported completion of power isolation.",
+    "no_new_control_authorization": true
+  }
+}

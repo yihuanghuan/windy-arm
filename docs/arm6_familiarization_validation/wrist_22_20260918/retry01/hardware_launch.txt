@@ -1,0 +1,44 @@
+[INFO] [launch]: All log files can be found below /home/yihuang/.ros/log/2026-09-18-16-46-55-791044-JIAOLONG-Series-51172
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [student_arm_node-1]: process started with pid [51199]
+[INFO] [robot_state_publisher-2]: process started with pid [51201]
+[robot_state_publisher-2] [WARN] [1789721216.098177978] [kdl_parser]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.
+[robot_state_publisher-2] [INFO] [1789721216.098296150] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1789721216.098386599] [robot_state_publisher]: got segment link1
+[robot_state_publisher-2] [INFO] [1789721216.098435962] [robot_state_publisher]: got segment link2
+[robot_state_publisher-2] [INFO] [1789721216.098469254] [robot_state_publisher]: got segment link3
+[robot_state_publisher-2] [INFO] [1789721216.098507226] [robot_state_publisher]: got segment link4
+[robot_state_publisher-2] [INFO] [1789721216.098539807] [robot_state_publisher]: got segment link5
+[robot_state_publisher-2] [INFO] [1789721216.098574532] [robot_state_publisher]: got segment link6
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] [INFO] [1789721216.116444292] [student_arm_node]: Arm type 'a_l1' initialized from config
+[student_arm_node-1] [INFO] [1789721216.117455149] [student_arm_node]: Direct-effort fallback hold: gravity feedforward enabled
+[student_arm_node-1] [INFO] [1789721216.117508619] [student_arm_node]: SmoothPositionController: max_velocity=0.500, velocity_feedforward=false, ff_gain=0.700, fb_tau=0.150, fb_vel_limit=0.500, acceleration_limit=true, max_acceleration=5.000
+[student_arm_node-1] [INFO] [1789721216.119803104] [student_arm_node]: StudentArmNode started: six-axis familiarization; position commands disabled
+[student_arm_node-1] [INFO] [1789721216.119842147] [student_arm_node]: Direct effort command topic /student/joint_effort_command is enabled
+[student_arm_node-1] [WARN] [1789721216.130020826] [student_arm_node]: Direct effort startup: waiting for serial heartbeat/feedback; no motor command is sent
+[student_arm_node-1] [INFO] [1789721216.160013933] [student_arm_node]: Direct effort startup: serial heartbeat and 3 feedback frames confirmed; ready for configured effort/hold mode
+[student_arm_node-1] [INFO] [1789721250.121432321] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=0
+[student_arm_node-1] [INFO] [1789721261.170279868] [student_arm_node]: NO_TOUCH_PASS: completed handovers=1
+[student_arm_node-1] [INFO] [1789721271.626686880] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=1
+[student_arm_node-1] [INFO] [1789721286.260920801] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=1
+[student_arm_node-1] [INFO] [1789721297.290452086] [student_arm_node]: NO_TOUCH_PASS: completed handovers=2
+[student_arm_node-1] [INFO] [1789721324.111572101] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=2
+[student_arm_node-1] [INFO] [1789721343.089503062] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=2
+[student_arm_node-1] [ERROR] [1789721343.590320597] [student_arm_node]: HANDOVER command timeout: fault latched
+[student_arm_node-1] [WARN] [1789721652.890136229] [student_arm_node]: SPEED WARNING joint4 phase=TRANSITION dq=0.525032
+[student_arm_node-1] [ERROR] [1789721652.890245083] [student_arm_node]: SPEED HARD_ABORT joint4 phase=TRANSITION type=transition dq=0.525032 duration=0.000000
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[ERROR] [robot_state_publisher-2]: process[robot_state_publisher-2] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [student_arm_node-1]: process[student_arm_node-1] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[INFO] [robot_state_publisher-2]: sending signal 'SIGTERM' to process[robot_state_publisher-2]
+[INFO] [student_arm_node-1]: sending signal 'SIGTERM' to process[student_arm_node-1]
+[robot_state_publisher-2] [INFO] [1789722356.546056340] [rclcpp]: signal_handler(signum=15)
+[student_arm_node-1] [INFO] [1789722356.546345171] [rclcpp]: signal_handler(signum=15)
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 51201]
+[INFO] [student_arm_node-1]: process has finished cleanly [pid 51199]

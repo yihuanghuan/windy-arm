@@ -1,0 +1,97 @@
+{
+  "illustrative_only_not_event_replay": true,
+  "q0": [
+    0.679980278,
+    0.111963272,
+    -0.900091171,
+    -1.174427986,
+    0.192380905,
+    -0.648495674
+  ],
+  "results": [
+    {
+      "moved_joint": "J1",
+      "dq": [
+        -1.7,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "elapsed": 0.01,
+      "residual_joint": 1,
+      "residual_Nm": 0.02607325738151811
+    },
+    {
+      "moved_joint": "J1",
+      "dq": [
+        -1.0,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "elapsed": 0.06,
+      "residual_joint": 1,
+      "residual_Nm": 0.02088391530675615
+    },
+    {
+      "moved_joint": "J1",
+      "dq": [
+        1.7,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed": 0.01,
+      "residual_joint": 1,
+      "residual_Nm": 0.025381447139392943
+    },
+    {
+      "moved_joint": "J2",
+      "dq": [
+        -0.0,
+        -1.7,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "elapsed": 0.03,
+      "residual_joint": 2,
+      "residual_Nm": 0.023155772778803985
+    },
+    {
+      "moved_joint": "J2",
+      "dq": [
+        0.0,
+        1.7,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "elapsed": 0.03,
+      "residual_joint": 2,
+      "residual_Nm": 0.02451359088945404
+    },
+    {
+      "moved_joint": "all",
+      "dq": [
+        -0.75,
+        -0.75,
+        -0.75,
+        -0.75,
+        -0.75,
+        -0.75
+      ],
+      "elapsed": 0.1,
+      "residual_joint": 1,
+      "residual_Nm": 0.02068107097768923
+    }
+  ]
+}

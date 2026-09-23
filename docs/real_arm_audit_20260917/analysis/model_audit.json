@@ -1,0 +1,92 @@
+{
+  "loaded_matches_arm6_source": true,
+  "loaded_sha256": "717659bac177f8e917fc248b33fb910879dd6f5f04b8198b03c42f6526a373db",
+  "joints": [
+    [
+      "joint1",
+      "revolute"
+    ],
+    [
+      "joint2",
+      "revolute"
+    ],
+    [
+      "joint3",
+      "revolute"
+    ],
+    [
+      "joint4",
+      "revolute"
+    ],
+    [
+      "joint5",
+      "revolute"
+    ],
+    [
+      "joint6",
+      "revolute"
+    ]
+  ],
+  "links": [
+    "base_link",
+    "link1",
+    "link2",
+    "link3",
+    "link4",
+    "link5",
+    "link6"
+  ],
+  "mesh_paths": [
+    "package://dummy_description/meshes/arm/A-L1-GAMMA/base_link.STL",
+    "package://dummy_description/meshes/arm/A-L1-GAMMA/Link1.STL",
+    "package://dummy_description/meshes/arm/A-L1-GAMMA/Link2.STL",
+    "package://dummy_description/meshes/arm/A-L1-GAMMA/Link3.STL",
+    "package://dummy_description/meshes/arm/A-L1-GAMMA/Link4.STL",
+    "package://dummy_description/meshes/arm/A-L1-GAMMA/Link5.STL",
+    "package://dummy_description/meshes/arm/A-L1-GAMMA/Link6.STL"
+  ],
+  "mesh_install_checks": [
+    {
+      "uri": "package://dummy_description/meshes/arm/A-L1-GAMMA/base_link.STL",
+      "source_exists": true,
+      "installed_exists": true,
+      "same_bytes": true
+    },
+    {
+      "uri": "package://dummy_description/meshes/arm/A-L1-GAMMA/Link1.STL",
+      "source_exists": true,
+      "installed_exists": true,
+      "same_bytes": true
+    },
+    {
+      "uri": "package://dummy_description/meshes/arm/A-L1-GAMMA/Link2.STL",
+      "source_exists": true,
+      "installed_exists": true,
+      "same_bytes": true
+    },
+    {
+      "uri": "package://dummy_description/meshes/arm/A-L1-GAMMA/Link3.STL",
+      "source_exists": true,
+      "installed_exists": true,
+      "same_bytes": true
+    },
+    {
+      "uri": "package://dummy_description/meshes/arm/A-L1-GAMMA/Link4.STL",
+      "source_exists": true,
+      "installed_exists": true,
+      "same_bytes": true
+    },
+    {
+      "uri": "package://dummy_description/meshes/arm/A-L1-GAMMA/Link5.STL",
+      "source_exists": true,
+      "installed_exists": true,
+      "same_bytes": true
+    },
+    {
+      "uri": "package://dummy_description/meshes/arm/A-L1-GAMMA/Link6.STL",
+      "source_exists": true,
+      "installed_exists": true,
+      "same_bytes": true
+    }
+  ]
+}

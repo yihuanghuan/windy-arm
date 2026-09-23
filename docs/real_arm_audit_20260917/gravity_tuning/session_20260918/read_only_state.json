@@ -1,0 +1,5 @@
+{
+  "state": "READ_ONLY_ERROR",
+  "error": "decoder error",
+  "serial_write_count": 0
+}

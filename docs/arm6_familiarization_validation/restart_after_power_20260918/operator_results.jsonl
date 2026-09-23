@@ -1,0 +1,5 @@
+{"wall_ns": 1789718944565106355, "joint": 2, "result": "容易推动且松手保持", "next_joint": 3}
+{"wall_ns": 1789719021565995850, "joint": 3, "result": "容易推动且松手保持", "next_joint": 4}
+{"wall_ns": 1789719105564354743, "joint": 4, "result": "可以推动且松手保持", "next_joint": 5}
+{"wall_ns": 1789719164606215521, "joint": 5, "result": "可以推动且松手保持", "next_joint": 6}
+{"wall_ns": 1789719295727417874, "joint": 6, "result": "可以推动并且松手保持；要求继续整臂测试", "next_joint": null}

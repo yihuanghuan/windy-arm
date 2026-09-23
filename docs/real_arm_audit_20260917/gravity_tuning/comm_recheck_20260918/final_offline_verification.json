@@ -1,0 +1,35 @@
+{
+  "hashes_unchanged": true,
+  "independent_rx_and_exact_tx_checks_passed": true,
+  "policy_replay": [
+    {
+      "run": "run01",
+      "replayed_states": 142,
+      "match": true
+    },
+    {
+      "run": "run02",
+      "replayed_states": 45,
+      "match": true
+    },
+    {
+      "run": "run03",
+      "replayed_states": 101,
+      "match": true
+    },
+    {
+      "run": "run05",
+      "replayed_states": 342,
+      "match": true
+    },
+    {
+      "run": "run06",
+      "replayed_states": 18,
+      "match": true
+    }
+  ],
+  "serial_open": 0,
+  "serial_write": 0,
+  "run_joint_csv_rows": 36,
+  "offline_tests_passed": 44
+}

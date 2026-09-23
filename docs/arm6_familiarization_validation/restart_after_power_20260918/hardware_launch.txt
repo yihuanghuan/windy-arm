@@ -1,0 +1,90 @@
+[INFO] [launch]: All log files can be found below /home/yihuang/.ros/log/2026-09-18-16-04-23-605680-JIAOLONG-Series-43709
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [student_arm_node-1]: process started with pid [43736]
+[INFO] [robot_state_publisher-2]: process started with pid [43738]
+[INFO] [rviz2-3]: process started with pid [43740]
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[robot_state_publisher-2] [WARN] [1789718664.048070748] [kdl_parser]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.
+[robot_state_publisher-2] [INFO] [1789718664.048212347] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1789718664.048304051] [robot_state_publisher]: got segment link1
+[robot_state_publisher-2] [INFO] [1789718664.048365057] [robot_state_publisher]: got segment link2
+[robot_state_publisher-2] [INFO] [1789718664.048411425] [robot_state_publisher]: got segment link3
+[robot_state_publisher-2] [INFO] [1789718664.048459547] [robot_state_publisher]: got segment link4
+[robot_state_publisher-2] [INFO] [1789718664.048501176] [robot_state_publisher]: got segment link5
+[robot_state_publisher-2] [INFO] [1789718664.048557583] [robot_state_publisher]: got segment link6
+[student_arm_node-1] [INFO] [1789718664.060877632] [student_arm_node]: Arm type 'a_l1' initialized from config
+[student_arm_node-1] [INFO] [1789718664.061914931] [student_arm_node]: Direct-effort fallback hold: gravity feedforward enabled
+[student_arm_node-1] [INFO] [1789718664.061980255] [student_arm_node]: SmoothPositionController: max_velocity=0.500, velocity_feedforward=false, ff_gain=0.700, fb_tau=0.150, fb_vel_limit=0.500, acceleration_limit=true, max_acceleration=5.000
+[student_arm_node-1] [WARN] [1789718664.063672628] [student_arm_node]: SUPPORTED_STARTUP: first HOLD uses measured-effort estimate, not old-command readback; external support required
+[student_arm_node-1] [INFO] [1789718664.066470048] [student_arm_node]: StudentArmNode started: six-axis familiarization; position commands disabled
+[student_arm_node-1] [INFO] [1789718664.066531796] [student_arm_node]: Direct effort command topic /student/joint_effort_command is enabled
+[student_arm_node-1] [WARN] [1789718664.076711311] [student_arm_node]: Direct effort startup: waiting for serial heartbeat/feedback; no motor command is sent
+[student_arm_node-1] [INFO] [1789718664.097221147] [student_arm_node]: Direct effort startup: serial heartbeat and 3 feedback frames confirmed; ready for configured effort/hold mode
+[rviz2-3] [INFO] [1789718665.596688086] [rviz2]: Stereo is NOT SUPPORTED
+[rviz2-3] [INFO] [1789718665.596827411] [rviz2]: OpenGl version: 4.6 (GLSL 4.6)
+[rviz2-3] [INFO] [1789718665.957437941] [rviz2]: Stereo is NOT SUPPORTED
+[student_arm_node-1] [INFO] [1789718733.767021519] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=0
+[student_arm_node-1] [INFO] [1789718744.808626475] [student_arm_node]: NO_TOUCH_PASS: completed handovers=1
+[student_arm_node-1] [INFO] [1789718763.162528252] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=1
+[student_arm_node-1] [INFO] [1789718771.980996173] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=1
+[student_arm_node-1] [INFO] [1789718783.019278838] [student_arm_node]: NO_TOUCH_PASS: completed handovers=2
+[student_arm_node-1] [INFO] [1789718806.898025626] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=2
+[student_arm_node-1] [INFO] [1789718814.901699865] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=2
+[student_arm_node-1] [INFO] [1789718825.940119149] [student_arm_node]: NO_TOUCH_PASS: completed handovers=3
+[student_arm_node-1] [INFO] [1789718879.594438694] [student_arm_node]: MANUAL_PUSH: explicit operator request accepted
+[student_arm_node-1] [WARN] [1789718984.452062514] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=0.964592
+[student_arm_node-1] [WARN] [1789719056.382855841] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=-0.915752
+[student_arm_node-1] [WARN] [1789719056.672958864] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=-0.989010
+[student_arm_node-1] [WARN] [1789719059.362884821] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=0.891331
+[student_arm_node-1] [WARN] [1789719060.712945899] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=0.842491
+[student_arm_node-1] [WARN] [1789719061.142917783] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=0.818069
+[student_arm_node-1] [WARN] [1789719063.903081098] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=0.866909
+[student_arm_node-1] [WARN] [1789719068.202938136] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=-0.866909
+[student_arm_node-1] [WARN] [1789719068.322948417] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=-0.866909
+[student_arm_node-1] [WARN] [1789719068.702952147] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=-0.915752
+[student_arm_node-1] [WARN] [1789719069.552968494] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=-0.842491
+[student_arm_node-1] [WARN] [1789719071.062964833] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=-0.818069
+[student_arm_node-1] [WARN] [1789719120.403422795] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=0.915752
+[student_arm_node-1] [WARN] [1789719120.783370299] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=0.940170
+[student_arm_node-1] [WARN] [1789719121.133420546] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=0.866909
+[student_arm_node-1] [WARN] [1789719121.473435063] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=0.818069
+[student_arm_node-1] [WARN] [1789719121.863396065] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=0.842491
+[student_arm_node-1] [WARN] [1789719123.793437087] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.866909
+[student_arm_node-1] [WARN] [1789719123.993444876] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.842491
+[student_arm_node-1] [WARN] [1789719124.013331881] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-1.013432
+[student_arm_node-1] [WARN] [1789719124.253369335] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.915752
+[student_arm_node-1] [WARN] [1789719124.553501390] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-1.062271
+[student_arm_node-1] [WARN] [1789719124.703380319] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.866909
+[student_arm_node-1] [WARN] [1789719124.873446118] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.866909
+[student_arm_node-1] [WARN] [1789719125.043448196] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.818069
+[student_arm_node-1] [WARN] [1789719125.203498042] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.818069
+[student_arm_node-1] [WARN] [1789719125.403465738] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.842491
+[student_arm_node-1] [WARN] [1789719125.753462443] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.940170
+[student_arm_node-1] [WARN] [1789719126.113519848] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.891331
+[student_arm_node-1] [WARN] [1789719126.413401779] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.891331
+[student_arm_node-1] [WARN] [1789719126.743457282] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=-0.964592
+[student_arm_node-1] [WARN] [1789719180.393909291] [student_arm_node]: SPEED WARNING joint6 phase=GUIDE dq=-0.989010
+[student_arm_node-1] [WARN] [1789719180.623854485] [student_arm_node]: SPEED WARNING joint6 phase=GUIDE dq=-1.086693
+[student_arm_node-1] [WARN] [1789719180.953872107] [student_arm_node]: SPEED WARNING joint6 phase=GUIDE dq=-0.989010
+[student_arm_node-1] [WARN] [1789719181.823891587] [student_arm_node]: SPEED WARNING joint6 phase=GUIDE dq=-0.915752
+[student_arm_node-1] [WARN] [1789719182.643797922] [student_arm_node]: SPEED WARNING joint6 phase=GUIDE dq=-1.135532
+[student_arm_node-1] [WARN] [1789719188.014000290] [student_arm_node]: SPEED WARNING joint6 phase=GUIDE dq=0.818069
+[student_arm_node-1] [WARN] [1789719193.284029943] [student_arm_node]: SPEED WARNING joint6 phase=GUIDE dq=-1.159950
+[student_arm_node-1] [WARN] [1789719193.383993483] [student_arm_node]: SPEED WARNING joint6 phase=GUIDE dq=-0.842491
+[student_arm_node-1] [WARN] [1789719193.584110561] [student_arm_node]: SPEED WARNING joint6 phase=GUIDE dq=-0.915752
+[student_arm_node-1] [WARN] [1789719332.434931741] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=0.964592
+[student_arm_node-1] [WARN] [1789719334.224808439] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=0.818069
+[student_arm_node-1] [WARN] [1789719336.274730119] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=0.842491
+[student_arm_node-1] [INFO] [1789719395.210001397] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=3
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[rviz2-3] [INFO] [1789720118.528558796] [rclcpp]: signal_handler(signum=2)
+[robot_state_publisher-2] [INFO] [1789720118.528578583] [rclcpp]: signal_handler(signum=2)
+[student_arm_node-1] [INFO] [1789720118.528596296] [rclcpp]: signal_handler(signum=2)
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 43738]
+[INFO] [student_arm_node-1]: process has finished cleanly [pid 43736]
+[INFO] [rviz2-3]: process has finished cleanly [pid 43740]

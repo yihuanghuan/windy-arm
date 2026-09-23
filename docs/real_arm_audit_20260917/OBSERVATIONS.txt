@@ -1,0 +1,33 @@
+2026-09-17T17:31:10.727881
+Current environment/domain 0 only; domains 5/77 also checked earlier, same empty graph.
+
+$ git rev-parse HEAD
+exit=0
+b496a4f11152539da3a399a4fbe5aaddd0117df8
+
+$ lsusb
+exit=0
+Bus 005 Device 004: ID 2b7e:b651 SunplusIT Inc HD Webcam
+Bus 005 Device 003: ID 13d3:3585 IMC Networks Wireless_Device
+Bus 005 Device 002: ID 05e3:0608 Genesys Logic, Inc. Hub
+Bus 005 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 004 Device 002: ID 05e3:0620 Genesys Logic, Inc. USB3.2 Hub
+Bus 004 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 003 Device 005: ID 413c:301a Dell Computer Corp. Dell MS116 Optical Mouse
+Bus 003 Device 004: ID 36b0:3002 RDMCTMZT Wireless 2.4G Dongle
+Bus 003 Device 003: ID 05e3:0610 Genesys Logic, Inc. Hub
+Bus 003 Device 002: ID 10c4:ea60 Silicon Labs CP210x UART Bridge
+Bus 003 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+
+$ ros2 node list --no-daemon --spin-time 3
+exit=0
+
+$ ros2 topic list -t --no-daemon --spin-time 3
+exit=0
+/parameter_events [rcl_interfaces/msg/ParameterEvent]
+/rosout [rcl_interfaces/msg/Log]
+
+$ ros2 service list -t --no-daemon --spin-time 3
+exit=0

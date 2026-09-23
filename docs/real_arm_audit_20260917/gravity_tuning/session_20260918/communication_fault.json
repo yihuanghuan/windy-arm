@@ -1,0 +1,17 @@
+{
+  "kind": "RX_CHECKSUM_HARD_ABORT_BEFORE_CONTROL",
+  "raw_chunk_sha256": "bbdecf39d9e5ba72f98a94d6ec640e17b504f5074f2a22a066b84fa974bffabf",
+  "chunk_bytes": 241,
+  "offset": 70,
+  "cmd": "0x22",
+  "declared_payload_length": 28,
+  "expected_total_frame_bytes": 34,
+  "candidate_frame_hex": "fe55221c8088883e303a23c090eaa83f000ee4bc400cc33d0010c03a00000000adfe",
+  "received_checksum_hex": "adfe",
+  "calculated_checksum_hex": "11ad",
+  "next_header_offset": 103,
+  "bytes_until_next_header": 33,
+  "segment_before_next_header_hex": "fe55221c8088883e303a23c090eaa83f000ee4bc400cc33d0010c03a00000000ad",
+  "root_cause": "UNKNOWN; frame boundary/checksum corruption, possible missing bytes not proven",
+  "serial_tx_frames": 0
+}

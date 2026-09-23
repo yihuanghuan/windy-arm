@@ -1,0 +1,12 @@
+{
+  "warnings_by_joint": [
+    0,
+    0,
+    0,
+    0,
+    1,
+    0
+  ],
+  "aborts": [],
+  "time_basis": "estimated uniform sample time; old capture has no per-frame timestamps"
+}

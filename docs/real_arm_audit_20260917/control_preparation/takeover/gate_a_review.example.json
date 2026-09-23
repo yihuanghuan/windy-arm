@@ -1,0 +1,25 @@
+{
+  "gate": "A",
+  "firmware_version": "UNKNOWN",
+  "authorization_reference": "",
+  "power_off_procedure": "",
+  "note": "TEMPLATE ONLY. No approval for revised program. UNKNOWN is risk, not firmware evidence. On-site assertions require human confirmation at execution.",
+  "explicit_current_session_gate_a_authorization": false,
+  "operator_present": false,
+  "load_bearing_support_all_links": false,
+  "physical_power_cut_tested": false,
+  "slot_mapping_signs_confirmed": false,
+  "partial_frame_update_risk_reviewed": false,
+  "previous_control_state_and_gain_switch_reviewed": false,
+  "normal_and_abort_power_isolation_agreed": false,
+  "exclusive_port_confirmed": false,
+  "reviewed_program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd",
+  "unknowns": {
+    "exact_board_firmware_version": "UNKNOWN",
+    "board_internal_total_torque_limit": "UNKNOWN",
+    "actual_0x12_torque_scale": "UNKNOWN",
+    "disconnect_behavior": "UNKNOWN",
+    "persistent_board_state": "UNKNOWN"
+  },
+  "unknown_board_risks_acknowledged": false
+}

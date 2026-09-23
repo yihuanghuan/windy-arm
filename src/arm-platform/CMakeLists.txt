@@ -12,6 +12,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(mavros_msgs REQUIRED)
 find_package(dummy_interface REQUIRED)
 find_package(serial REQUIRED)
@@ -162,6 +163,7 @@ target_link_libraries(student_arm_node
 )
 
 ament_target_dependencies(student_arm_node
+  std_srvs
   rclcpp
   sensor_msgs
   std_msgs
@@ -275,6 +277,7 @@ install(PROGRAMS
   task_space_smc/hw/phase2_torque_probe.py
   task_space_smc/hw/phase3_gravity_calibration.py
   task_space_smc/hw/phase4_gravity_compensation.py
+  task_space_smc/hw/manual_guidance.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -372,6 +375,7 @@ if(BUILD_TESTING)
   )
   if(TARGET test_effort_safety)
     target_link_libraries(test_effort_safety manipulator_core)
+    ament_target_dependencies(test_effort_safety std_srvs)
   endif()
 endif()
 

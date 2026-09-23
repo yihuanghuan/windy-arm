@@ -91,46 +91,28 @@ JointCommand GravityController::Compute(const JointStates& joint_states,
   if (!model_loaded_) {
     throw std::runtime_error("Model not loaded");
   }
-  std::array<double, 7> tau_comp = {0, 0, 0, 0, 0, 0, 0};
+  const size_t num_joints = joint_states.position.size();
+  if (num_joints != static_cast<size_t>(model_.nq) || model_.nq != model_.nv)
+    throw std::invalid_argument("gravity model/state dimension mismatch");
+  Eigen::VectorXd q = Eigen::Map<const Eigen::VectorXd>(
+      joint_states.position.data(), num_joints);
+  if (!q.allFinite()) throw std::invalid_argument("nonfinite gravity state");
+  // URDF inertias are authoritative; the arm6 mass fit is already baked in.
+  // Caller supplies model coordinates with its explicit zero offset applied once.
+  pinocchio::computeGeneralizedGravity(model_, data_, q);
+  if (!data_.g.allFinite()) throw std::runtime_error("nonfinite gravity torque");
   JointCommand cmd;
-  size_t num_joints = joint_states.position.size();
-  cmd.position.resize(num_joints);
-  cmd.velocity.resize(num_joints);
-  cmd.current.resize(num_joints);
-  cmd.p.resize(num_joints);
-  cmd.d.resize(num_joints);
-  try {
-    Eigen::VectorXd q = Eigen::VectorXd::Zero(model_.nq);
-    const int n = std::min(static_cast<int>(num_joints),
-                           static_cast<int>(model_.nq));
-    for (int i = 0; i < n; ++i) {
-      q(i) = joint_states.position[i];
+  cmd.position = joint_states.position;
+  cmd.velocity.assign(num_joints, 0.0);
+  cmd.current.assign(data_.g.data(), data_.g.data() + num_joints);
+  cmd.p.assign(num_joints, 0.0);
+  cmd.d.assign(num_joints, 0.0);
+  if (force_feedback_available_) {
+    for (size_t i = 0; i < num_joints && i < params_.collision_coeffs.size(); ++i) {
+      const double delta = uav_joint_currents_[i] - uav_compensation_torques_[i];
+      if (std::abs(delta) > params_.FORCE_FEEDBACK_THRESHOLD)
+        cmd.current[i] -= params_.collision_coeffs[i] * params_.FORCE_FEEDBACK_GAIN * delta;
     }
-
-    pinocchio::computeGeneralizedGravity(model_, data_, q);
-
-    std::array<double, 7> tau_gravity = {0, 0, 0, 0, 0, 0, 0};
-    for (int i = 0; i < std::min(n, static_cast<int>(model_.nv)); ++i) {
-      tau_gravity[i] = data_.g(i);
-    }
-
-    for (int i = 0; i < n; ++i) {
-      tau_comp[i] = tau_gravity[i];
-    }
-
-    if (force_feedback_available_) {
-      tau_comp = CollisionDetection(tau_comp, uav_joint_currents_, uav_compensation_torques_);
-    }
-
-    // tau_comp = apply_soft_limit(tau_comp, joint_states.position, joint_states.velocity);
-    // tau_comp = clamp_torque(tau_comp);
-
-    for (int i = 0; i < n; ++i) {
-      cmd.current[i] = tau_comp[i];
-    }
-  
-  } catch (const std::exception& e) {
-    std::cerr << "Error computing gravity compensation: " << e.what() << std::endl;
   }
 
   return cmd;

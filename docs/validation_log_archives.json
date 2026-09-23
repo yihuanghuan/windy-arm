@@ -1,0 +1,158 @@
+{
+  "format": 1,
+  "compression": "gzip",
+  "entries": [
+    {
+      "original": "docs/arm6_familiarization_validation/bumpless_20260918/events.jsonl",
+      "archive": "docs/arm6_familiarization_validation/bumpless_20260918/events.jsonl.gz",
+      "original_bytes": 194401664,
+      "archive_bytes": 11388647,
+      "sha256": "b7f40cba0845628632cecef59de2e44424d8f6517e6310c4f891bf59d9a31579",
+      "archive_sha256": "99e62dbd106eaba64cced0dc01aa26dc26232f829de27b4998279953e5f18398"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/bumpless_20260918/serial_tx.strace",
+      "archive": "docs/arm6_familiarization_validation/bumpless_20260918/serial_tx.strace.gz",
+      "original_bytes": 96021788,
+      "archive_bytes": 1150298,
+      "sha256": "af5d658c0bfc806927341b694af8886fa2580f8edefbfee21655f8f0fe15d7a5",
+      "archive_sha256": "10750ace04ffc58f70082077efdbd49b2b10dcf436d5a127bba00809520713de"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/bumpless_20260918/serial_tx_decoded.jsonl",
+      "archive": "docs/arm6_familiarization_validation/bumpless_20260918/serial_tx_decoded.jsonl.gz",
+      "original_bytes": 13967501,
+      "archive_bytes": 358262,
+      "sha256": "46dfece366539f5b503d85473bd32059d0f23414abffcebdc8758c4cceb0c0a3",
+      "archive_sha256": "de10319dc9846e5cb39c436caada2439a5727992babe9719496a504d5eff9fb7"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/new_arm_20260918/readonly_events.jsonl",
+      "archive": "docs/arm6_familiarization_validation/new_arm_20260918/readonly_events.jsonl.gz",
+      "original_bytes": 52201336,
+      "archive_bytes": 3450631,
+      "sha256": "541e0872b401b3fbae4a813527035847711db34e0685cbb521fe3a317ae6bc35",
+      "archive_sha256": "10deb70f13119de901f439defcaa08d63d1394351aec8c0f67e52270784ce110"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/new_arm_20260918/run02/serial_tx.strace",
+      "archive": "docs/arm6_familiarization_validation/new_arm_20260918/run02/serial_tx.strace.gz",
+      "original_bytes": 68553442,
+      "archive_bytes": 747523,
+      "sha256": "70373a10770feae15049d927997faaf89bc9c8537f9865b96bc3944efddb4f8d",
+      "archive_sha256": "594f2a4deb0c62019612f9ac382444cc4dda0d96c94985416b0bd26ec5b248bd"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/new_arm_20260918/serial_tx.strace",
+      "archive": "docs/arm6_familiarization_validation/new_arm_20260918/serial_tx.strace.gz",
+      "original_bytes": 13901764,
+      "archive_bytes": 178383,
+      "sha256": "87277bcc2559f809ed9d6907e5970763592cffc512be5130d36cd2ada631fc94",
+      "archive_sha256": "e41d6e1eaf9ed64dfffeebd0227915721fdeb0c261503c45a3bf11a9fa045769"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/restart_after_power_20260918/events.jsonl",
+      "archive": "docs/arm6_familiarization_validation/restart_after_power_20260918/events.jsonl.gz",
+      "original_bytes": 381556635,
+      "archive_bytes": 22729465,
+      "sha256": "90e691a5804e1350d51eab0d7bb7cf10232aee8d74a45861e9ae325c26150091",
+      "archive_sha256": "f83769546c079f8efe2bbf32804e290042947ee9c75bd91b0811ba9098546a06"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/restart_after_power_20260918/serial_tx.strace",
+      "archive": "docs/arm6_familiarization_validation/restart_after_power_20260918/serial_tx.strace.gz",
+      "original_bytes": 106031687,
+      "archive_bytes": 1529542,
+      "sha256": "b5f7e619c870225fe1634ef70bca1b5927237ab334232a4e84c835bee98cef83",
+      "archive_sha256": "121762e7fb5d0977eaadce549fb458a8b989648470886aeb0965d1db07ffbd4c"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/restart_after_power_20260918/serial_tx_decoded.jsonl",
+      "archive": "docs/arm6_familiarization_validation/restart_after_power_20260918/serial_tx_decoded.jsonl.gz",
+      "original_bytes": 36061023,
+      "archive_bytes": 936056,
+      "sha256": "0b7bae68361a9d90c870f467bd156566f7fdce69cbf88a4e40e9ad23da8fc0b0",
+      "archive_sha256": "59b2f37c6d7386ea00100deb8cd202d396a1263e2788ede273cbf3b1da18d857"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/speed_18_20260918/events.jsonl",
+      "archive": "docs/arm6_familiarization_validation/speed_18_20260918/events.jsonl.gz",
+      "original_bytes": 181395129,
+      "archive_bytes": 12647795,
+      "sha256": "1d6ceea33935c5cb1f7f2eee72820487a135673231591f0f29aacc0945396a28",
+      "archive_sha256": "2503fe4d00c2374b748bf308bcab4fd696d0ab2968af6610750a8196d9f51726"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/speed_18_20260918/serial_tx.strace",
+      "archive": "docs/arm6_familiarization_validation/speed_18_20260918/serial_tx.strace.gz",
+      "original_bytes": 61945410,
+      "archive_bytes": 1218867,
+      "sha256": "5eedf557ae20989df0d37c31543b1a19e860bf24e730058631dbecf1f6fecba6",
+      "archive_sha256": "62dbd883e3bbc077a7b70052768cb285a3fc501f0f2ff15f38766f22b3f9a03e"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/speed_18_20260918/serial_tx_decoded.jsonl",
+      "archive": "docs/arm6_familiarization_validation/speed_18_20260918/serial_tx_decoded.jsonl.gz",
+      "original_bytes": 13053683,
+      "archive_bytes": 892372,
+      "sha256": "888d363f44b744474deed373ed51d517687882a173d890572b31d522ef6db2f5",
+      "archive_sha256": "c5f4a6460e6c29202a64bcafa8db55ecf8b6cc0665ab9d3177a84496e4d20a27"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/speed_phase_20260918/active_events.jsonl",
+      "archive": "docs/arm6_familiarization_validation/speed_phase_20260918/active_events.jsonl.gz",
+      "original_bytes": 12933046,
+      "archive_bytes": 867720,
+      "sha256": "81f381086366b44882d73f350adadd091e29353143905b14f1f8bf008098617c",
+      "archive_sha256": "7e0cde3d5332dae00487edebc80d55120ab1f601febc3c2737882b2fc6fd82a0"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/speed_phase_20260918/run02/serial_tx.strace",
+      "archive": "docs/arm6_familiarization_validation/speed_phase_20260918/run02/serial_tx.strace.gz",
+      "original_bytes": 123767903,
+      "archive_bytes": 1273652,
+      "sha256": "b5aff3774c9259134f86743f19d22a70f6800d6bf5bdafc77bda1ad97e6fa689",
+      "archive_sha256": "db2352e945f04e4012ecce7d79dee710693f7f7d46735d83ec4269a6ef10aa6b"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/speed_phase_20260918/serial_tx.strace",
+      "archive": "docs/arm6_familiarization_validation/speed_phase_20260918/serial_tx.strace.gz",
+      "original_bytes": 20350501,
+      "archive_bytes": 265833,
+      "sha256": "ff6762ada06317ee127a5287899d38e216eabb4fb9e921b7adbb1cb15a3d749a",
+      "archive_sha256": "cbd4ef5b5df89e0a4296172d1bd5283e39ce16df770c20a4559dd0840b25c714"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/wrist_22_20260918/events.jsonl",
+      "archive": "docs/arm6_familiarization_validation/wrist_22_20260918/events.jsonl.gz",
+      "original_bytes": 19855468,
+      "archive_bytes": 1142649,
+      "sha256": "5b9552666592b41ebdd6dff159860918b7a961151091e981889f658c28bb52db",
+      "archive_sha256": "9327809f345399b8d2d11012368a55cc54195ba5d8d1450c8ca27a01f2d62507"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/wrist_22_20260918/retry01/events.jsonl",
+      "archive": "docs/arm6_familiarization_validation/wrist_22_20260918/retry01/events.jsonl.gz",
+      "original_bytes": 48651416,
+      "archive_bytes": 3189921,
+      "sha256": "30edd51150934672cf725bc5d3626a96181fdc5ea98d0d774072c5f45662ed2f",
+      "archive_sha256": "ec52f501b83fc8f55791b5f1214c2b96eab1b5b0db6d1c3d97bf22af4a455017"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/wrist_22_20260918/retry01/serial_tx.strace",
+      "archive": "docs/arm6_familiarization_validation/wrist_22_20260918/retry01/serial_tx.strace.gz",
+      "original_bytes": 210627741,
+      "archive_bytes": 11468243,
+      "sha256": "0d434d91e671d728d4fd2d42fdf1bf6c47817528d6003ebbcb606f1c63ab3adc",
+      "archive_sha256": "51468e9071d6b13d44e23ff3915205cd9ac192e4e90b02a4a9e46e92956aca62"
+    },
+    {
+      "original": "docs/arm6_familiarization_validation/wrist_22_20260918/serial_tx.strace",
+      "archive": "docs/arm6_familiarization_validation/wrist_22_20260918/serial_tx.strace.gz",
+      "original_bytes": 16485697,
+      "archive_bytes": 168878,
+      "sha256": "001428c8c8a042f8bd75e1f791f0851b04d14ad305bc2006d0a3925da28327af",
+      "archive_sha256": "b8cc19be0613271d212fb02c78e6397389e1ed63fbb0856979a6e2304fa16afd"
+    }
+  ]
+}

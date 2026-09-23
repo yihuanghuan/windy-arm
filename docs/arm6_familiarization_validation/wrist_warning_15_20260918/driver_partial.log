@@ -1,0 +1,39 @@
+[INFO] [1789722856.435252408] [student_arm_node]: Arm type 'a_l1' initialized from config
+[INFO] [1789722856.435968070] [student_arm_node]: Direct-effort fallback hold: gravity feedforward enabled
+[INFO] [1789722856.435981505] [student_arm_node]: SmoothPositionController: max_velocity=0.500, velocity_feedforward=false, ff_gain=0.700, fb_tau=0.150, fb_vel_limit=0.500, acceleration_limit=true, max_acceleration=5.000
+[WARN] [1789722856.436374100] [student_arm_node]: SUPPORTED_STARTUP: first HOLD uses measured-effort estimate, not old-command readback; external support required
+[INFO] [1789722856.437010216] [student_arm_node]: StudentArmNode started: six-axis familiarization; position commands disabled
+[INFO] [1789722856.437022518] [student_arm_node]: Direct effort command topic /student/joint_effort_command is enabled
+[WARN] [1789722856.447150330] [student_arm_node]: Direct effort startup: waiting for serial heartbeat/feedback; no motor command is sent
+[INFO] [1789722856.467148757] [student_arm_node]: Direct effort startup: serial heartbeat and 3 feedback frames confirmed; ready for configured effort/hold mode
+[INFO] [1789722964.919232661] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=0
+[INFO] [1789722975.974034840] [student_arm_node]: NO_TOUCH_PASS: completed handovers=1
+[INFO] [1789723214.097697404] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=1
+[INFO] [1789723252.010869315] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=1
+[INFO] [1789723263.058270203] [student_arm_node]: NO_TOUCH_PASS: completed handovers=2
+[INFO] [1789723264.012818692] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=2
+[INFO] [1789723273.653580835] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=2
+[INFO] [1789723282.544258478] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=2
+[INFO] [1789723306.039956207] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=2
+[INFO] [1789723317.097355473] [student_arm_node]: NO_TOUCH_PASS: completed handovers=3
+[INFO] [1789723318.174470907] [student_arm_node]: HOLD: operator stop; completed no-touch handovers=3
+[INFO] [1789723422.536426876] [student_arm_node]: HANDOVER_START: authoritative hold snapshot, completed=3
+[INFO] [1789723433.585605450] [student_arm_node]: NO_TOUCH_PASS: completed handovers=4
+[INFO] [1789723439.280945205] [student_arm_node]: MANUAL_PUSH: explicit operator request accepted
+[WARN] [1789723496.664729522] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.062271
+[WARN] [1789723496.694719514] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.013432
+[WARN] [1789723496.734716351] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.013432
+[WARN] [1789723496.814705799] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.037849
+[WARN] [1789723496.884677320] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.037849
+[WARN] [1789723496.954713020] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.062271
+[WARN] [1789723497.004706976] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.013432
+[WARN] [1789723497.054711662] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.111111
+[WARN] [1789723515.384478677] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.111111
+[WARN] [1789723515.494481314] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.208790
+[WARN] [1789723515.604481495] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.037849
+[WARN] [1789723517.734438186] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=1.037849
+[WARN] [1789723521.754396254] [student_arm_node]: SPEED WARNING joint4 phase=GUIDE dq=-1.062271
+[WARN] [1789723530.534283886] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=1.135532
+[WARN] [1789723539.944158654] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=1.184372
+[WARN] [1789723540.144156926] [student_arm_node]: SPEED WARNING joint5 phase=GUIDE dq=1.086693
+[WARN] [1789723542.964103505] [student_arm_node]: SPEED WARNI

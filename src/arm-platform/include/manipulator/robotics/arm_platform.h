@@ -45,12 +45,18 @@ class ArmPlatform {
   bool IsArmLinkAlive(double timeout_sec) const {
     return arm_ && arm_->IsLinkAlive(timeout_sec);
   }
+  bool HasFreshFeedback(double timeout_sec) const {
+    return arm_ && arm_->HasFreshFeedback(timeout_sec);
+  }
+  uint64_t GetFeedbackSequence() const { return arm_->GetFeedbackSequence(); }
+  std::vector<std::string> GetJointNames() const { return arm_->GetJointNames(); }
   void AddSubscribe(IArmDataSubscriber::SharedPtr subscriber);
   void PrintDebugInfo();
 
  private:
   void NotifyJointState();
   void NotifyMotorFeedback();
+  void NotifyFreshState();
   bool ApplyCollisionAvoidance() const;
 
   arm::AbsArm::UniPtr arm_;
@@ -64,6 +70,7 @@ class ArmPlatform {
   std::vector<IArmDataSubscriber::WeakPtr> subscribers_;
   std::vector<std::string> joint_names_;
   bool collision_avoidance_enabled_ = false;
+  uint64_t published_feedback_sequence_ = 0;
 };
 
 }  // namespace manipulator

@@ -1,0 +1,10201 @@
+{
+  "run_id": "run05",
+  "result": "SOFT_FAIL",
+  "reason": "safe window ended but return/stability not established",
+  "plan": {
+    "hashes": {
+      "gravity_tuning_runner.py": "8fded896c1dc9baaf4897f685c76196e249c1cf84b84079e3e425360e96acd12",
+      "gravity_comm.py": "015052fd5393a6e98a0edab9405b7069e4ec9c500422e2077184d7ac48d67f0c",
+      "gravity_tuning_policy.py": "c046050fc96471b38b8330bf2be06e5447ea7d0de652cbbb9b813ac236931c9b",
+      "bounded_gravity_bringup.py": "99ca10f23315ac7504296550979543303ee6b499c1877b8f3120ff4a626dd84f",
+      "arm6.urdf": "60cbb80ad234f5bb5d55c53d0d77853b04ab33f8a4c1bb3d79889586201b1166"
+    },
+    "q_geometry_center": [
+      -0.02422332763671875,
+      1.3620586395263672,
+      -1.4059276580810547,
+      -0.00019168853759765625,
+      0.06847476959228516,
+      0.0032606124877929688
+    ],
+    "envelope": [
+      0.013639504500000003,
+      0.011796480000000007,
+      0.011796480000000007,
+      0.063180315,
+      0.025151908500000007,
+      0.01892624850000001
+    ],
+    "lower": [
+      -4.0,
+      -3.14,
+      -1.57,
+      -4.0,
+      -2.0,
+      -4.0
+    ],
+    "upper": [
+      4.0,
+      1.57,
+      1.57,
+      4.0,
+      2.0,
+      4.0
+    ],
+    "certificate": {
+      "minimum_desk_clearance": 0.05312194952380553,
+      "per_link_desk_lower": [
+        null,
+        0.05312194952380553,
+        0.0861841991314444,
+        0.1205220938245696,
+        0.1542112313226771,
+        0.10017881173639717
+      ],
+      "site_j3_lower": 0.07875373179908185,
+      "self_distance_lower": 0.004521029875374518,
+      "pair_distances": [
+        {
+          "links": [
+            0,
+            2
+          ],
+          "initial": 0.03486549024734875,
+          "lower_bound": 0.026545777886182217
+        },
+        {
+          "links": [
+            0,
+            3
+          ],
+          "initial": 0.14662771863848162,
+          "lower_bound": 0.13538145043756344
+        },
+        {
+          "links": [
+            0,
+            4
+          ],
+          "initial": 0.12035989039607645,
+          "lower_bound": 0.09226349524093154
+        },
+        {
+          "links": [
+            0,
+            5
+          ],
+          "initial": 0.12436997865230076,
+          "lower_bound": 0.0856803253255928
+        },
+        {
+          "links": [
+            0,
+            6
+          ],
+          "initial": 0.11726120050072479,
+          "lower_bound": 0.07236944943859402
+        },
+        {
+          "links": [
+            1,
+            3
+          ],
+          "initial": 0.1975746625474582,
+          "lower_bound": 0.19227953604849166
+        },
+        {
+          "links": [
+            1,
+            4
+          ],
+          "initial": 0.07200618982820108,
+          "lower_bound": 0.0519144750996104
+        },
+        {
+          "links": [
+            1,
+            5
+          ],
+          "initial": 0.04786330975407425,
+          "lower_bound": 0.018262699339036424
+        },
+        {
+          "links": [
+            1,
+            6
+          ],
+          "initial": 0.050863393358220654,
+          "lower_bound": 0.01562331071409375
+        },
+        {
+          "links": [
+            2,
+            4
+          ],
+          "initial": 0.01974124022803853,
+          "lower_bound": 0.005578243882116635
+        },
+        {
+          "links": [
+            2,
+            5
+          ],
+          "initial": 0.049512089923774046,
+          "lower_bound": 0.02677803697261357
+        },
+        {
+          "links": [
+            2,
+            6
+          ],
+          "initial": 0.052514171367436975,
+          "lower_bound": 0.024627247480728233
+        },
+        {
+          "links": [
+            3,
+            5
+          ],
+          "initial": 0.13254623037885443,
+          "lower_bound": 0.11366853731287158
+        },
+        {
+          "links": [
+            3,
+            6
+          ],
+          "initial": 0.1833655654615226,
+          "lower_bound": 0.1598216027535323
+        },
+        {
+          "links": [
+            4,
+            6
+          ],
+          "initial": 0.00919141144589677,
+          "lower_bound": 0.004521029875374518
+        }
+      ],
+      "point_motion_bounds": [
+        0.0,
+        0.001489992754469216,
+        0.008319712361166534,
+        0.011246268200918168,
+        0.0280963951551449,
+        0.03868965332670795,
+        0.04489175106213076
+      ]
+    },
+    "mesh_hashes": [
+      {
+        "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link1.STL",
+        "sha256": "1adf0eb712e6ec165c49ef77e7d3d5edf194fea8749c78782386c234078fb5dc"
+      },
+      {
+        "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link2.STL",
+        "sha256": "71e0dd78a79567d3728f819290b119e93d5bfc71046f8807cc9cc7f61f15e327"
+      },
+      {
+        "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link3.STL",
+        "sha256": "2a651b16128a82b88a40ee66b46adbb7d84b880643f8b6ad849f9ec801b81aef"
+      },
+      {
+        "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link4.STL",
+        "sha256": "a6bd7a3b3f40c7de714ca5dba8bbee0149f22d5a107ac93907b1c9076f107f4e"
+      },
+      {
+        "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link5.STL",
+        "sha256": "097df5e2f8f6c25244c18a8a633347fc1a697c7458d063f4fbfd1679a08ce7d5"
+      },
+      {
+        "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link6.STL",
+        "sha256": "ba0af792c391252ce9cdedbb9cf763633a84978654d4b1c3f2852143781a670f"
+      }
+    ],
+    "lambda_value": 1.0,
+    "kp": [
+      30,
+      30,
+      30,
+      5,
+      5,
+      5
+    ],
+    "kd": [
+      1.0,
+      1.0,
+      1.0,
+      0.1,
+      0.1,
+      0.1
+    ],
+    "g_preview": [
+      0.23358561193134508,
+      -2.1763360905702624,
+      1.027464975714446,
+      0.01254629662851105,
+      -0.0036736786590488364,
+      0.00011352291162253225
+    ],
+    "static_error_preview": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "duration_s": 1.2,
+    "critical_age_limit": 0.026,
+    "control_period_s": 0.01,
+    "restore_tolerance": [
+      0.01,
+      0.01,
+      0.01,
+      0.015,
+      0.015,
+      0.015
+    ],
+    "restore_method": "q_start is already the reference; retain it continuously while settling; no target excursion",
+    "maximum_settle_extension_s": 0.5,
+    "scene_assumptions": "URDF/base/desk z=0 x<=0.02; user J3 approx10cm/no tool/clear workspace; conservative minimum",
+    "unknowns": [
+      "firmware version",
+      "0x12 physical scale/sign",
+      "board saturation",
+      "persistent state",
+      "disconnect behavior"
+    ]
+  },
+  "source_sha256": "a7ec4817678abd4617abef1e51a4227516fd615ee4cce1261adc7eeae0463104",
+  "snapshot": {
+    "kind": "PRE_SEND_SNAPSHOT",
+    "t": 1.5932311550000122,
+    "measured_q": [
+      -0.02422332763671875,
+      1.3620586395263672,
+      -1.4059276580810547,
+      -0.00019168853759765625,
+      0.07000923156738281,
+      0.0032606124877929688
+    ],
+    "measured_dq": [
+      -0.0048847198486328125,
+      -0.0048847198486328125,
+      -0.0048847198486328125,
+      -0.03662872314453125,
+      -0.012210845947265625,
+      0.0610504150390625
+    ],
+    "q_start": [
+      -0.02422332763671875,
+      1.3620586395263672,
+      -1.4059276580810547,
+      -0.00019168853759765625,
+      0.07000923156738281,
+      0.0032606124877929688
+    ],
+    "q_command": [
+      -0.02422332763671875,
+      1.3620586395263672,
+      -1.4059276580810547,
+      -0.00019168853759765625,
+      0.07000923156738281,
+      0.0032606124877929688
+    ],
+    "velocity_command": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "lambda_value": 1.0,
+    "kp": [
+      30,
+      30,
+      30,
+      5,
+      5,
+      5
+    ],
+    "kd": [
+      1.0,
+      1.0,
+      1.0,
+      0.1,
+      0.1,
+      0.1
+    ],
+    "g_hold": [
+      0.2338492601886098,
+      -2.1763545409633553,
+      1.0274465253213532,
+      0.012809671628214668,
+      -0.0036616662543864473,
+      0.00011354123777096088
+    ],
+    "current_command": [
+      0.2338492601886098,
+      -2.1763545409633553,
+      1.0274465253213532,
+      0.012809671628214668,
+      -0.0036616662543864473,
+      0.00011354123777096088
+    ],
+    "p": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "d": [
+      0.0048847198486328125,
+      0.0048847198486328125,
+      0.0048847198486328125,
+      0.003662872314453125,
+      0.0012210845947265626,
+      -0.00610504150390625
+    ],
+    "ff": [
+      0.2338492601886098,
+      -2.1763545409633553,
+      1.0274465253213532,
+      0.012809671628214668,
+      -0.0036616662543864473,
+      0.00011354123777096088
+    ],
+    "proxy": [
+      0.2387339800372426,
+      -2.1714698211147225,
+      1.032331245169986,
+      0.016472543942667794,
+      -0.0024405816596598847,
+      -0.0059915002661352895
+    ],
+    "q_command_minus_measured": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "dq_command_minus_measured": [
+      0.0048847198486328125,
+      0.0048847198486328125,
+      0.0048847198486328125,
+      0.03662872314453125,
+      0.012210845947265625,
+      -0.0610504150390625
+    ],
+    "critical_feedback_ages": {
+      "0x20": 0.00013409199982561404,
+      "0x21": 0.0041528010001457005
+    },
+    "effective_envelope": [
+      0.013639504500000003,
+      0.011796480000000007,
+      0.011796480000000007,
+      0.063180315,
+      0.02361744652490235,
+      0.01892624850000001
+    ],
+    "joint_limit_margin": [
+      3.9757766723632812,
+      0.20794136047363287,
+      0.16407234191894537,
+      3.9998083114624023,
+      1.9299907684326172,
+      3.996739387512207
+    ],
+    "packet_hex": "feaa101c0070c6bcf057ae3f70f5b3bf0000493900618fbd00b055bb00000000c00cfeaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c2e766f3e65490bc05e83833fa8df51bc91f86f3bfd1ceeb800000000c9dbfeaa131c0000f0410000f0410000f0410000a0400000a0400000a040000000000a1bfeaa141c0000803f0000803f0000803fcdcccc3dcdcccc3dcdcccc3d00000000fbd2",
+    "theoretical_arrays": {
+      "0x10": [
+        -0.02422332763671875,
+        1.3620586395263672,
+        -1.4059276580810547,
+        0.00019168853759765625,
+        -0.07000923156738281,
+        -0.0032606124877929688,
+        0.0
+      ],
+      "0x11": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "0x12": [
+        0.23384925723075867,
+        -2.1763546466827393,
+        1.0274465084075928,
+        -0.012809671461582184,
+        0.0036616662982851267,
+        -0.0001135412385337986,
+        0.0
+      ],
+      "0x13": [
+        30.0,
+        30.0,
+        30.0,
+        5.0,
+        5.0,
+        5.0,
+        0.0
+      ],
+      "0x14": [
+        1.0,
+        1.0,
+        1.0,
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612,
+        0.0
+      ]
+    },
+    "hashes": {
+      "gravity_tuning_runner.py": "8fded896c1dc9baaf4897f685c76196e249c1cf84b84079e3e425360e96acd12",
+      "gravity_comm.py": "015052fd5393a6e98a0edab9405b7069e4ec9c500422e2077184d7ac48d67f0c",
+      "gravity_tuning_policy.py": "c046050fc96471b38b8330bf2be06e5447ea7d0de652cbbb9b813ac236931c9b",
+      "bounded_gravity_bringup.py": "99ca10f23315ac7504296550979543303ee6b499c1877b8f3120ff4a626dd84f",
+      "arm6.urdf": "60cbb80ad234f5bb5d55c53d0d77853b04ab33f8a4c1bb3d79889586201b1166"
+    },
+    "unknowns": [
+      "firmware version",
+      "0x12 physical scale/sign",
+      "board saturation",
+      "persistent state",
+      "disconnect behavior"
+    ]
+  },
+  "exit": {
+    "kind": "EXIT",
+    "state": "SOFT_FAIL",
+    "reason": "safe window ended but return/stability not established",
+    "first_tx_time": 1.5959153379999407,
+    "last_tx": {
+      "t": 3.291689303000112,
+      "accepted_bytes": 170,
+      "hex": "feaa101c0070c6bcf057ae3f70f5b3bf0000493900618fbd00b055bb00000000c00cfeaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c2e766f3e65490bc05e83833fa8df51bc91f86f3bfd1ceeb800000000c9dbfeaa131c0000f0410000f0410000f0410000a0400000a0400000a040000000000a1bfeaa141c0000803f0000803f0000803fcdcccc3dcdcccc3dcdcccc3d00000000fbd2"
+    },
+    "accepted_bytes": 26520,
+    "tx_batches": 156,
+    "write_attempts": 156,
+    "last_receive_t": 3.2960728180000842,
+    "serial_closed_t": 3.354000640999857,
+    "q_end": [
+      -0.02422332763671875,
+      1.3620586395263672,
+      -1.4059276580810547,
+      -0.00019168853759765625,
+      0.08650398254394531,
+      0.0028772354125976562
+    ],
+    "restore_result": "NOT_ESTABLISHED",
+    "communication": {
+      "status": "COMM_OK",
+      "reason": "valid feedback",
+      "duration_s": 3.2960728180000842,
+      "counts": {
+        "0x20": 665,
+        "0x21": 664,
+        "0x22": 664,
+        "0x24": 664,
+        "0x1": 66,
+        "0x23": 6,
+        "0x25": 6
+      },
+      "errors": {},
+      "error_events": [],
+      "streams": {
+        "0x20": {
+          "count": 665,
+          "rate_hz": 200.80319365047933,
+          "max_gap_s": 0.006119285999830026,
+          "p99_gap_s": 0.005800507000003563,
+          "p999_gap_s": 0.0061188752000362005,
+          "final_age_s": 0.0
+        },
+        "0x21": {
+          "count": 664,
+          "rate_hz": 200.80303053441736,
+          "max_gap_s": 0.00981737299980523,
+          "p99_gap_s": 0.0064911378700799015,
+          "p999_gap_s": 0.009725444746116864,
+          "final_age_s": 0.0041937690002669115
+        },
+        "0x22": {
+          "count": 664,
+          "rate_hz": 200.80303053441736,
+          "max_gap_s": 0.009002441000120598,
+          "p99_gap_s": 0.0064984525900444986,
+          "p999_gap_s": 0.008933043430036832,
+          "final_age_s": 0.0041937690002669115
+        },
+        "0x24": {
+          "count": 664,
+          "rate_hz": 200.79570953644173,
+          "max_gap_s": 0.008912012000109826,
+          "p99_gap_s": 0.008627106499943693,
+          "p999_gap_s": 0.008905994950191598,
+          "final_age_s": 0.003910636999989947
+        },
+        "0x1": {
+          "count": 66,
+          "rate_hz": 20.081575911084503,
+          "max_gap_s": 0.050094957999590406,
+          "p99_gap_s": 0.050088867159829534,
+          "p999_gap_s": 0.05009434891561432,
+          "final_age_s": 0.03998015700017277
+        },
+        "0x23": {
+          "count": 6,
+          "rate_hz": 2.008025250422683,
+          "max_gap_s": 0.4980111410000063,
+          "p99_gap_s": 0.4980108104000101,
+          "p999_gap_s": 0.4980111079400067,
+          "final_age_s": 0.3831008520000978
+        },
+        "0x25": {
+          "count": 6,
+          "rate_hz": 2.0079328656674393,
+          "max_gap_s": 0.4981128819999867,
+          "p99_gap_s": 0.49811251811997864,
+          "p999_gap_s": 0.4981128456119859,
+          "final_age_s": 0.3828180909999901
+        }
+      },
+      "critical_age_limit": 0.026,
+      "max_critical_age_s": 0.008988947000034386,
+      "max_consecutive_bad": 0,
+      "max_consecutive_critical_bad": 0,
+      "error_fraction": 0.0,
+      "chunks": 2657,
+      "max_chunk_bytes": 332,
+      "max_inter_chunk_gap_s": 0.003910125999937009,
+      "discarded_bytes": 0,
+      "incomplete_tail_hex": "fe55",
+      "q": [
+        -0.02422332763671875,
+        1.3620586395263672,
+        -1.4059276580810547,
+        -0.00019168853759765625,
+        0.08650398254394531,
+        0.0028772354125976562
+      ],
+      "dq": [
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        0.0610504150390625,
+        -0.0610504150390625,
+        -0.012210845947265625
+      ]
+    },
+    "hashes": {
+      "gravity_tuning_runner.py": "8fded896c1dc9baaf4897f685c76196e249c1cf84b84079e3e425360e96acd12",
+      "gravity_comm.py": "015052fd5393a6e98a0edab9405b7069e4ec9c500422e2077184d7ac48d67f0c",
+      "gravity_tuning_policy.py": "c046050fc96471b38b8330bf2be06e5447ea7d0de652cbbb9b813ac236931c9b",
+      "bounded_gravity_bringup.py": "99ca10f23315ac7504296550979543303ee6b499c1877b8f3120ff4a626dd84f",
+      "arm6.urdf": "60cbb80ad234f5bb5d55c53d0d77853b04ab33f8a4c1bb3d79889586201b1166"
+    },
+    "exit_meaning": "No further TX; board state UNKNOWN. Close is NOT motor disable. Hard abort: physical isolation, no retry."
+  },
+  "q_last_observed": [
+    -0.02422332763671875,
+    1.3620586395263672,
+    -1.4059276580810547,
+    -0.00019168853759765625,
+    0.08650398254394531,
+    0.0028772354125976562
+  ],
+  "independent_decode_errors": {
+    "checksum": 0,
+    "malformed": 0,
+    "nonfinite": 0,
+    "discarded_bytes": 0
+  },
+  "partial_tail_hex": "fe55",
+  "tx_counts": {
+    "0x10": 156,
+    "0x11": 156,
+    "0x12": 156,
+    "0x13": 156,
+    "0x14": 156
+  },
+  "all_packets_identical": true,
+  "tx_mean_hz": 91.40369129324634,
+  "metrics": [
+    {
+      "joint": "joint1",
+      "q_start": -0.02422332763671875,
+      "q_end": -0.02422332763671875,
+      "max_displacement": 0.0,
+      "final_delta": 0.0,
+      "max_abs_velocity": 0.0048847198486328125,
+      "velocity_rms": 0.0048847198486328125,
+      "tail_drift_rad_s": 0.0,
+      "tail_ptp_rad": 0.0,
+      "max_abs_proxy": 0.2387339800372426,
+      "max_proxy_guard_ratio": 0.053051995563831694,
+      "minimum_joint_margin": 3.9757766723632812,
+      "hard_displacement_guard_utilization": 0.0,
+      "max_direction_mismatch_s": 0.0,
+      "direction_mismatch_samples": 0,
+      "max_mean_proxy_slew": 5.855862145145487e-16,
+      "growing_oscillation_detected": false
+    },
+    {
+      "joint": "joint2",
+      "q_start": 1.3620586395263672,
+      "q_end": 1.3620586395263672,
+      "max_displacement": 0.0,
+      "final_delta": 0.0,
+      "max_abs_velocity": 0.0048847198486328125,
+      "velocity_rms": 0.0048847198486328125,
+      "tail_drift_rad_s": 0.0,
+      "tail_ptp_rad": 0.0,
+      "max_abs_proxy": 2.1714698211147225,
+      "max_proxy_guard_ratio": 0.482548849136605,
+      "minimum_joint_margin": 0.20794136047363287,
+      "hard_displacement_guard_utilization": 0.0,
+      "max_direction_mismatch_s": 0.0,
+      "direction_mismatch_samples": 0,
+      "max_mean_proxy_slew": 0.0,
+      "growing_oscillation_detected": false
+    },
+    {
+      "joint": "joint3",
+      "q_start": -1.4059276580810547,
+      "q_end": -1.4059276580810547,
+      "max_displacement": 0.0,
+      "final_delta": 0.0,
+      "max_abs_velocity": 0.014652252197265625,
+      "velocity_rms": 0.004941504287834009,
+      "tail_drift_rad_s": 0.0,
+      "tail_ptp_rad": 0.0,
+      "max_abs_proxy": 1.0420987775186188,
+      "max_proxy_guard_ratio": 0.23157750611524863,
+      "minimum_joint_margin": 0.16407234191894537,
+      "hard_displacement_guard_utilization": 0.0,
+      "max_direction_mismatch_s": 0.0,
+      "direction_mismatch_samples": 0,
+      "max_mean_proxy_slew": 0.03917271323082954,
+      "growing_oscillation_detected": false
+    },
+    {
+      "joint": "joint4",
+      "q_start": -0.00019168853759765625,
+      "q_end": -0.00019168853759765625,
+      "max_displacement": 0.0003833770751953125,
+      "final_delta": 0.0,
+      "max_abs_velocity": 0.1831512451171875,
+      "velocity_rms": 0.0480025032795721,
+      "tail_drift_rad_s": 0.0002541851679607473,
+      "tail_ptp_rad": 0.0003833770751953125,
+      "max_abs_proxy": 0.02571555541727717,
+      "max_proxy_guard_ratio": 0.03214444427159646,
+      "minimum_joint_margin": 3.999424934387207,
+      "hard_displacement_guard_utilization": 0.007584978707278376,
+      "max_direction_mismatch_s": 0.0,
+      "direction_mismatch_samples": 0,
+      "max_mean_proxy_slew": 0.12733277901023068,
+      "growing_oscillation_detected": false
+    },
+    {
+      "joint": "joint5",
+      "q_start": 0.07000923156738281,
+      "q_end": 0.08650398254394531,
+      "max_displacement": 0.01726245880126953,
+      "final_delta": 0.0164947509765625,
+      "max_abs_velocity": 0.5006103515625,
+      "velocity_rms": 0.07494807823534214,
+      "tail_drift_rad_s": 0.0003228285983077404,
+      "tail_ptp_rad": 0.0003833770751953125,
+      "max_abs_proxy": 0.12085183654247239,
+      "max_proxy_guard_ratio": 0.15106479567809047,
+      "minimum_joint_margin": 1.9127283096313477,
+      "hard_displacement_guard_utilization": 0.9136497241069176,
+      "max_direction_mismatch_s": 0.024772847999884107,
+      "direction_mismatch_samples": 4,
+      "max_mean_proxy_slew": 1.6537405777574221,
+      "growing_oscillation_detected": false
+    },
+    {
+      "joint": "joint6",
+      "q_start": 0.0032606124877929688,
+      "q_end": 0.0028772354125976562,
+      "max_displacement": 0.0003833770751953125,
+      "final_delta": -0.0003833770751953125,
+      "max_abs_velocity": 0.13431167602539062,
+      "velocity_rms": 0.045041434801057254,
+      "tail_drift_rad_s": -0.0005104911303247177,
+      "tail_ptp_rad": 0.0003833770751953125,
+      "max_abs_proxy": 0.013317626364768102,
+      "max_proxy_guard_ratio": 0.016647032955960126,
+      "minimum_joint_margin": 3.996739387512207,
+      "hard_displacement_guard_utilization": 0.025320461368460865,
+      "max_direction_mismatch_s": 0.0,
+      "direction_mismatch_samples": 0,
+      "max_mean_proxy_slew": 0.1204619441926597,
+      "growing_oscillation_detected": false
+    }
+  ],
+  "transients": {
+    "20": {
+      "delta": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.000766754150390625,
+        -0.0003833770751953125
+      ],
+      "dq": [
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        0.03662872314453125,
+        0.10988998413085938,
+        -0.012210845947265625
+      ],
+      "proxy": [
+        0.2387339800372426,
+        -2.1714698211147225,
+        1.032331245169986,
+        0.009146799313761542,
+        -0.018484435419425512,
+        0.003251511208474086
+      ]
+    },
+    "50": {
+      "delta": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.011507987976074219,
+        0.0
+      ],
+      "dq": [
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.03662872314453125,
+        0.5006103515625,
+        0.08546829223632812
+      ],
+      "proxy": [
+        0.2387339800372426,
+        -2.1714698211147225,
+        1.032331245169986,
+        0.016472543942667794,
+        -0.11126264129100755,
+        -0.008433287985861852
+      ]
+    },
+    "100": {
+      "delta": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0164947509765625,
+        0.0
+      ],
+      "dq": [
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        0.012210845947265625,
+        -0.03662872314453125,
+        -0.03662872314453125
+      ],
+      "proxy": [
+        0.2387339800372426,
+        -2.1714698211147225,
+        1.032331245169986,
+        0.011588587033488106,
+        -0.08247254882274582,
+        0.003776413552224086
+      ]
+    },
+    "200": {
+      "delta": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.016111373901367188,
+        0.0
+      ],
+      "dq": [
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        0.03662872314453125,
+        -0.03662872314453125,
+        0.08546829223632812
+      ],
+      "proxy": [
+        0.2387339800372426,
+        -2.1714698211147225,
+        1.032331245169986,
+        0.009146799313761542,
+        -0.08055566344676926,
+        -0.008433287985861852
+      ]
+    },
+    "300": {
+      "delta": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0164947509765625,
+        -0.0003833770751953125
+      ],
+      "dq": [
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.012210845947265625,
+        -0.03662872314453125,
+        -0.03662872314453125
+      ],
+      "proxy": [
+        0.2387339800372426,
+        -2.1714698211147225,
+        1.032331245169986,
+        0.01403075622294123,
+        -0.08247254882274582,
+        0.005693298928200649
+      ]
+    },
+    "500": {
+      "delta": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0164947509765625,
+        0.0
+      ],
+      "dq": [
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.0610504150390625,
+        0.0610504150390625,
+        0.012210845947265625
+      ],
+      "proxy": [
+        0.2387339800372426,
+        -2.1714698211147225,
+        1.032331245169986,
+        0.018914713132120918,
+        -0.0922404626411052,
+        -0.0011075433569556017
+      ]
+    },
+    "1000": {
+      "delta": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0164947509765625,
+        0.0
+      ],
+      "dq": [
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        0.012210845947265625,
+        0.10988998413085938,
+        0.012210845947265625
+      ],
+      "proxy": [
+        0.2387339800372426,
+        -2.1714698211147225,
+        1.032331245169986,
+        0.011588587033488106,
+        -0.09712441955028489,
+        -0.0011075433569556017
+      ]
+    },
+    "1200": {
+      "delta": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0164947509765625,
+        0.0
+      ],
+      "dq": [
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        -0.0048847198486328125,
+        0.0610504150390625,
+        -0.03662872314453125,
+        -0.012210845947265625
+      ],
+      "proxy": [
+        0.2387339800372426,
+        -2.1714698211147225,
+        1.032331245169986,
+        0.006704630124308417,
+        -0.08247254882274582,
+        0.0013346258324975235
+      ]
+    }
+  },
+  "on_site_observation": "UNKNOWN: no current operator reply recorded",
+  "feedback_observation_s": 1.7001574800001436,
+  "position_observation_s": 1.7001574800001436,
+  "maximum_logged_critical_age_s": 0.005751474000135204,
+  "direction_score_time_series": [
+    {
+      "t": 0.002397955000105867,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.007303540000066278,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.01236913699995057,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.017430203999992955,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.022454382999967493,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.027344970000285684,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.032548615999985486,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.037370344000009936,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.04231851900021866,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.009769903000233171,
+        0.0
+      ]
+    },
+    {
+      "t": 0.04737603000012314,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.014827414000137651,
+        0.0
+      ]
+    },
+    {
+      "t": 0.05240017899996019,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.05732146399986959,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.024772847999884107,
+        0.0
+      ]
+    },
+    {
+      "t": 0.0621946090000165,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.06737138400012554,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.07218886400005431,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.07718278499987719,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.08224618700023711,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.08725824300017848,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.09208103299988579,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.09703055099998892,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.10228683600007571,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.1070125830001416,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.112101253000219,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.1170041029999993,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.12206671400008418,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.12716584300005707,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.13214927499984697,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.13716506800028583,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.14215843800002403,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.14716048499985845,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.15226703799999086,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        0.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.1571619340002144,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.16212786300002335,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.1671327150002071,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.17130466200023875,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.1762906590001876,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.1812813440001264,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.18630346899999495,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.19131681699991532,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.196310627999992,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.2021829200002685,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.20629664800026148,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.21129996700028641,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.2165048649999335,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.22130796800001917,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.22632945199984533,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.23130338600003597,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.2363409889999275,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.24134389800019562,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.24630154099986612,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.25133173099993655,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.2563128480001069,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.26139028700026756,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.2663579089999075,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.2713506579998466,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.2763006969998969,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.2813720439999088,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.2863525110001319,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.291336063000017,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.29632587700007207,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.30121814699987226,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.30624782599988976,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.31119144300009793,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3162624390001838,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3223141180001221,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3265963730000294,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3315166560000762,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3364077940000243,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3414251700000932,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3462762130002375,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3512965240001904,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3561396620002597,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3610502679998717,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.36609092700018664,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.371025556999939,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3761491320001369,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3812471490000462,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.38617931499993574,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.3911632180002016,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.39615551599990795,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4012299589999202,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.40594775199997457,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.41115210899988597,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4161388669999724,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4203082789999826,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.42534149499988416,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.43035958200016466,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4353815059998851,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4411484699999164,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4452987959998609,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4511352810000062,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.45534544000020105,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4603165890002856,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.465374310000243,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4703207329998804,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4753424959999393,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.48037395900018964,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.48535262099994725,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4903411430000233,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.4953287729999829,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5004118820002077,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5053530939999291,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5104538670002512,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5153934260001733,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5203931480000392,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5253350719999617,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5303316690001338,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5354272109998419,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5403847050001787,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5452569580002091,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5503852619999634,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5552081119999457,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5603110980000565,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5652708349998647,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5703697339999962,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5751861819999249,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5800868989999799,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.58509660000027,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5901713940002082,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.5950564610002402,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6001282880001781,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6050548540001728,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6099880310002845,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6151590449999276,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.619945096000265,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6250393660002374,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6301419720002741,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6350405349999164,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6401670149998608,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6449591680002413,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6501690949999102,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6551694889999453,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6601409479999347,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.665144428000076,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6701671030000398,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6743059179998454,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6801662580000993,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6843618090001655,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6901742180002657,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6942954910000481,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.6993568490001962,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7042981320000763,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7093313870000202,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7143666160000066,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7194058630002473,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7242992060000688,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7293280730000333,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7343012249998537,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7394644750002044,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.744305919999988,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7493286160001844,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7544108629999755,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7593803889999435,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7644619550001153,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.769424527999945,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7743439290002243,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7794112589999713,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.784344997000062,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.789399042000241,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7942429119998451,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.7993636109999898,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8042069699999956,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8091943590002302,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8142419720002181,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8203248489999169,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8246303770001759,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8295508010000958,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8344487620001928,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8393217460002234,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8444227390000378,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8493469999998524,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8543181790000745,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8590495570001622,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8640939830002026,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.869182593000005,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8741785480001454,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8790201140000136,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8841795359999196,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8892153960000542,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8941513390000182,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.8990689970000858,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.904177023000102,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9092153380001946,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9141937809999945,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9191946860000826,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9233094750002238,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9283461069999248,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.93333196399999,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9383564429999751,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9433595420000529,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9483664370000042,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9533034219998626,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9584026520001316,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9641974780001874,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9684350279999308,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9733684060001906,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9783248469998398,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9833301100002245,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9883137920000991,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9933368990000417,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 0.9983355889999075,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0034012360001725,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0083389219998935,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0134220410000125,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0183709880002425,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0233219189999545,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0284091960002115,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0333380050001324,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0383467239998936,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0433537399999295,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0482142810001278,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0533534360001795,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.05820033100008,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.063393116000043,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0681994450001184,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.07325844900015,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0780994840001767,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0830988150000849,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0880701750002117,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.093086188000143,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.0981978300001174,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1030045699999391,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1081949210001767,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1129982739998923,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1180749109998942,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1231523900000866,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1281670200000917,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.133138159000282,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1383050360000198,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1431638429999111,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.148267641000075,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1532570949998444,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1581709160000173,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1631375560000379,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1673847649999516,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1731752230002712,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1773433230000592,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1823429750002106,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.187322019000021,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1922939989999577,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.1972997530001521,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2024844729999131,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2073058900000433,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2123855429999821,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2173106149998603,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2223347429999194,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2273188459998892,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2323184890001357,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2373759600000085,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2423536710002736,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2473183269999026,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2524922870002229,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2574678440000753,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2623791710002479,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2673955350001052,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2723443610002505,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2773557559999063,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2824249989998862,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2873885530002553,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2923750109998764,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.2972307830000318,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3024988199999825,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3072042389999297,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3122825190002914,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3184340050001992,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3226929560000826,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3274874329999875,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3323671399998602,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3374984100000802,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3422993789999964,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3473485939998682,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3524363020001147,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3570818190000864,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3621410230002766,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3670121139998628,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3721320620002189,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3771479950000867,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3820286139998643,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.38717769699997,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.391973216000224,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.3971768209999027,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4023569529999804,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4071704650000356,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4121805670001777,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4171492010000293,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4213637289999497,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4271893630002523,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.431345961000261,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4371739900002467,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4413044389998504,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4471733450000102,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4513298430001669,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4563278929999797,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4613970049999807,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4663460219999251,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4713586890002261,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4764561350002623,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4813306920000286,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4863671040002373,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.491433711999889,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.4963736820000122,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.501410565000242,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5063936259998627,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5115050079998582,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.516444126999886,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5213317080001616,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5263277839999319,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5313500490001388,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.536399074000201,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5412506279999434,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5464738300001954,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5512241639999047,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5562167130001399,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5612723110002662,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.566280087999985,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5713190139999824,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5760959479998746,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5812237710001682,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5861713760000384,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.5912667279999368,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.596015738999995,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6012274800000341,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6059818920002726,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6111561020002227,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6161881250000079,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6212759529998948,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6261494989998937,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6311757809999108,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        0.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6362129740000455,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.641203699000016,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6460016330001963,
+      "score": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6511824049998722,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6561621900000318,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6611669419999089,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6661556240001119,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6703347249999752,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.675331672000084,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.680330423000214,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6854589869999472,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        -1.0
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6903210109999236,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.6953317940001398,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        null,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "t": 1.7003056180001295,
+      "score": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        null
+      ],
+      "mismatch": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "duration": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}

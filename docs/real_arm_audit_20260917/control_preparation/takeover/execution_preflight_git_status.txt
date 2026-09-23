@@ -1,0 +1,15 @@
+ M src/arm-platform/config/arm6_calibration.yaml
+ M src/arm-platform/launch/student_arm6.launch.py
+ M src/arm-platform/src/controller/gravity_controller.cc
+ M src/arm-platform/task_space_smc/core/model.py
+ M src/arm-platform/task_space_smc/hw/phase4_gravity_compensation.py
+ M src/arm-platform/task_space_smc/hw/phase5_inertia_id.py
+?? docs/real_arm_audit_20260917/
+?? src/arm-platform/config/real_arm_readonly.rviz
+?? src/arm-platform/launch/real_arm_readonly_rviz.launch.py
+?? src/arm-platform/task_space_smc/core/gravity_semantics.py
+?? src/arm-platform/task_space_smc/core/manual_guidance_preview.py
+?? src/arm-platform/test/core/test_first_active_takeover.py
+?? src/arm-platform/test/core/test_gravity_semantics.py
+?? src/arm-platform/tools/
+?? src/real_arm_readonly/

@@ -4,7 +4,7 @@
 
     kp = kp_frac · BASE_P,   kd = kd_frac · BASE_D
 
-前馈始终为 tau_ff = ratio ⊙ g(q)。kp_frac 从 1.00 一路降到 0（L4「悬浮」级，
+前馈始终为 tau_ff = g_urdf(q + explicit_offset)（不重复乘历史 ratio）。kp_frac 从 1.00 一路降到 0（L4「悬浮」级，
 位置比例项完全撤掉，只留阻尼），记录各级的稳态残差
 
     residual = mean(q_measured) − q_hold
@@ -40,6 +40,7 @@ from task_space_smc.hw.fk_gravity_verify import (
     FENCE_CLEARANCE,
 )
 from task_space_smc.core.model import load_arm6_calibration
+from task_space_smc.core.gravity_semantics import explicit_offsets, urdf_feedforward
 
 OUT = Path(__file__).resolve().parent / "data" / "phase4"
 
@@ -78,12 +79,12 @@ def desk_margin(model: GravityModel, q: np.ndarray) -> float:
 
 class Compensator(Node):
     def __init__(self, *, ignore_workspace_guard: bool = False,
-                 calibration_yaml: str | None = None):
+                 calibration_yaml: str | None = None, model_zero_offset_rad=None):
         super().__init__("phase4_gravity_compensation")
         self.model = GravityModel()
         cal = load_arm6_calibration(calibration_yaml)
-        self.offset = np.array(cal["zero_offset_rad"], dtype=float)
-        self.ratio = np.array(cal["first_moment_ratio"], dtype=float)
+        self.offset = explicit_offsets(N_ARM, model_zero_offset_rad)
+        self.ratio = np.ones(N_ARM)  # URDF already includes historical mass fit
         self.stiction = np.array(cal["stiction_nm"], dtype=float)
         self.cal_source = cal["source"]
         # 仅供动捕标定场地（确认四周无桌面/围栏）使用。关节限位、速度和
@@ -112,8 +113,7 @@ class Compensator(Node):
             self.tau = np.array(m.effort)
 
     def feedforward(self, q: np.ndarray) -> np.ndarray:
-        qc = np.asarray(q, float) + self.offset
-        return self.model.gravity(qc) * self.ratio
+        return urdf_feedforward(self.model, q, self.offset)
 
     def send(self, posture, kp, kd, tff):
         msg = MotorControl()
@@ -289,8 +289,8 @@ def parse_posture(text: str | None) -> np.ndarray | None:
     print("PLAN (dry run — nothing is commanded)")
     print("=" * 74)
     print(f"标定来源: {cal['source']}")
-    print(f"零位偏差(°): {[round(np.degrees(v), 2) for v in cal['zero_offset_rad']]}")
-    print(f"ratio      : {cal['first_moment_ratio']}")
+    print("默认模型零偏: 全零；历史零偏不会自动应用")
+    print("gravity: 所选URDF直接计算，不乘历史first_moment_ratio")
     print(f"\n起始位姿: {np.round(q, 4).tolist()}")
     print(f"  桌面/围栏余量 {info['desk_margin']:.4f} m  (要求 >= {DESK_MARGIN_MIN})")
     print(f"  限位最小余量  {info['limit_room']:.3f} rad  (要求 >= 0.30)")
@@ -318,6 +318,8 @@ def main() -> int:
                          '不关闭关节限位、速度或漂移保护')
     ap.add_argument('--calibration-yaml', default=None,
                     help='candidate arm6 calibration YAML used for feedforward')
+    ap.add_argument('--model-zero-offset-rad', nargs=6, type=float, default=None,
+                    help='Explicit verified encoder-to-model offsets; default all zero')
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()
 
@@ -332,7 +334,8 @@ def main() -> int:
     stamp = time.strftime('%Y%m%d_%H%M%S')
     rclpy.init()
     node = Compensator(ignore_workspace_guard=args.ignore_workspace_guard,
-                       calibration_yaml=args.calibration_yaml)
+                       calibration_yaml=args.calibration_yaml,
+                       model_zero_offset_rad=args.model_zero_offset_rad)
     results = []
     try:
         if not node.wait_state():

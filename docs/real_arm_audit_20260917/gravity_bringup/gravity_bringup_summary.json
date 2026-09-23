@@ -1,0 +1,962 @@
+{
+  "verdict": "INCONCLUSIVE",
+  "active_run_verdict": "FAIL \u2014 HARD_ABORT",
+  "gravity_sign": "UNKNOWN",
+  "effective_scale_estimate": "UNKNOWN",
+  "validated_lambda": [],
+  "no_retry_no_restore_after_hard_abort": true,
+  "runs": [
+    {
+      "run_id": "run01",
+      "program_sha256": "7a7cffcd7c71050a453b8adac2987207ebc6c64cadea6dfeb1802ea3c9e82505",
+      "source_sha256": "830ae0aecd475ce82d65520618873999364efbe06285973a02e31431406cabc9",
+      "result": "ABORT_BEFORE_FIRST_WRITE",
+      "reason": "prewrite host delay",
+      "snapshot": {
+        "t": 1.000094134000392,
+        "q": [
+          -0.031853675842285156,
+          1.3601512908935547,
+          -1.434920310974121,
+          0.009398460388183594,
+          0.009015083312988281,
+          0.0017261505126953125
+        ],
+        "dq": [
+          -0.0048847198486328125,
+          -0.0048847198486328125,
+          -0.0048847198486328125,
+          -0.10988998413085938,
+          0.03662872314453125,
+          0.03662872314453125
+        ],
+        "q_start": [
+          -0.031853675842285156,
+          1.3601512908935547,
+          -1.434920310974121,
+          0.009398460388183594,
+          0.009015083312988281,
+          0.0017261505126953125
+        ],
+        "delta_q": [
+          -0.0,
+          -0.0,
+          -0.0,
+          -0.0,
+          -0.0,
+          -0.0
+        ],
+        "position_command": [
+          -0.031853675842285156,
+          1.3601512908935547,
+          -1.434920310974121,
+          0.009398460388183594,
+          0.009015083312988281,
+          0.0017261505126953125
+        ],
+        "velocity_command": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "current_command": [
+          0.237614732434877,
+          -2.138681491841909,
+          1.0311159263167797,
+          0.0022530171751944618,
+          -0.003710282978450534,
+          0.0001116575061943556
+        ],
+        "kp": [
+          30.0,
+          30.0,
+          30.0,
+          5.0,
+          5.0,
+          5.0
+        ],
+        "kd": [
+          1.0,
+          1.0,
+          1.0,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "lambda_value": 0.99,
+        "g_hold": [
+          0.2400148812473505,
+          -2.1602843351938477,
+          1.0415312387038178,
+          0.00227577492443885,
+          -0.003747760584293469,
+          0.0001127853597922784
+        ],
+        "p_term": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "d_term": [
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.010988998413085939,
+          -0.003662872314453125,
+          -0.003662872314453125
+        ],
+        "ff_term": [
+          0.237614732434877,
+          -2.138681491841909,
+          1.0311159263167797,
+          0.0022530171751944618,
+          -0.003710282978450534,
+          0.0001116575061943556
+        ],
+        "torque_proxy": [
+          0.2424994522835098,
+          -2.133796771993276,
+          1.0360006461654125,
+          0.0132420155882804,
+          -0.007373155292903659,
+          -0.0035512148082587694
+        ],
+        "feedback_age": {
+          "0x20": 0.00022454700228990987,
+          "0x21": 1.5458001143997535e-05,
+          "0x22": 0.004046963000291726,
+          "0x24": 0.004046963000291726
+        },
+        "joint_limit_margin": [
+          3.968146324157715,
+          0.20984870910644537,
+          0.13507968902587897,
+          3.9906015396118164,
+          1.9909849166870117,
+          3.9982738494873047
+        ],
+        "displacement_utilization": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "proxy_utilization": [
+          0.05388876717411329,
+          0.47417706044295027,
+          0.23022236581453612,
+          0.016552519485350498,
+          0.009216444116129574,
+          0.004439018510323462
+        ],
+        "desk_clearance_certified": 0.05302738704752458,
+        "velocity_spike_warning": false,
+        "kind": "PRE_SEND_SNAPSHOT",
+        "program_sha256": "7a7cffcd7c71050a453b8adac2987207ebc6c64cadea6dfeb1802ea3c9e82505",
+        "urdf_sha256": "60cbb80ad234f5bb5d55c53d0d77853b04ab33f8a4c1bb3d79889586201b1166",
+        "q_command_minus_measured": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "packet_hex": "feaa101c007902bd7019ae3f78abb7bf00fc19bc00b413bc0040e2ba000000004bbcfeaa111c00000000000000000000000000000000000000000000000000000000d580feaa121c4751733e28e008c09bfb833f5ba713bb3828733bab29eab8000000009b91feaa131c0000f0410000f0410000f0410000a0400000a0400000a040000000000a1bfeaa141c0000803f0000803f0000803fcdcccc3dcdcccc3dcdcccc3d00000000fbd2",
+        "theoretical_arrays": {
+          "0x10": [
+            -0.031853675842285156,
+            1.3601512908935547,
+            -1.434920310974121,
+            -0.009398460388183594,
+            -0.009015083312988281,
+            -0.0017261505126953125,
+            0.0
+          ],
+          "0x11": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "0x12": [
+            0.2376147359609604,
+            -2.138681411743164,
+            1.0311158895492554,
+            -0.0022530171554535627,
+            0.0037102829664945602,
+            -0.00011165750765940174,
+            0.0
+          ],
+          "0x13": [
+            30.0,
+            30.0,
+            30.0,
+            5.0,
+            5.0,
+            5.0,
+            0.0
+          ],
+          "0x14": [
+            1.0,
+            1.0,
+            1.0,
+            0.10000000149011612,
+            0.10000000149011612,
+            0.10000000149011612,
+            0.0
+          ]
+        },
+        "effective_envelope": [
+          0.0128,
+          0.0128,
+          0.0128,
+          0.019200000000000002,
+          0.019200000000000002,
+          0.01881662292480469
+        ],
+        "short_seconds": 0.25,
+        "maximum_total_run_seconds": 1.0,
+        "unknowns": [
+          "current board 0x12 scale/sign",
+          "board total saturation",
+          "exit persistent state"
+        ]
+      },
+      "exit": {
+        "kind": "EXIT",
+        "state": "ABORT_BEFORE_FIRST_WRITE",
+        "reason": "prewrite host delay",
+        "accepted_bytes": 0,
+        "tx_batches": 0,
+        "first_tx_time": null,
+        "serial_closed_t": 1.0929882609998458,
+        "last_tx": null,
+        "exit_meaning": "TX stopped only; board state unknown; operator physical power isolation required",
+        "restore_reference_changed": false,
+        "program_sha256": "7a7cffcd7c71050a453b8adac2987207ebc6c64cadea6dfeb1802ea3c9e82505"
+      },
+      "tx": {
+        "counts": {
+          "0x10": 0,
+          "0x11": 0,
+          "0x12": 0,
+          "0x13": 0,
+          "0x14": 0
+        },
+        "batches": 0,
+        "bytes": 0,
+        "inter_batch_mean_hz": null,
+        "inter_batch_gap_s": [],
+        "all_packets_equal_snapshot": true,
+        "last": null,
+        "meaning": "kernel-accepted bytes; board receipt/execution not acknowledged"
+      },
+      "communication": {
+        "errors": {
+          "checksum": 0,
+          "malformed": 0,
+          "nonfinite": 0,
+          "discarded_bytes": 0
+        },
+        "incomplete_tail_hex": "fe55221c8088883ef8b91fc0e0accd3f400cc33dc00aab3d0010",
+        "frame_counts": {
+          "0x20": 204,
+          "0x21": 204,
+          "0x22": 203,
+          "0x24": 203,
+          "0x1": 20,
+          "0x23": 2,
+          "0x25": 2
+        },
+        "max_required_age_at_frame_event_s": 0.009038462001626613,
+        "stale_frame_events": 0,
+        "max_logged_guard_age_s": 0.004046963000291726,
+        "streams": {
+          "0x20": {
+            "count": 204,
+            "receive_hz_after_first_50ms": 200.84442437824907,
+            "max_gap_s": 0.005784794000646798,
+            "final_age_at_last_rx_s": 0.00020908900114591233
+          },
+          "0x21": {
+            "count": 204,
+            "receive_hz_after_first_50ms": 200.8000429608387,
+            "max_gap_s": 0.009237472000677371,
+            "final_age_at_last_rx_s": 0.0
+          },
+          "0x22": {
+            "count": 203,
+            "receive_hz_after_first_50ms": 200.64090309612314,
+            "max_gap_s": 0.009038462001626613,
+            "final_age_at_last_rx_s": 0.004031504999147728
+          },
+          "0x24": {
+            "count": 203,
+            "receive_hz_after_first_50ms": 200.85284146099852,
+            "max_gap_s": 0.009031247998791514,
+            "final_age_at_last_rx_s": 0.004031504999147728
+          }
+        }
+      },
+      "observation_duration_after_first_tx_s": 0.0,
+      "physical_observation": "UNKNOWN: no post-run operator observation received",
+      "power_isolation_performed": "UNKNOWN",
+      "online_warning_iterations": 0,
+      "joint_metrics": null,
+      "transients": {},
+      "guard_reconstruction": null
+    },
+    {
+      "run_id": "run02",
+      "program_sha256": "99ca10f23315ac7504296550979543303ee6b499c1877b8f3120ff4a626dd84f",
+      "source_sha256": "2cf7e46f7b21038c6345b079be5a4041485b714fad37b17994da94219b57aa73",
+      "result": "HARD_ABORT",
+      "reason": "sustained position-consistent velocity",
+      "snapshot": {
+        "t": 1.0000916620010685,
+        "q": [
+          -0.031853675842285156,
+          1.3601512908935547,
+          -1.434920310974121,
+          0.009781837463378906,
+          0.008631706237792969,
+          0.0017261505126953125
+        ],
+        "dq": [
+          -0.0048847198486328125,
+          -0.0048847198486328125,
+          -0.0048847198486328125,
+          -0.0610504150390625,
+          -0.03662872314453125,
+          0.012210845947265625
+        ],
+        "q_start": [
+          -0.031853675842285156,
+          1.3601512908935547,
+          -1.434920310974121,
+          0.009781837463378906,
+          0.008631706237792969,
+          0.0017261505126953125
+        ],
+        "delta_q": [
+          -0.0,
+          -0.0,
+          -0.0,
+          -0.0,
+          -0.0,
+          -0.0
+        ],
+        "position_command": [
+          -0.031853675842285156,
+          1.3601512908935547,
+          -1.434920310974121,
+          0.009781837463378906,
+          0.008631706237792969,
+          0.0017261505126953125
+        ],
+        "velocity_command": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "current_command": [
+          0.23754038881829953,
+          -2.1386808767295045,
+          1.0311165414291845,
+          0.002178882731463274,
+          -0.0036499934315495936,
+          0.00011175058550731553
+        ],
+        "kp": [
+          30.0,
+          30.0,
+          30.0,
+          5.0,
+          5.0,
+          5.0
+        ],
+        "kd": [
+          1.0,
+          1.0,
+          1.0,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "lambda_value": 0.99,
+        "g_hold": [
+          0.23993978668515104,
+          -2.1602837138681865,
+          1.0415318600294794,
+          0.002200891647942701,
+          -0.003686862052070297,
+          0.00011287937930031872
+        ],
+        "p_term": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "d_term": [
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.0048847198486328125,
+          0.00610504150390625,
+          0.003662872314453125,
+          -0.0012210845947265626
+        ],
+        "ff_term": [
+          0.23754038881829953,
+          -2.1386808767295045,
+          1.0311165414291845,
+          0.002178882731463274,
+          -0.0036499934315495936,
+          0.00011175058550731553
+        ],
+        "torque_proxy": [
+          0.24242510866693234,
+          -2.1337961568808717,
+          1.0360012612778173,
+          0.008283924235369524,
+          1.2878882903531556e-05,
+          -0.0011093340092192471
+        ],
+        "feedback_age": {
+          "0x20": 0.004229842001223005,
+          "0x21": 0.004229842001223005,
+          "0x22": 1.7882997781271115e-05,
+          "0x24": 1.7882997781271115e-05
+        },
+        "joint_limit_margin": [
+          3.968146324157715,
+          0.20984870910644537,
+          0.13507968902587897,
+          3.990218162536621,
+          1.991368293762207,
+          3.9982738494873047
+        ],
+        "displacement_utilization": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "proxy_utilization": [
+          0.05387224637042941,
+          0.4741769237513048,
+          0.23022250250618162,
+          0.010354905294211904,
+          1.6098603629414445e-05,
+          0.0013866675115240589
+        ],
+        "desk_clearance_certified": 0.05302738704752458,
+        "velocity_spike_warning": false,
+        "kind": "PRE_SEND_SNAPSHOT",
+        "program_sha256": "99ca10f23315ac7504296550979543303ee6b499c1877b8f3120ff4a626dd84f",
+        "urdf_sha256": "60cbb80ad234f5bb5d55c53d0d77853b04ab33f8a4c1bb3d79889586201b1166",
+        "q_command_minus_measured": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "packet_hex": "feaa101c007902bd7019ae3f78abb7bf004420bc006c0dbc0040e2ba000000004c02feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121cca3d733e26e008c0a0fb833f96cb0ebbba346f3ba45beab8000000001c1dfeaa131c0000f0410000f0410000f0410000a0400000a0400000a040000000000a1bfeaa141c0000803f0000803f0000803fcdcccc3dcdcccc3dcdcccc3d00000000fbd2",
+        "theoretical_arrays": {
+          "0x10": [
+            -0.031853675842285156,
+            1.3601512908935547,
+            -1.434920310974121,
+            -0.009781837463378906,
+            -0.008631706237792969,
+            -0.0017261505126953125,
+            0.0
+          ],
+          "0x11": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "0x12": [
+            0.23754039406776428,
+            -2.138680934906006,
+            1.0311164855957031,
+            -0.0021788827143609524,
+            0.00364999333396554,
+            -0.00011175058898515999,
+            0.0
+          ],
+          "0x13": [
+            30.0,
+            30.0,
+            30.0,
+            5.0,
+            5.0,
+            5.0,
+            0.0
+          ],
+          "0x14": [
+            1.0,
+            1.0,
+            1.0,
+            0.10000000149011612,
+            0.10000000149011612,
+            0.10000000149011612,
+            0.0
+          ]
+        },
+        "effective_envelope": [
+          0.0128,
+          0.0128,
+          0.0128,
+          0.01881662292480469,
+          0.01881662292480469,
+          0.01881662292480469
+        ],
+        "short_seconds": 0.25,
+        "maximum_total_run_seconds": 1.0,
+        "unknowns": [
+          "current board 0x12 scale/sign",
+          "board total saturation",
+          "exit persistent state"
+        ]
+      },
+      "exit": {
+        "kind": "EXIT",
+        "state": "HARD_ABORT",
+        "reason": "sustained position-consistent velocity",
+        "accepted_bytes": 1020,
+        "tx_batches": 6,
+        "first_tx_time": 1.002130136002961,
+        "serial_closed_t": 1.1209772980000707,
+        "last_tx": {
+          "t": 1.0561661850006203,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd7019ae3f78abb7bf004420bc006c0dbc0040e2ba000000004c02feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121cca3d733e26e008c0a0fb833f96cb0ebbba346f3ba45beab8000000001c1dfeaa131c0000f0410000f0410000f0410000a0400000a0400000a040000000000a1bfeaa141c0000803f0000803f0000803fcdcccc3dcdcccc3dcdcccc3d00000000fbd2"
+        },
+        "exit_meaning": "TX stopped only; board state unknown; operator physical power isolation required",
+        "restore_reference_changed": false,
+        "program_sha256": "99ca10f23315ac7504296550979543303ee6b499c1877b8f3120ff4a626dd84f"
+      },
+      "tx": {
+        "counts": {
+          "0x10": 6,
+          "0x11": 6,
+          "0x12": 6,
+          "0x13": 6,
+          "0x14": 6
+        },
+        "batches": 6,
+        "bytes": 1020,
+        "inter_batch_mean_hz": 92.53082141917136,
+        "inter_batch_gap_s": [
+          0.011218128998734755,
+          0.011009058998752153,
+          0.010852809002244612,
+          0.010126236000360223,
+          0.010829815997567493
+        ],
+        "all_packets_equal_snapshot": true,
+        "last": {
+          "kind": "TX_KERNEL_ACCEPTED",
+          "t": 1.0561661850006203,
+          "accepted_bytes": 170,
+          "hex": "feaa101c007902bd7019ae3f78abb7bf004420bc006c0dbc0040e2ba000000004c02feaa111c00000000000000000000000000000000000000000000000000000000d580feaa121cca3d733e26e008c0a0fb833f96cb0ebbba346f3ba45beab8000000001c1dfeaa131c0000f0410000f0410000f0410000a0400000a0400000a040000000000a1bfeaa141c0000803f0000803f0000803fcdcccc3dcdcccc3dcdcccc3d00000000fbd2"
+        },
+        "meaning": "kernel-accepted bytes; board receipt/execution not acknowledged"
+      },
+      "communication": {
+        "errors": {
+          "checksum": 0,
+          "malformed": 0,
+          "nonfinite": 0,
+          "discarded_bytes": 9
+        },
+        "incomplete_tail_hex": "fe55211c0010a0bb0010a0bb0010a0bb00107abd804bb5be000816bd000000",
+        "frame_counts": {
+          "0x22": 217,
+          "0x24": 217,
+          "0x20": 217,
+          "0x21": 216,
+          "0x1": 21,
+          "0x23": 2,
+          "0x25": 2
+        },
+        "max_required_age_at_frame_event_s": 0.009237301997927716,
+        "stale_frame_events": 0,
+        "max_logged_guard_age_s": 0.0049977009985013865,
+        "streams": {
+          "0x20": {
+            "count": 217,
+            "receive_hz_after_first_50ms": 200.8183392832212,
+            "max_gap_s": 0.006340200001432095,
+            "final_age_at_last_rx_s": 0.0
+          },
+          "0x21": {
+            "count": 216,
+            "receive_hz_after_first_50ms": 200.7966146434502,
+            "max_gap_s": 0.009237301997927716,
+            "final_age_at_last_rx_s": 0.004702271999121876
+          },
+          "0x22": {
+            "count": 217,
+            "receive_hz_after_first_50ms": 200.7919694223663,
+            "max_gap_s": 0.009237301997927716,
+            "final_age_at_last_rx_s": 0.0038955109994276427
+          },
+          "0x24": {
+            "count": 217,
+            "receive_hz_after_first_50ms": 200.7919694223663,
+            "max_gap_s": 0.009026340001582867,
+            "final_age_at_last_rx_s": 0.0038955109994276427
+          }
+        }
+      },
+      "observation_duration_after_first_tx_s": 0.06282875399847399,
+      "physical_observation": "UNKNOWN: no post-run operator observation received",
+      "power_isolation_performed": "UNKNOWN",
+      "online_warning_iterations": 9,
+      "joint_metrics": [
+        {
+          "joint": "joint1",
+          "q_start": -0.031853675842285156,
+          "q_end": -0.031853675842285156,
+          "final_displacement": 0.0,
+          "max_abs_displacement": 0.0,
+          "position_peak_to_peak": 0.0,
+          "max_abs_protocol_velocity": 0.0048847198486328125,
+          "position_ols_rate_rad_s": 0.0,
+          "max_abs_torque_proxy": 0.24242510866693234,
+          "max_adjacent_position_event_proxy_slew": 0.0,
+          "min_joint_limit_margin": 3.968146324157715,
+          "max_displacement_guard_ratio": 0.0,
+          "max_proxy_guard_ratio": 0.05387224637042941,
+          "velocity_spike_complete_frames": 0
+        },
+        {
+          "joint": "joint2",
+          "q_start": 1.3601512908935547,
+          "q_end": 1.3601512908935547,
+          "final_displacement": 0.0,
+          "max_abs_displacement": 0.0,
+          "position_peak_to_peak": 0.0,
+          "max_abs_protocol_velocity": 0.0048847198486328125,
+          "position_ols_rate_rad_s": 0.0,
+          "max_abs_torque_proxy": 2.1435655965781373,
+          "max_adjacent_position_event_proxy_slew": 1.9576238684618845,
+          "min_joint_limit_margin": 0.20984870910644537,
+          "max_displacement_guard_ratio": 0.0,
+          "max_proxy_guard_ratio": 0.4763479103506972,
+          "velocity_spike_complete_frames": 0
+        },
+        {
+          "joint": "joint3",
+          "q_start": -1.434920310974121,
+          "q_end": -1.434920310974121,
+          "final_displacement": 0.0,
+          "max_abs_displacement": 0.0,
+          "position_peak_to_peak": 0.0,
+          "max_abs_protocol_velocity": 0.014652252197265625,
+          "position_ols_rate_rad_s": 0.0,
+          "max_abs_torque_proxy": 1.0457687936264501,
+          "max_adjacent_position_event_proxy_slew": 1.9470050294758063,
+          "min_joint_limit_margin": 0.13507968902587897,
+          "max_displacement_guard_ratio": 0.0,
+          "max_proxy_guard_ratio": 0.23239306525032224,
+          "velocity_spike_complete_frames": 0
+        },
+        {
+          "joint": "joint4",
+          "q_start": 0.009781837463378906,
+          "q_end": 0.009781837463378906,
+          "final_displacement": 0.0,
+          "max_abs_displacement": 0.0003833770751953125,
+          "position_peak_to_peak": 0.0003833770751953125,
+          "max_abs_protocol_velocity": 0.0610504150390625,
+          "position_ols_rate_rad_s": 0.003118735671103705,
+          "max_abs_torque_proxy": 0.010200809611346087,
+          "max_adjacent_position_event_proxy_slew": 1.4860616760672003,
+          "min_joint_limit_margin": 3.990218162536621,
+          "max_displacement_guard_ratio": 0.02037438262579691,
+          "max_proxy_guard_ratio": 0.012751012014182607,
+          "velocity_spike_complete_frames": 0
+        },
+        {
+          "joint": "joint5",
+          "q_start": 0.008631706237792969,
+          "q_end": 0.016303062438964844,
+          "final_displacement": 0.007671356201171875,
+          "max_abs_displacement": 0.007671356201171875,
+          "position_peak_to_peak": 0.007671356201171875,
+          "max_abs_protocol_velocity": 0.3540916442871094,
+          "position_ols_rate_rad_s": 0.1099756687932244,
+          "max_abs_torque_proxy": 0.07741593886611992,
+          "max_adjacent_position_event_proxy_slew": 2.926055923504879,
+          "min_joint_limit_margin": 1.9836969375610352,
+          "max_displacement_guard_ratio": 0.40769038269131924,
+          "max_proxy_guard_ratio": 0.0967699235826499,
+          "velocity_spike_complete_frames": 2
+        },
+        {
+          "joint": "joint6",
+          "q_start": 0.0017261505126953125,
+          "q_end": 0.002109527587890625,
+          "final_displacement": 0.0003833770751953125,
+          "max_abs_displacement": 0.0003833770751953125,
+          "position_peak_to_peak": 0.0003833770751953125,
+          "max_abs_protocol_velocity": 0.08546829223632812,
+          "position_ols_rate_rad_s": 0.00036332384543977123,
+          "max_abs_torque_proxy": 0.008658579809140128,
+          "max_adjacent_position_event_proxy_slew": 2.446609416550548,
+          "min_joint_limit_margin": 3.9978904724121094,
+          "max_displacement_guard_ratio": 0.02037438262579691,
+          "max_proxy_guard_ratio": 0.010823224761425158,
+          "velocity_spike_complete_frames": 0
+        }
+      ],
+      "transients": {
+        "10": {
+          "last_sample_elapsed_s": 0.00894715200047358,
+          "delta": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0003833770751953125,
+            0.0
+          ],
+          "dq": [
+            -0.0048847198486328125,
+            -0.0048847198486328125,
+            -0.0048847198486328125,
+            0.012210845947265625,
+            0.08546829223632812,
+            0.03662872314453125
+          ],
+          "proxy": [
+            0.24242510866693234,
+            -2.1337961568808717,
+            1.0360012612778173,
+            0.0009577981367367115,
+            -0.014113708031158969,
+            -0.0035511217289458095
+          ],
+          "max_abs_delta": [
+            0.0,
+            0.0,
+            0.0,
+            0.0003833770751953125,
+            0.0003833770751953125,
+            0.0003833770751953125
+          ],
+          "max_abs_dq": [
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.0610504150390625,
+            0.08546829223632812,
+            0.0610504150390625
+          ]
+        },
+        "20": {
+          "last_sample_elapsed_s": 0.01816420599789126,
+          "delta": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0003833770751953125,
+            0.0
+          ],
+          "dq": [
+            -0.0048847198486328125,
+            0.0048847198486328125,
+            -0.014652252197265625,
+            0.03662872314453125,
+            0.0610504150390625,
+            0.03662872314453125
+          ],
+          "proxy": [
+            0.24242510866693234,
+            -2.1435655965781373,
+            1.0457687936264501,
+            -0.001483989582989851,
+            -0.011671920311432406,
+            -0.0035511217289458095
+          ],
+          "max_abs_delta": [
+            0.0,
+            0.0,
+            0.0,
+            0.0003833770751953125,
+            0.0003833770751953125,
+            0.0003833770751953125
+          ],
+          "max_abs_dq": [
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.014652252197265625,
+            0.0610504150390625,
+            0.08546829223632812,
+            0.0610504150390625
+          ]
+        },
+        "30": {
+          "last_sample_elapsed_s": 0.028129202997661196,
+          "delta": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0011501312255859375,
+            0.0
+          ],
+          "dq": [
+            -0.0048847198486328125,
+            -0.0048847198486328125,
+            -0.014652252197265625,
+            0.012210845947265625,
+            0.0610504150390625,
+            0.012210845947265625
+          ],
+          "proxy": [
+            0.24242510866693234,
+            -2.1337961568808717,
+            1.0457687936264501,
+            0.0009577981367367115,
+            -0.015505691063385531,
+            -0.0011093340092192471
+          ],
+          "max_abs_delta": [
+            0.0,
+            0.0,
+            0.0,
+            0.0003833770751953125,
+            0.0011501312255859375,
+            0.0003833770751953125
+          ],
+          "max_abs_dq": [
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.014652252197265625,
+            0.0610504150390625,
+            0.08546829223632812,
+            0.08546829223632812
+          ]
+        },
+        "50": {
+          "last_sample_elapsed_s": 0.04813151999769616,
+          "delta": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0038356781005859375,
+            0.0
+          ],
+          "dq": [
+            -0.0048847198486328125,
+            -0.0048847198486328125,
+            -0.0048847198486328125,
+            0.012210845947265625,
+            0.23199081420898438,
+            0.08546829223632812
+          ],
+          "proxy": [
+            0.24242510866693234,
+            -2.1337961568808717,
+            1.0360012612778173,
+            0.0009577981367367115,
+            -0.04602746535537772,
+            -0.008435078638125497
+          ],
+          "max_abs_delta": [
+            0.0,
+            0.0,
+            0.0,
+            0.0003833770751953125,
+            0.0038356781005859375,
+            0.0003833770751953125
+          ],
+          "max_abs_dq": [
+            0.0048847198486328125,
+            0.0048847198486328125,
+            0.014652252197265625,
+            0.0610504150390625,
+            0.23199081420898438,
+            0.08546829223632812
+          ]
+        },
+        "100": null,
+        "250": null,
+        "500": null,
+        "2000": null
+      },
+      "guard_reconstruction": {
+        "method": "offline host RX position times; exact raising-check timestamp not logged",
+        "span_s": 0.049842314001580235,
+        "delta": [
+          0.0,
+          0.0,
+          0.0,
+          0.0003833770751953125,
+          0.0072879791259765625,
+          0.0003833770751953125
+        ],
+        "speed": [
+          0.0,
+          0.0,
+          0.0,
+          0.00769179928490394,
+          0.14622072172944256,
+          0.00769179928490394
+        ],
+        "limits": [
+          0.08533333333333334,
+          0.08533333333333334,
+          0.08533333333333334,
+          0.12544415283203128,
+          0.12544415283203128,
+          0.12544415283203128
+        ],
+        "utilization": [
+          0.0,
+          0.0,
+          0.0,
+          0.06131652302043283,
+          1.1656240520451435,
+          0.06131652302043283
+        ],
+        "three_50ms_block_acceleration_oscillation_slew": "insufficient active duration; NOT established safe",
+        "abort_sample_in_successful_STATE_log": false
+      }
+    }
+  ],
+  "timestamp_semantics": "host RX completion and pre-write host TX timestamps; no board sample clock",
+  "source": "adaptive_20260917; analysis is offline only"
+}

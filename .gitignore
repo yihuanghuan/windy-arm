@@ -19,3 +19,28 @@ __pycache__/
 *.bak
 *.log
 /src/arm-platform/task_space_smc/hw/data/
+
+# Preserve audit text logs; large raw records are tracked losslessly as .gz.
+!docs/arm6_familiarization_validation/**/*.log
+!docs/real_arm_audit_20260917/**/*.log
+
+# Local uncompressed copies; see docs/validation_log_archives.json.
+/docs/arm6_familiarization_validation/bumpless_20260918/events.jsonl
+/docs/arm6_familiarization_validation/bumpless_20260918/serial_tx.strace
+/docs/arm6_familiarization_validation/bumpless_20260918/serial_tx_decoded.jsonl
+/docs/arm6_familiarization_validation/new_arm_20260918/readonly_events.jsonl
+/docs/arm6_familiarization_validation/new_arm_20260918/run02/serial_tx.strace
+/docs/arm6_familiarization_validation/new_arm_20260918/serial_tx.strace
+/docs/arm6_familiarization_validation/restart_after_power_20260918/events.jsonl
+/docs/arm6_familiarization_validation/restart_after_power_20260918/serial_tx.strace
+/docs/arm6_familiarization_validation/restart_after_power_20260918/serial_tx_decoded.jsonl
+/docs/arm6_familiarization_validation/speed_18_20260918/events.jsonl
+/docs/arm6_familiarization_validation/speed_18_20260918/serial_tx.strace
+/docs/arm6_familiarization_validation/speed_18_20260918/serial_tx_decoded.jsonl
+/docs/arm6_familiarization_validation/speed_phase_20260918/active_events.jsonl
+/docs/arm6_familiarization_validation/speed_phase_20260918/run02/serial_tx.strace
+/docs/arm6_familiarization_validation/speed_phase_20260918/serial_tx.strace
+/docs/arm6_familiarization_validation/wrist_22_20260918/events.jsonl
+/docs/arm6_familiarization_validation/wrist_22_20260918/retry01/events.jsonl
+/docs/arm6_familiarization_validation/wrist_22_20260918/retry01/serial_tx.strace
+/docs/arm6_familiarization_validation/wrist_22_20260918/serial_tx.strace

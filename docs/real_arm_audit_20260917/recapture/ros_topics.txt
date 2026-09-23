@@ -1,0 +1,6 @@
+/parameter_events [rcl_interfaces/msg/ParameterEvent]
+/real_arm/raw_joint_states [sensor_msgs/msg/JointState]
+/real_arm/robot_description [std_msgs/msg/String]
+/real_arm/tf [tf2_msgs/msg/TFMessage]
+/real_arm/tf_static [tf2_msgs/msg/TFMessage]
+/rosout [rcl_interfaces/msg/Log]

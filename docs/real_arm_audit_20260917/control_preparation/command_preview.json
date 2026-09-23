@@ -1,0 +1,194 @@
+{
+  "dry_run_only": true,
+  "hardware_ready": false,
+  "assumptions": [
+    "fixed base; gravity=[0,0,-9.81]",
+    "no additional tool/payload for arm6",
+    "zero model offsets",
+    "no historical ratio/alpha/friction/armature correction",
+    "0x12=Nm and Kp/Kd physical scaling are UNVERIFIED on new firmware",
+    "fresh ProtocolV1; unused slot6 initialized to zero"
+  ],
+  "urdf": "/home/yihuang/westlake/windy-arm/src/arm-platform/config/arm6.urdf",
+  "urdf_sha256": "60cbb80ad234f5bb5d55c53d0d77853b04ab33f8a4c1bb3d79889586201b1166",
+  "q": [
+    -0.031854,
+    1.356337,
+    -1.334973,
+    0.001726,
+    0.007481,
+    0.001726
+  ],
+  "gravity_nm": [
+    0.24344362980755974,
+    -2.2040405997816364,
+    0.995140384158431,
+    0.0021968982076721625,
+    -0.00521953063305928,
+    0.00011083590364436907
+  ],
+  "proposed_kp": [
+    30.0,
+    30.0,
+    30.0,
+    5.0,
+    5.0,
+    5.0
+  ],
+  "proposed_kd": [
+    1.5,
+    1.5,
+    1.5,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "proposed_feedforward": [
+    0.24344362980755974,
+    -2.2040405997816364,
+    0.995140384158431,
+    0.0021968982076721625,
+    -0.00521953063305928,
+    0.00011083590364436907
+  ],
+  "rated_feedforward_limits": [
+    9.0,
+    9.0,
+    9.0,
+    1.6,
+    1.6,
+    1.6
+  ],
+  "proposed_feedforward_limits": [
+    4.5,
+    4.5,
+    4.5,
+    0.8,
+    0.8,
+    0.8
+  ],
+  "gravity_fraction_rated": [
+    0.027049292200839972,
+    0.24489339997573736,
+    0.11057115379538122,
+    0.0013730613797951015,
+    0.00326220664566205,
+    6.927243977773067e-05
+  ],
+  "joint_limit_margin_rad": [
+    3.968146,
+    0.6436630000000001,
+    0.235827,
+    3.998274,
+    1.992519,
+    3.998274
+  ],
+  "near_joint_limit": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ],
+  "finite": true,
+  "direction_check": "signs match repository; physical control direction NOT tested",
+  "MotorControl": {
+    "header": {
+      "stamp": {
+        "sec": 0,
+        "nanosec": 0
+      },
+      "frame_id": "base_link"
+    },
+    "position": [
+      -0.031854,
+      1.356337,
+      -1.334973,
+      0.001726,
+      0.007481,
+      0.001726
+    ],
+    "velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "current": [
+      0.24344362980755974,
+      -2.2040405997816364,
+      0.995140384158431,
+      0.0021968982076721625,
+      -0.00521953063305928,
+      0.00011083590364436907
+    ],
+    "p": [
+      30.0,
+      30.0,
+      30.0,
+      5.0,
+      5.0,
+      5.0
+    ],
+    "d": [
+      1.5,
+      1.5,
+      1.5,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "enable": 1
+  },
+  "theoretical_float32_protocol_arrays": {
+    "0x10": [
+      -0.03185399994254112,
+      1.3563369512557983,
+      -1.3349729776382446,
+      -0.0017259999876841903,
+      -0.007480999920517206,
+      -0.0017259999876841903,
+      0.0
+    ],
+    "0x11": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "0x12": [
+      0.24344362318515778,
+      -2.20404052734375,
+      0.9951403737068176,
+      -0.002196898218244314,
+      0.005219530779868364,
+      -0.00011083590652560815,
+      0.0
+    ],
+    "0x13": [
+      30.0,
+      30.0,
+      30.0,
+      5.0,
+      5.0,
+      5.0,
+      0.0
+    ],
+    "0x14": [
+      1.5,
+      1.5,
+      1.5,
+      1.0,
+      1.0,
+      1.0,
+      0.0
+    ]
+  },
+  "total_torque_limit_warning": "DMMotor clamps only current feedforward; board PD total limit unknown"
+}

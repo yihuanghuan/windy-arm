@@ -1,0 +1,192 @@
+commit b496a4f11152539da3a399a4fbe5aaddd0117df8
+Author: chnchenfan <chnchenfan@users.noreply.github.com>
+Date:   Tue Sep 1 16:20:06 2026 +0800
+
+    1
+
+commit f95039a88448c75743196bca714ed324cdc1adbc
+Author: chnchenfan <chnchenfan@users.noreply.github.com>
+Date:   Mon Aug 31 16:10:41 2026 +0800
+
+    Export arm calibration and SMC hardware workflows
+
+commit ca8aa15536676b91146a62c843be72dbc77fd84d
+Author: chnchenfan <chnchenfan@users.noreply.github.com>
+Date:   Thu Aug 6 18:31:17 2026 -0700
+
+    Add Vicon-fused hold-pose SMC workflow
+    
+    Introduce Vicon base-state fusion, end-effector estimation, and task-space QP control for holding trajectories. Add hardware calibration and validation tools, launch/configuration profiles, updated SMC integration, and regression coverage. Ignore local calibration captures, backups, and runtime logs.
+
+commit ef84a9db6730c935153df81900869b1f9a6d19bf
+Author: chnchenfan <chnchenfan@users.noreply.github.com>
+Date:   Tue Aug 4 17:23:06 2026 -0700
+
+    Update 6DOF SMC and Vicon integration
+
+commit f1eb73a1606039908abbc9880d1ff740e86dd67f
+Author: chnchenfan <chnchenfan@users.noreply.github.com>
+Date:   Tue Aug 4 08:36:46 2026 -0700
+
+    就位前增加起点奇异门，并把"先挪 joint5"写进实物流程
+    
+    上电或失力后机械臂落回休息位形，此时 j5≈0 正是【腕部奇异】：URDF 里 joint4
+    与 joint6 都是 axis="1 0 0"、joint5 是 "0 0 1" 夹在中间，j5=0 时 j4 与 j6
+    转轴共线，6D 雅可比掉秩。
+    
+    实测本台休息位形（j5=0.17°）sigma_min = 0.00019，比配置的 sigma_critical
+    0.012 低 63 倍，条件数 9326。j5 挪到 40° 才回到 0.04246（高于 sigma_warn 0.03）。
+    在这种位形上阻尼伪逆仍会给出一个数，但那个数与期望的末端运动无关 ——
+    机械臂会往任意方向窜。
+    
+    ⚠️ 这一步【不能】由任务空间 SMC 自己完成：它正是被奇异卡住的那一方，
+    让它自己爬出来是循环论证。只能先用关节空间位置模式挪 j5（hw/wrist_prepose.py）。
+    
+    _plan_task_space_approach 因此加了一道前置门：按控制器实际使用的任务雅可比
+    （5D 时经 pen_axis_task 投影）算 sigma_min，低于 sigma_critical 就拒绝就位、
+    一条力矩都不发，并在日志里直接给出 wrist_prepose 的命令行；介于 critical 与
+    warn 之间只告警放行。
+    
+    README §4 插入 4.3「把 joint5 挪出腕部奇异」，后续小节顺移。
+    
+    pytest 549 -> 552。
+    
+    Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+commit 62fab03c2953f9ecff56ccf42f00afc1b4d31482
+Author: chnchenfan <chnchenfan@users.noreply.github.com>
+Date:   Tue Aug 4 08:24:02 2026 -0700
+
+    就位改为任务空间 Lagrange-SMC，取消位置模式与仿真干跑
+    
+    实物启动逻辑改成：查进程 -> 起驱动 -> 起 SMC（前 start_delay_sec 秒就位，
+    之后跟踪）。就位不再是独立步骤，也不再用位置模式。
+    
+    ## 为什么
+    
+    此前就位有两条路，都不理想：
+    
+      hw/full_prepose.py 位置模式：不经过 SMC，是另一套控制器；顶不过静摩擦，
+        实测 j3 在 kp=80 下仍差约 2°、j2 差约 10°（j2 静摩擦 1.775 Nm 是其余
+        关节的 2.4~18 倍，同时承载最重）。于是每次实验的起步位形都不是设定的
+        那个，末端差约 10 mm —— 2026-08-04 的 S2 基线重跑就栽在这上面：跟踪
+        精度与昨晚一致（31~47 s RMS 3.157 vs 3.053 mm），但同一份配置昨晚跑得完、
+        今晚 48.9 s 发散，起步位形差 2°(j3) 是唯一已知的变量。
+    
+      joint_space（runner 里原来的 _run_approach）：力矩模式压得住摩擦，但
+        规划在关节空间 —— 末端走的是没人算过的曲线，可能扫过桌面或围栏；
+        而且用 approach_kp/kd 另一套增益，与跟踪段的 SMC 在交接处换手。
+    
+    ## 怎么做的
+    
+    新增 core/approach_reference.py：末端直线（位置）+ SO(3) 测地线（姿态），
+    五次 smoothstep 时间标度，两端速度加速度均为零。角速度取世界系并利用
+    exp(sΔr)·Δr = Δr 化简为定轴 ω_w = ṡ·(R₀Δr) —— 单测直接钉死"世界系转轴恒定"
+    这条推导（Ṙ = ω^·R 数值对照）。rotation_log 走四元数而不是 θ/(2sinθ)(R−Rᵀ)：
+    后者在 θ→π 时除以 1.7e-6，实测 179.9999° 往返误差 2e-5，四元数式是 1e-15。
+    
+    runner 抽出 _task_space_torque（desired -> 力矩，就位与跟踪共用同一条路径）
+    与 _finish_approach_tick（两种就位模式共用收尾）。新增 approach.mode，缺省
+    仍是 joint_space —— 已验证的仿真基线逐位不变；smc_params_hwtest.yaml 显式
+    切到 task_space。
+    
+    ⚠️ 抽取时踩到一个作用域 bug 并当场修掉：tau_track_friction 在被抽走的块里
+    赋值、块外 _push_estimator_command 还在用。静态扫描（AST 比对块内赋值与
+    调用点之后的读取）抓到的，pytest 抓不到 —— 那条路径没有单测覆盖。
+    
+    就位段新增两项此前没有的保护：
+      * 看门狗。joint_space 当年没有，因为它的关节 PD 增益远低于跟踪段；现在
+        就位用的是跟踪段那套 SMC 增益，同样能索要饱和力矩。位置判据喂任务空间
+        误差（参考量从当前位姿起步，正常情况恒为 mm 量级）。
+      * 工作台护栏。末端直线 vs 桌面/围栏/峰值速度/峰值加速度，不过就一条力矩
+        都不发，由驱动的指令超时保位接管 —— 那是协议里唯一设计过的安全兜底。
+        ⚠️ 只查末端点：末端空间规划沿途没有关节解，算不出连杆本体在哪。
+        必要条件不是充分条件，第一次用新起点仍要人在旁边看。
+    
+    规划在【第一个 approach 拍】做，不在 __init__ —— 硬件模式下 __init__ 时
+    self.q 还是配置的 initial_pose_rad，不是实物反馈。
+    
+    ## 验证
+    
+    pytest 518 -> 549（新增 21 + 10）。
+    仿真同参对照（duration 12 s / start_delay 8 s）：
+      就位末端残差 task_space 0.052 mm vs joint_space 0.086 mm，
+      跟踪段 RMS 49.07 vs 47.20 mm（这组参数本身退化，两者同量级 = 无回归）。
+    抽取前后对照跑（同参）：跟踪 RMS 555.8070 vs 555.9026 mm，行为未变。
+    用真实实物配置最终冒烟：就位末端残差 0.0297 mm，无异常。
+    
+    README §4 同步重写：删掉仿真干跑一节，就位与跟踪合并为 4.3，
+    start_delay_sec 实物取值从 0 改为 8（0 = 跳过就位）。
+    
+    Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+commit d1e1cad06c900cd11ce9a6abf3de242435fa846b
+Author: chnchenfan <chnchenfan@users.noreply.github.com>
+Date:   Tue Aug 4 07:47:46 2026 -0700
+
+    README 重写为四节操作指南，深度内容拆到 docs/REFERENCE.md
+    
+    原 README 945 行把"怎么跑"和"为什么这么设计 / 实测到了什么 / 出错怎么查"
+    混在一起，14 节里只有 4 节是要跑起来必须读的。现在拆成两份：
+    
+      README.md（477 行）  文件结构 / 部署 / RViz 仿真 / 实物启动
+      docs/REFERENCE.md（702 行）  控制律、构型、笔轴任务、标定体系、真机实测
+                                   特性、参数整定、能力边界、常见问题
+    
+    拆分是搬运不是删减，原文一行没丢；REFERENCE 沿用拆分前的章节编号（1/2/4/7~14），
+    文内交叉引用因此保持有效，编号不连续是拆分结果不是缺页。指向已搬进 README 的
+    9 处锚点改为跨文件链接。原 §7.3（直接力矩接口 / MIT 模式 / 三条安全约束）与
+    §7.5（serial_tap 伪终端中继原理）在第一版拆分里漏掉了，已补回 REFERENCE §7。
+    
+    README 里更正/补充的事实：
+    
+    * §2.2 原文说"安装的 Python 是副本，改了不重编不生效"。这条对本仓库是【错的】：
+      install(PROGRAMS) + --symlink-install 装出来的运行器是指向源码树的符号链接，
+      启动引导又把源码树的包父目录插进 sys.path，所以改 .py / .yaml 立即生效。
+      实测佐证：state_estimator.py 从未进过 install 副本，实物跑路线 B' 却生效了。
+      改写为"什么时候必须重编"的判据表，并说明不带 --symlink-install 时才会踩原文
+      描述的坑（且不报错）。
+    * §2.3 记下 install(DIRECTORY) 只拷不删 —— 本次分层后 install 目录残留了 23 个
+      旧的扁平 .py，附清理命令。
+    * §3.4 环境变量表区分"launch 设的"与"轨迹模块默认"：MB_HWTEST_SPEED 模块默认
+      0.02、6 关节 launch 压到 0.01，绕过 launch 直接跑会拿到周期减半的轨迹。
+    * §3.4 记下 MB_HWTEST_SPEED 同时压缩交接拉入段时间轴：2026-08-04 实测 0.01->0.015
+      使拉入段 j1 峰值速度 0.25 -> 3.04 rad/s（12 倍）撞包线，而该段参考轨迹根本没动。
+    * §4 实物启动补全为完整时序：查进程 -> 只读核对 -> 起驱动（全程不关）-> 就位 ->
+      起 SMC -> 收工，含 full_prepose.py 参数表与 j3 约 2° 残差的能力边界说明。
+    * §4.5 写明看门狗判据吃的是测量值而非估计器输出。
+    
+    链接校验：两文件全部内部链接与锚点有效，README 中出现的仓库内路径全部存在。
+    pytest 518 passed。
+    
+    Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+commit e5531d9e52d5c42bfb973081017f00a445577275
+Author: chnchenfan <chnchenfan@users.noreply.github.com>
+Date:   Tue Aug 4 07:22:15 2026 -0700
+
+    补入 task_space_smc 未跟踪文件，为目录重整建基线
+    
+    外层仓库此前只跟踪了 task_space_smc/ 下 55 个文件里的 24 个，
+    state_estimator / leso / smith_predictor / loop_delay / handover_blend /
+    friction_feedforward / velocity_filter 这些核心模块以及全部 phase*.py
+    实物标定程序、全部交接文档都在未跟踪状态。test/ 同样只跟踪 8 个。
+    
+    目录重整会大量 mv 文件并改写 import 路径，未跟踪的文件一旦搬错就没有
+    可回滚的历史。先整体补入，本次提交仅新增文件、不改任何内容。
+    
+    pytest: 518 passed（重整前基线）
+    
+    Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+commit 4331b67e5f81eaa48843556de11ce410ead34a6c
+Author: chnchenfan <chnchenfan@users.noreply.github.com>
+Date:   Sun Aug 2 00:26:46 2026 -0700
+
+    实现浮动基座拉格朗日 SMC 控制链
+
+commit 7563c11ef3f27535681a044a09caa28d5c3889be
+Author: chnchenfan <chnchenfan@users.noreply.github.com>
+Date:   Sun Jun 28 15:31:39 2026 +0800
+
+    Initial LL100 LH420 workspace snapshot

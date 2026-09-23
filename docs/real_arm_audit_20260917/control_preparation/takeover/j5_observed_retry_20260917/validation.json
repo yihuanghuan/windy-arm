@@ -1,0 +1,7 @@
+{
+  "independent_rx_checksum_decode": "PASS",
+  "six_axis_displacement_crosscheck": "PASS",
+  "unchanged_control_program_sha256": "cc9f022002a2232fa15340d5f55125527369947dfa41bd8cbcd9236047e695cd",
+  "attempts_this_authorization": 1,
+  "automatic_retries": 0
+}

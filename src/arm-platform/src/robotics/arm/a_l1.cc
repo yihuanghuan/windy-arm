@@ -31,6 +31,7 @@ void AL1::InitFromConfig(const std::string& port, uint32_t baud,
   }
 
   protocol_ = std::make_shared<protocol::ProtocolV1>();
+  protocol_->SetActiveMotorCount(arm_config.joints.size());
   
   for (const auto& joint : arm_config.joints) {
     auto& model_config = motor_models[joint.model];

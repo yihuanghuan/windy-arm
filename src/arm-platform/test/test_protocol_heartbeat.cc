@@ -14,6 +14,8 @@
 #include <cstdint>
 #include <limits>
 #include <vector>
+#include <cstring>
+#include <thread>
 
 namespace {
 
@@ -84,4 +86,55 @@ TEST(ProtocolHeartbeat, UndocumentedFrameIsCountedNotInterpreted) {
   EXPECT_EQ(p.GetUnhandledFrameCount(), 1u);
   EXPECT_EQ(p.GetLastUnhandledCommand(), 0x25);
   EXPECT_EQ(p.GetHeartbeatCount(), 0u);
+}
+
+namespace {
+std::vector<uint8_t> MakeFeedback(uint8_t cmd, size_t size = 28,
+                                float first = 0.0f, float ghost = 99.0f) {
+  std::vector<uint8_t> frame{0xFE, 0x55, cmd, static_cast<uint8_t>(size)};
+  frame.resize(4 + size, 0);
+  if (size >= 4) std::memcpy(frame.data() + 4, &first, 4);
+  if (size >= 28) std::memcpy(frame.data() + 28, &ghost, 4);
+  uint8_t sum = 0, add = 0;
+  for (auto value : frame) { sum += value; add += sum; }
+  frame.push_back(sum); frame.push_back(add);
+  return frame;
+}
+}
+
+TEST(ProtocolFeedback, HeartbeatCannotFakeCompleteFeedback) {
+  manipulator::protocol::ProtocolV1 p;
+  p.SetActiveMotorCount(6);
+  FeedAll(p, kHeartbeat);
+  EXPECT_FALSE(p.HasFreshFeedback(1.0));
+  FeedAll(p, MakeFeedback(0x20));
+  FeedAll(p, MakeFeedback(0x21));
+  EXPECT_FALSE(p.HasFreshFeedback(1.0));
+  FeedAll(p, MakeFeedback(0x22));
+  EXPECT_TRUE(p.HasFreshFeedback(1.0));
+  EXPECT_EQ(p.GetFeedbackSequence(), 1u);
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  FeedAll(p, kHeartbeat);
+  EXPECT_FALSE(p.HasFreshFeedback(.001));
+}
+
+TEST(ProtocolFeedback, WrongLengthDoesNotDecodeOldBufferContents) {
+  manipulator::protocol::ProtocolV1 p;
+  FeedAll(p, MakeFeedback(0x20, 4, 1.f));
+  EXPECT_FALSE(p.HasPositionFeedback());
+  EXPECT_EQ(p.GetPosition(0), 0.0);
+  FeedAll(p, MakeFeedback(0x20, 28, 2.f));
+  FeedAll(p, MakeFeedback(0x20, 4, 3.f));
+  EXPECT_EQ(p.GetPosition(0), 2.0);
+}
+
+TEST(ProtocolFeedback, PhysicalNaNRejectedButGhostNeverBecomesJoint7) {
+  manipulator::protocol::ProtocolV1 p;
+  p.SetActiveMotorCount(6);
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  for (auto cmd : {0x20, 0x21, 0x22}) FeedAll(p, MakeFeedback(cmd, 28, 1.f, nan));
+  EXPECT_TRUE(p.HasFreshFeedback(1.0));
+  FeedAll(p, MakeFeedback(0x20, 28, nan));
+  EXPECT_FALSE(p.HasFreshFeedback(1.0));
+  EXPECT_EQ(p.GetPosition(0), 1.0);
 }

@@ -1,0 +1,707 @@
+{
+  "program_sha256": "7a7cffcd7c71050a453b8adac2987207ebc6c64cadea6dfeb1802ea3c9e82505",
+  "urdf_sha256": "60cbb80ad234f5bb5d55c53d0d77853b04ab33f8a4c1bb3d79889586201b1166",
+  "meshes": [
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link1.STL",
+      "sha256": "1adf0eb712e6ec165c49ef77e7d3d5edf194fea8749c78782386c234078fb5dc"
+    },
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link2.STL",
+      "sha256": "71e0dd78a79567d3728f819290b119e93d5bfc71046f8807cc9cc7f61f15e327"
+    },
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link3.STL",
+      "sha256": "2a651b16128a82b88a40ee66b46adbb7d84b880643f8b6ad849f9ec801b81aef"
+    },
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link4.STL",
+      "sha256": "a6bd7a3b3f40c7de714ca5dba8bbee0149f22d5a107ac93907b1c9076f107f4e"
+    },
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link5.STL",
+      "sha256": "097df5e2f8f6c25244c18a8a633347fc1a697c7458d063f4fbfd1679a08ce7d5"
+    },
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link6.STL",
+      "sha256": "ba0af792c391252ce9cdedbb9cf763633a84978654d4b1c3f2852143781a670f"
+    }
+  ],
+  "q_geometry_center": [
+    -0.031853675842285156,
+    1.3601512908935547,
+    -1.434920310974121,
+    0.009398460388183594,
+    0.009015083312988281,
+    0.002109527587890625
+  ],
+  "envelope": [
+    0.0128,
+    0.0128,
+    0.0128,
+    0.019200000000000002,
+    0.019200000000000002,
+    0.019200000000000002
+  ],
+  "lower": [
+    -4.0,
+    -3.14,
+    -1.57,
+    -4.0,
+    -2.0,
+    -4.0
+  ],
+  "upper": [
+    4.0,
+    1.57,
+    1.57,
+    4.0,
+    2.0,
+    4.0
+  ],
+  "kp": [
+    30.0,
+    30.0,
+    30.0,
+    5.0,
+    5.0,
+    5.0
+  ],
+  "kd": [
+    1.0,
+    1.0,
+    1.0,
+    0.1,
+    0.1,
+    0.1
+  ],
+  "minimum_joint_margin": 0.05,
+  "g_preview": [
+    0.24001498309535957,
+    -2.1602843326251158,
+    1.0415312412725501,
+    0.0022758764940089358,
+    -0.0037477530341240794,
+    0.00011288690271669774
+  ],
+  "lambda_preview": 0.99,
+  "short_seconds": 0.25,
+  "restore_settle_max": 0.75,
+  "certificate": {
+    "minimum_desk_clearance": 0.05302738704752458,
+    "per_link_desk_lower": [
+      null,
+      0.05302738704752458,
+      0.08633187186726347,
+      0.12315676399486687,
+      0.16052612992983323,
+      null
+    ],
+    "site_j3_lower": 0.07866956804622918,
+    "self_distance_lower": 0.005451328318432104,
+    "pair_distances": [
+      {
+        "links": [
+          0,
+          2
+        ],
+        "initial": 0.03492913708767908,
+        "lower_bound": 0.0266339539114328
+      },
+      {
+        "links": [
+          0,
+          3
+        ],
+        "initial": 0.14682355321561957,
+        "lower_bound": 0.13549312126184873
+      },
+      {
+        "links": [
+          0,
+          4
+        ],
+        "initial": 0.11494140692139575,
+        "lower_bound": 0.09441243402240873
+      },
+      {
+        "links": [
+          0,
+          5
+        ],
+        "initial": 0.11825459079799168,
+        "lower_bound": 0.09115373723694523
+      },
+      {
+        "links": [
+          0,
+          6
+        ],
+        "initial": 0.11146571962329932,
+        "lower_bound": 0.08015950632454505
+      },
+      {
+        "links": [
+          1,
+          3
+        ],
+        "initial": 0.19767674890517692,
+        "lower_bound": 0.19193116893668025
+      },
+      {
+        "links": [
+          1,
+          4
+        ],
+        "initial": 0.06695484857774968,
+        "lower_bound": 0.05393787213434461
+      },
+      {
+        "links": [
+          1,
+          5
+        ],
+        "initial": 0.0407950285294211,
+        "lower_bound": 0.022223791954781857
+      },
+      {
+        "links": [
+          1,
+          6
+        ],
+        "initial": 0.043795323271472925,
+        "lower_bound": 0.021546723154374135
+      },
+      {
+        "links": [
+          2,
+          4
+        ],
+        "initial": 0.019778485184305868,
+        "lower_bound": 0.013194579902650775
+      },
+      {
+        "links": [
+          2,
+          5
+        ],
+        "initial": 0.04443060373330398,
+        "lower_bound": 0.03331005885123998
+      },
+      {
+        "links": [
+          2,
+          6
+        ],
+        "initial": 0.04737469234548239,
+        "lower_bound": 0.03310478011620712
+      },
+      {
+        "links": [
+          3,
+          5
+        ],
+        "initial": 0.1325600633667518,
+        "lower_bound": 0.1256239367628753
+      },
+      {
+        "links": [
+          3,
+          6
+        ],
+        "initial": 0.18479403120123153,
+        "lower_bound": 0.17523653344539206
+      },
+      {
+        "links": [
+          4,
+          6
+        ],
+        "initial": 0.009273293450868435,
+        "lower_bound": 0.005451328318432104
+      }
+    ],
+    "point_motion_bounds": [
+      0.0,
+      0.0013982844653342033,
+      0.00829518317624628,
+      0.011330431953770833,
+      0.02052897289898702,
+      0.027100853561046453,
+      0.03130621329875428
+    ]
+  },
+  "geometry_search": [
+    {
+      "envelope": [
+        0.02,
+        0.02,
+        0.02,
+        0.03,
+        0.03,
+        0.03
+      ],
+      "certificate": {
+        "minimum_desk_clearance": 0.04736417440352854,
+        "per_link_desk_lower": [
+          null,
+          0.04736417440352854,
+          0.07995850389326738,
+          0.11116048402279272,
+          0.1452818998017446,
+          0.08953319445101361
+        ],
+        "site_j3_lower": 0.07229620007223309,
+        "self_distance_lower": 0.003301472931436668,
+        "pair_distances": [
+          {
+            "links": [
+              0,
+              2
+            ],
+            "initial": 0.03492913708767908,
+            "lower_bound": 0.021967913374794264
+          },
+          {
+            "links": [
+              0,
+              3
+            ],
+            "initial": 0.14682355321561957,
+            "lower_bound": 0.12911975328785263
+          },
+          {
+            "links": [
+              0,
+              4
+            ],
+            "initial": 0.11494140692139575,
+            "lower_bound": 0.08286488676672853
+          },
+          {
+            "links": [
+              0,
+              5
+            ],
+            "initial": 0.11825459079799168,
+            "lower_bound": 0.0759095071088566
+          },
+          {
+            "links": [
+              0,
+              6
+            ],
+            "initial": 0.11146571962329932,
+            "lower_bound": 0.06254976134399577
+          },
+          {
+            "links": [
+              1,
+              3
+            ],
+            "initial": 0.19767674890517692,
+            "lower_bound": 0.18869928020440088
+          },
+          {
+            "links": [
+              1,
+              4
+            ],
+            "initial": 0.06695484857774968,
+            "lower_bound": 0.046615822884929256
+          },
+          {
+            "links": [
+              1,
+              5
+            ],
+            "initial": 0.0407950285294211,
+            "lower_bound": 0.011777471381547285
+          },
+          {
+            "links": [
+              1,
+              6
+            ],
+            "initial": 0.043795323271472925,
+            "lower_bound": 0.009031885588506074
+          },
+          {
+            "links": [
+              2,
+              4
+            ],
+            "initial": 0.019778485184305868,
+            "lower_bound": 0.009491133181719787
+          },
+          {
+            "links": [
+              2,
+              5
+            ],
+            "initial": 0.04443060373330398,
+            "lower_bound": 0.027054752355078978
+          },
+          {
+            "links": [
+              2,
+              6
+            ],
+            "initial": 0.04737469234548239,
+            "lower_bound": 0.02507795448723978
+          },
+          {
+            "links": [
+              3,
+              5
+            ],
+            "initial": 0.1325600633667518,
+            "lower_bound": 0.12172236554819481
+          },
+          {
+            "links": [
+              3,
+              6
+            ],
+            "initial": 0.18479403120123153,
+            "lower_bound": 0.16986044095773237
+          },
+          {
+            "links": [
+              4,
+              6
+            ],
+            "initial": 0.009273293450868435,
+            "lower_bound": 0.003301472931436668
+          }
+        ],
+        "point_motion_bounds": [
+          0.0,
+          0.0021848194770846927,
+          0.012961223712884813,
+          0.01770379992776693,
+          0.03207652015466722,
+          0.04234508368913508,
+          0.04891595827930355
+        ]
+      }
+    },
+    {
+      "envelope": [
+        0.016,
+        0.016,
+        0.016,
+        0.024,
+        0.024,
+        0.024
+      ],
+      "certificate": {
+        "minimum_desk_clearance": 0.050510403650193006,
+        "per_link_desk_lower": [
+          null,
+          0.050510403650193006,
+          0.08349926387882076,
+          0.1177374783194818,
+          0.15375091653957162,
+          null
+        ],
+        "site_j3_lower": 0.07583696005778646,
+        "self_distance_lower": 0.004495837035323021,
+        "pair_distances": [
+          {
+            "links": [
+              0,
+              2
+            ],
+            "initial": 0.03492913708767908,
+            "lower_bound": 0.02456015811737123
+          },
+          {
+            "links": [
+              0,
+              3
+            ],
+            "initial": 0.14682355321561957,
+            "lower_bound": 0.13266051327340603
+          },
+          {
+            "links": [
+              0,
+              4
+            ],
+            "initial": 0.11494140692139575,
+            "lower_bound": 0.08928019079766197
+          },
+          {
+            "links": [
+              0,
+              5
+            ],
+            "initial": 0.11825459079799168,
+            "lower_bound": 0.08437852384668361
+          },
+          {
+            "links": [
+              0,
+              6
+            ],
+            "initial": 0.11146571962329932,
+            "lower_bound": 0.07233295299985648
+          },
+          {
+            "links": [
+              1,
+              3
+            ],
+            "initial": 0.19767674890517692,
+            "lower_bound": 0.19049477394455608
+          },
+          {
+            "links": [
+              1,
+              4
+            ],
+            "initial": 0.06695484857774968,
+            "lower_bound": 0.05068362802349334
+          },
+          {
+            "links": [
+              1,
+              5
+            ],
+            "initial": 0.0407950285294211,
+            "lower_bound": 0.017580982811122046
+          },
+          {
+            "links": [
+              1,
+              6
+            ],
+            "initial": 0.043795323271472925,
+            "lower_bound": 0.015984573125099443
+          },
+          {
+            "links": [
+              2,
+              4
+            ],
+            "initial": 0.019778485184305868,
+            "lower_bound": 0.011548603582237003
+          },
+          {
+            "links": [
+              2,
+              5
+            ],
+            "initial": 0.04443060373330398,
+            "lower_bound": 0.030529922630723978
+          },
+          {
+            "links": [
+              2,
+              6
+            ],
+            "initial": 0.04737469234548239,
+            "lower_bound": 0.029537302058888302
+          },
+          {
+            "links": [
+              3,
+              5
+            ],
+            "initial": 0.1325600633667518,
+            "lower_bound": 0.1238899051119062
+          },
+          {
+            "links": [
+              3,
+              6
+            ],
+            "initial": 0.18479403120123153,
+            "lower_bound": 0.1728471590064322
+          },
+          {
+            "links": [
+              4,
+              6
+            ],
+            "initial": 0.009273293450868435,
+            "lower_bound": 0.004495837035323021
+          }
+        ],
+        "point_motion_bounds": [
+          0.0,
+          0.001747855581667754,
+          0.010368978970307849,
+          0.014163039942213542,
+          0.025661216123733774,
+          0.03387606695130807,
+          0.03913276662344284
+        ]
+      }
+    },
+    {
+      "envelope": [
+        0.0128,
+        0.0128,
+        0.0128,
+        0.019200000000000002,
+        0.019200000000000002,
+        0.019200000000000002
+      ],
+      "certificate": {
+        "minimum_desk_clearance": 0.05302738704752458,
+        "per_link_desk_lower": [
+          null,
+          0.05302738704752458,
+          0.08633187186726347,
+          0.12315676399486687,
+          0.16052612992983323,
+          null
+        ],
+        "site_j3_lower": 0.07866956804622918,
+        "self_distance_lower": 0.005451328318432104,
+        "pair_distances": [
+          {
+            "links": [
+              0,
+              2
+            ],
+            "initial": 0.03492913708767908,
+            "lower_bound": 0.0266339539114328
+          },
+          {
+            "links": [
+              0,
+              3
+            ],
+            "initial": 0.14682355321561957,
+            "lower_bound": 0.13549312126184873
+          },
+          {
+            "links": [
+              0,
+              4
+            ],
+            "initial": 0.11494140692139575,
+            "lower_bound": 0.09441243402240873
+          },
+          {
+            "links": [
+              0,
+              5
+            ],
+            "initial": 0.11825459079799168,
+            "lower_bound": 0.09115373723694523
+          },
+          {
+            "links": [
+              0,
+              6
+            ],
+            "initial": 0.11146571962329932,
+            "lower_bound": 0.08015950632454505
+          },
+          {
+            "links": [
+              1,
+              3
+            ],
+            "initial": 0.19767674890517692,
+            "lower_bound": 0.19193116893668025
+          },
+          {
+            "links": [
+              1,
+              4
+            ],
+            "initial": 0.06695484857774968,
+            "lower_bound": 0.05393787213434461
+          },
+          {
+            "links": [
+              1,
+              5
+            ],
+            "initial": 0.0407950285294211,
+            "lower_bound": 0.022223791954781857
+          },
+          {
+            "links": [
+              1,
+              6
+            ],
+            "initial": 0.043795323271472925,
+            "lower_bound": 0.021546723154374135
+          },
+          {
+            "links": [
+              2,
+              4
+            ],
+            "initial": 0.019778485184305868,
+            "lower_bound": 0.013194579902650775
+          },
+          {
+            "links": [
+              2,
+              5
+            ],
+            "initial": 0.04443060373330398,
+            "lower_bound": 0.03331005885123998
+          },
+          {
+            "links": [
+              2,
+              6
+            ],
+            "initial": 0.04737469234548239,
+            "lower_bound": 0.03310478011620712
+          },
+          {
+            "links": [
+              3,
+              5
+            ],
+            "initial": 0.1325600633667518,
+            "lower_bound": 0.1256239367628753
+          },
+          {
+            "links": [
+              3,
+              6
+            ],
+            "initial": 0.18479403120123153,
+            "lower_bound": 0.17523653344539206
+          },
+          {
+            "links": [
+              4,
+              6
+            ],
+            "initial": 0.009273293450868435,
+            "lower_bound": 0.005451328318432104
+          }
+        ],
+        "point_motion_bounds": [
+          0.0,
+          0.0013982844653342033,
+          0.00829518317624628,
+          0.011330431953770833,
+          0.02052897289898702,
+          0.027100853561046453,
+          0.03130621329875428
+        ]
+      }
+    }
+  ],
+  "geometry_method": "triangle plane clipping + continuous conservative joint box; nonadjacent exact mesh distances minus relative motion bounds",
+  "scene_assumptions": "author horizontal desk z=0 x<=0.02 in URDF base; full link meshes; J3 ~10cm site clearance with 1cm estimate reserve; use smaller bound; scene clear/no tool per user",
+  "unknowns": [
+    "current board 0x12 scale/sign",
+    "board total saturation",
+    "exit persistent state"
+  ],
+  "active_motion_target": "fresh q_start; never a changed position setpoint",
+  "restore_method": "keep the already-commanded q_start continuous; wait for verified near-start stable feedback, no unnecessary reference excursion"
+}

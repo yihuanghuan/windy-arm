@@ -1,0 +1,265 @@
+{
+  "hashes": {
+    "gravity_tuning_runner.py": "8fded896c1dc9baaf4897f685c76196e249c1cf84b84079e3e425360e96acd12",
+    "gravity_comm.py": "015052fd5393a6e98a0edab9405b7069e4ec9c500422e2077184d7ac48d67f0c",
+    "gravity_tuning_policy.py": "c046050fc96471b38b8330bf2be06e5447ea7d0de652cbbb9b813ac236931c9b",
+    "bounded_gravity_bringup.py": "99ca10f23315ac7504296550979543303ee6b499c1877b8f3120ff4a626dd84f",
+    "arm6.urdf": "60cbb80ad234f5bb5d55c53d0d77853b04ab33f8a4c1bb3d79889586201b1166"
+  },
+  "q_geometry_center": [
+    -0.02422332763671875,
+    1.3620586395263672,
+    -1.4059276580810547,
+    -0.0005750656127929688,
+    0.010549545288085938,
+    0.002109527587890625
+  ],
+  "envelope": [
+    0.013639504500000003,
+    0.011796480000000007,
+    0.011796480000000007,
+    0.063180315,
+    0.025670713500000004,
+    0.018874368000000006
+  ],
+  "lower": [
+    -4.0,
+    -3.14,
+    -1.57,
+    -4.0,
+    -2.0,
+    -4.0
+  ],
+  "upper": [
+    4.0,
+    1.57,
+    1.57,
+    4.0,
+    2.0,
+    4.0
+  ],
+  "certificate": {
+    "minimum_desk_clearance": 0.05312194952380553,
+    "per_link_desk_lower": [
+      null,
+      0.05312194952380553,
+      0.0861841991314444,
+      0.12051831181609374,
+      0.15415202089977523,
+      0.10015415741575778
+    ],
+    "site_j3_lower": 0.07875373179908185,
+    "self_distance_lower": 0.004527256839386935,
+    "pair_distances": [
+      {
+        "links": [
+          0,
+          2
+        ],
+        "initial": 0.03486549024734875,
+        "lower_bound": 0.026545777886182217
+      },
+      {
+        "links": [
+          0,
+          3
+        ],
+        "initial": 0.14662771863848162,
+        "lower_bound": 0.13538145043756344
+      },
+      {
+        "links": [
+          0,
+          4
+        ],
+        "initial": 0.12036036251512401,
+        "lower_bound": 0.0922639673599791
+      },
+      {
+        "links": [
+          0,
+          5
+        ],
+        "initial": 0.12427317922840288,
+        "lower_bound": 0.0855296839871557
+      },
+      {
+        "links": [
+          0,
+          6
+        ],
+        "initial": 0.11717256988754772,
+        "lower_bound": 0.0722083794799982
+      },
+      {
+        "links": [
+          1,
+          3
+        ],
+        "initial": 0.1975746625474582,
+        "lower_bound": 0.19227953604849166
+      },
+      {
+        "links": [
+          1,
+          4
+        ],
+        "initial": 0.07200599446973759,
+        "lower_bound": 0.05191427974114691
+      },
+      {
+        "links": [
+          1,
+          5
+        ],
+        "initial": 0.047863105784111536,
+        "lower_bound": 0.018208653454534488
+      },
+      {
+        "links": [
+          1,
+          6
+        ],
+        "initial": 0.0508631207269824,
+        "lower_bound": 0.015550598737436742
+      },
+      {
+        "links": [
+          2,
+          4
+        ],
+        "initial": 0.019741242500400977,
+        "lower_bound": 0.0055782461544790825
+      },
+      {
+        "links": [
+          2,
+          5
+        ],
+        "initial": 0.05100192179770418,
+        "lower_bound": 0.02821402693200448
+      },
+      {
+        "links": [
+          2,
+          6
+        ],
+        "initial": 0.053897557626510585,
+        "lower_bound": 0.025938194394383083
+      },
+      {
+        "links": [
+          3,
+          5
+        ],
+        "initial": 0.1325594972541428,
+        "lower_bound": 0.11362796227362071
+      },
+      {
+        "links": [
+          3,
+          6
+        ],
+        "initial": 0.1847586907873105,
+        "lower_bound": 0.16114228873390143
+      },
+      {
+        "links": [
+          4,
+          6
+        ],
+        "initial": 0.009270077755327942,
+        "lower_bound": 0.004527256839386935
+      }
+    ],
+    "point_motion_bounds": [
+      0.0,
+      0.001489992754469216,
+      0.008319712361166534,
+      0.011246268200918168,
+      0.0280963951551449,
+      0.03874349524124718,
+      0.044964190407549516
+    ]
+  },
+  "mesh_hashes": [
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link1.STL",
+      "sha256": "1adf0eb712e6ec165c49ef77e7d3d5edf194fea8749c78782386c234078fb5dc"
+    },
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link2.STL",
+      "sha256": "71e0dd78a79567d3728f819290b119e93d5bfc71046f8807cc9cc7f61f15e327"
+    },
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link3.STL",
+      "sha256": "2a651b16128a82b88a40ee66b46adbb7d84b880643f8b6ad849f9ec801b81aef"
+    },
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link4.STL",
+      "sha256": "a6bd7a3b3f40c7de714ca5dba8bbee0149f22d5a107ac93907b1c9076f107f4e"
+    },
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link5.STL",
+      "sha256": "097df5e2f8f6c25244c18a8a633347fc1a697c7458d063f4fbfd1679a08ce7d5"
+    },
+    {
+      "path": "/home/yihuang/westlake/windy-arm/src/dummy_description/meshes/arm/A-L1-GAMMA/Link6.STL",
+      "sha256": "ba0af792c391252ce9cdedbb9cf763633a84978654d4b1c3f2852143781a670f"
+    }
+  ],
+  "lambda_value": 0.95,
+  "kp": [
+    30,
+    30,
+    30,
+    5,
+    5,
+    5
+  ],
+  "kd": [
+    1.0,
+    1.0,
+    1.0,
+    0.1,
+    0.1,
+    0.1
+  ],
+  "g_preview": [
+    0.2236271515531012,
+    -2.1759355375825473,
+    1.0278655287021614,
+    0.0025978427920281006,
+    -0.0041865362480094405,
+    0.00011243370889057509
+  ],
+  "static_error_preview": [
+    0.000372711919255169,
+    0.003626559229304249,
+    0.0017131092145036039,
+    2.597842792028103e-05,
+    4.186536248009444e-05,
+    1.1243370889057519e-06
+  ],
+  "duration_s": 0.2,
+  "critical_age_limit": 0.026,
+  "control_period_s": 0.01,
+  "restore_tolerance": [
+    0.01,
+    0.01,
+    0.01,
+    0.015,
+    0.015,
+    0.015
+  ],
+  "restore_method": "q_start is already the reference; retain it continuously while settling; no target excursion",
+  "maximum_settle_extension_s": 0.5,
+  "scene_assumptions": "URDF/base/desk z=0 x<=0.02; user J3 approx10cm/no tool/clear workspace; conservative minimum",
+  "unknowns": [
+    "firmware version",
+    "0x12 physical scale/sign",
+    "board saturation",
+    "persistent state",
+    "disconnect behavior"
+  ]
+}

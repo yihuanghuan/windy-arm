@@ -1,0 +1,26 @@
+{
+  "old_sha256": "7a7cffcd7c71050a453b8adac2987207ebc6c64cadea6dfeb1802ea3c9e82505",
+  "new_sha256": "99ca10f23315ac7504296550979543303ee6b499c1877b8f3120ff4a626dd84f",
+  "change": "Compact terminal output; full durable snapshot unchanged; add timing instrumentation",
+  "old_terminal": "Full pretty JSON",
+  "new_terminal": "Snapshot path, lambda, q and feedforward only",
+  "control_parameters_changed": false,
+  "guard_or_frequency_changed": false,
+  "prior_tx_bytes": 0,
+  "disk_fsync_probe_ms": "0.65 to 0.97; initial delay cause investigated by timing instrumentation",
+  "diff": [
+    "--- \n",
+    "+++ \n",
+    "@@ -1,2 +1,9 @@\n",
+    "-                persist(str(log_path)+'.pre_send.json',snap);print(json.dumps(snap,indent=2),flush=True)",
+    "+                audit_t0=time.monotonic()",
+    "+                persist(str(log_path)+'.pre_send.json',snap)",
+    "                 emit(dict(kind='PRE_SEND_SNAPSHOT',snapshot=snap));os.fsync(log.fileno())",
+    "+                audit_t1=time.monotonic()",
+    "+                # Full audit remains durable; avoid a multi-kilobyte PTY burst on the TX path.",
+    "+                print('PRE_SEND_SNAPSHOT saved: '+str(log_path)+'.pre_send.json; lambda='+str(mon.lam)+",
+    "+                      '; q='+str(mon.q0.tolist())+'; ff='+str(mon.ff.tolist()),flush=True)",
+    "+                emit(dict(kind='AUDIT_LOG_TIMING',persist_seconds=audit_t1-audit_t0,",
+    "+                          terminal_seconds=time.monotonic()-audit_t1))"
+  ]
+}

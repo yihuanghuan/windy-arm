@@ -1,0 +1,8 @@
+{
+  "readonly_operator_confirmation": "All real joint movements agree with RViz; J4/J5/J6 resist but can move slightly. Full 5–15 degree measurement on J6 not established by recorder.",
+  "run01_contact": "Operator confirmed manual push before abort; no drop after fault.",
+  "run02_authorization": "Operator explicitly authorized continuation after run01 fault; controller parameters unchanged.",
+  "active_configuration_changes": false,
+  "run02_contact": "Operator confirmed pushing J1 at abort; no drop after fault.",
+  "manual_feel": "Operator pushed all joints except J6; substantial resistance and return toward original pose. Run02 GUIDE trace shows only J1 appreciably moved before abort. Subsequent PD fault hold has Kp [30,30,30,5,5,5], so that resistance/return cannot certify or refute GUIDE manual feel."
+}

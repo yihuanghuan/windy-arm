@@ -1,0 +1,39 @@
+src/real_arm_readonly/test/test_protocol.py:38:def test_bad_data_and_nonphysical_channel():
+src/real_arm_readonly/test/test_protocol.py:102:def test_all_seven_wire_slots_are_retained_for_audit():
+src/real_arm_readonly/real_arm_readonly/protocol.py:60:            if not all(math.isfinite(v) for v in values[:6]):
+src/real_arm_readonly/real_arm_readonly/protocol.py:63:            frames.append((cmd, values[:6]))
+src/real_arm_readonly/real_arm_readonly/protocol.py:73:        signed = [s * v for s, v in zip(SIGNS, values)]
+src/real_arm_readonly/real_arm_readonly/protocol.py:78:                      for p, v in zip(self.previous, signed)]
+src/real_arm_readonly/real_arm_readonly/protocol.py:84:        return [s * v for s, v in zip(SIGNS, values)]
+src/real_arm_readonly/README.md:79:用户确认上一轮无实体运动后，已离线检查全部七槽位、完成新只读规则并重采16.00054s。旧速度单帧硬停已由 `ReadGuard` 的Warning/持续性与位移一致性规则替代。全部原始七槽位、chunk主机时间戳均保留。index5持续四项全零，index6固定异常值与历史记载吻合；没有改映射。为避免把缺失joint6当真实零角，审计入口在这种情况下完成纯接收后关闭，不进入ROS发布。`channel5_nonzero_observed` 只是否决全零占位的最低检查，非充分的电机在线认证。详见 `docs/real_arm_audit_20260917/RECHECK_REPORT.md`。
+src/real_arm_readonly/real_arm_readonly/analyze_capture.py:1:"""Offline seven-slot analysis; never imports serial/ROS or opens hardware."""
+src/real_arm_readonly/real_arm_readonly/analyze_capture.py:31:    return list(zip(starts.tolist(),ends.tolist()))
+src/real_arm_readonly/real_arm_readonly/analyze_capture.py:44:    result={'time_basis':'No per-frame timestamps in old capture/strace. Uniform sequence time is approximate; durations and lags are estimates, not measured device time.', 'duration':duration,'estimated_dt':dt,'raw_channels':[], 'signed_joint_velocity_stats':[], 'alignment':[], 'cross_channel_velocity_correlations':[]}
+src/real_arm_readonly/real_arm_readonly/analyze_capture.py:47:            w=csv.writer(f);w.writerow(['index','estimated_time_sec']+[f'channel{i}' for i in range(7)])
+src/real_arm_readonly/real_arm_readonly/analyze_capture.py:50:        item={'channel':ch}
+src/real_arm_readonly/real_arm_readonly/analyze_capture.py:53:        result['raw_channels'].append(item)
+src/real_arm_readonly/real_arm_readonly/analyze_capture.py:56:    for j in range(6):
+src/real_arm_readonly/real_arm_readonly/analyze_capture.py:73:        result['cross_channel_velocity_correlations'].append([corr(x,v[:,k]) for k in range(6)])
+src/real_arm_readonly/real_arm_readonly/analyze_capture.py:80:    print('Seven raw channels:');print(json.dumps(r['raw_channels'],indent=2))
+src/real_arm_readonly/real_arm_readonly/analyze_capture.py:85:    print('alignment:',r['alignment']);print('cross correlations:',r['cross_channel_velocity_correlations'])
+src/real_arm_readonly/real_arm_readonly/feedback_node.py:19:        self.declare_parameter('port', '/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0')
+src/real_arm_readonly/real_arm_readonly/read_guard.py:19:            return 'nonfinite physical-channel feedback'
+src/real_arm_readonly/real_arm_readonly/read_guard.py:34:            if self.last is not None and max(abs(a-b) for a,b in zip(values,self.last)) > .02:
+src/real_arm_readonly/real_arm_readonly/read_guard.py:36:            if max(abs(a-b) for a,b in zip(values,self.first)) > .02:
+src/real_arm_readonly/real_arm_readonly/read_guard.py:44:                    for j in range(6):
+src/real_arm_readonly/real_arm_readonly/read_guard.py:46:                        changes=[b[1][j]-a[1][j] for a,b in zip(self.positions,list(self.positions)[1:])]
+src/real_arm_readonly/setup.py:6:        ('share/ament_index/resource_index/packages', ['resource/real_arm_readonly']),
+src/real_arm_readonly/setup.py:14:    install_requires=['setuptools'], zip_safe=True,
+src/real_arm_readonly/real_arm_readonly/live_audit.py:33:    channel5_nonzero = False
+src/real_arm_readonly/real_arm_readonly/live_audit.py:62:                    raw_7_channel_ranges=raw_ranges, warnings_by_joint=guard.warnings,
+src/real_arm_readonly/real_arm_readonly/live_audit.py:65:                    channel5_nonzero_observed=channel5_nonzero,
+src/real_arm_readonly/real_arm_readonly/live_audit.py:105:                    raise RuntimeError('STOP: nonfinite raw protocol slot')
+src/real_arm_readonly/real_arm_readonly/live_audit.py:113:                    raw_ranges[key]['min']=[min(a,b) for a,b in zip(raw_ranges[key]['min'],raw_values)]
+src/real_arm_readonly/real_arm_readonly/live_audit.py:114:                    raw_ranges[key]['max']=[max(a,b) for a,b in zip(raw_ranges[key]['max'],raw_values)]
+src/real_arm_readonly/real_arm_readonly/live_audit.py:116:                    channel5_nonzero=True
+src/real_arm_readonly/real_arm_readonly/live_audit.py:129:                        for i in range(6):
+src/real_arm_readonly/real_arm_readonly/live_audit.py:138:                    q_min = [min(a,b) for a,b in zip(q_min,q)]
+src/real_arm_readonly/real_arm_readonly/live_audit.py:139:                    q_max = [max(a,b) for a,b in zip(q_max,q)]
+src/real_arm_readonly/real_arm_readonly/live_audit.py:158:                print('OBSERVATION COMPLETE: '+json.dumps({'elapsed_sec':observation['elapsed_sec'],'counts':observation['counts'],'warnings':guard.warnings,'channel5_nonzero':channel5_nonzero}), flush=True)
+src/real_arm_readonly/real_arm_readonly/live_audit.py:159:                if not channel5_nonzero:
+src/real_arm_readonly/real_arm_readonly/live_audit.py:160:                    reason='completed raw observation; ROS withheld: channel5 all-zero telemetry validity unresolved'

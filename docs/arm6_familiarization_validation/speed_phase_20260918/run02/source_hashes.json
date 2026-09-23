@@ -1,0 +1,9 @@
+{
+  "src/arm-platform/config/arm6.urdf": "60cbb80ad234f5bb5d55c53d0d77853b04ab33f8a4c1bb3d79889586201b1166",
+  "src/arm-platform/config/arm6_familiarization.yaml": "987eb3895a46f38b616d7b47e66e584f51040b834141d33aa3c2900983853a5b",
+  "src/arm-platform/task_space_smc/core/manual_guidance.py": "5754f10b04f76497be8f4767f8c6296a6ff647418675c3c2a4383e15e8b04878",
+  "src/arm-platform/task_space_smc/core/speed_safety.py": "07f739bd46572a6acbc721802c135bd72c1fffdd8fadadbd2a60b0b306bdab11",
+  "src/arm-platform/task_space_smc/hw/manual_guidance.py": "b2ffb0c6e9bf7eb097345f2970fe63117a1a9e11070ff570cd1074147290dfa5",
+  "src/arm-platform/src/ros_nodes/student_arm_node.cc": "cd24ab0d8c33929d829c2611757b4fb56e371691ae0fb436f2baccf5d6c0a84f",
+  "src/arm-platform/include/manipulator/ros_nodes/speed_safety.h": "e5aba0c6bb102578fa5d730ee4191a4519e417741a9390737799a5686c27f0b5"
+}

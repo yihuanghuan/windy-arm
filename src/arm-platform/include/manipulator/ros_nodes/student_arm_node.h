@@ -12,6 +12,10 @@
 #include <manipulator/robotics/arm_data_subscriber.h>
 #include <manipulator/robotics/arm_platform.h>
 #include <manipulator/controller/gravity_controller.h>
+#include <manipulator/ros_nodes/speed_safety.h>
+#include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/u_int8.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 namespace manipulator {
 
@@ -58,6 +62,12 @@ class StudentArmNode : public rclcpp::Node, public IArmDataSubscriber {
       bool include_gravity = true);
   std::vector<double> ComputeHoldGravityCurrent();
   void ExecuteEffortGuarded(const dummy_interface::msg::MotorControl& cmd);
+  bool FeedbackSafe() const;
+  void UpdateSpeedSafety();
+  void PublishAppliedCommand(const dummy_interface::msg::MotorControl& cmd);
+  void UpdateNoTouchGate();
+  void SetupHandover();
+  void MaskUnsafeHoldFeedforward(dummy_interface::msg::MotorControl& hold) const;
 
  public:
   /**
@@ -124,6 +134,34 @@ class StudentArmNode : public rclcpp::Node, public IArmDataSubscriber {
   std::vector<double> joint_upper_limits_;
   std::vector<double> last_known_position_;
   size_t joint_count_ = 7;
+  bool read_only_ = false;
+  bool familiarization_mode_ = false;
+  bool wait_for_first_effort_command_ = false;
+  bool feedback_fault_latched_ = false;
+  bool motor_command_sent_ = false;
+  std::vector<double> last_sent_effort_;
+  double feedback_timeout_sec_ = 0.05;
+  double feedback_velocity_limit_ = 0.5;
+  std::vector<double> last_known_velocity_;
+  std::unique_ptr<SpeedSafety> speed_safety_;
+  bool last_output_guide_ = false;
+  size_t speed_feedback_generation_ = 0;
+  std::array<bool, 6> speed_fault_axes_{};
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_speed_safety_;
+  rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr sub_speed_fault_;
+  bool bumpless_handover_ = false, operator_hold_ = false, awaiting_handover_ = false;
+  bool manual_push_active_ = false, trial_counted_ = false, has_seed_ = false;
+  double prepare_stamp_ = 0., quiet_since_ = -1.;
+  double quiet_duration_ = 0., quiet_tolerance_ = 0., quiet_speed_ = 0.;
+  double handover_joint_margin_ = 0.;
+  int completed_handovers_ = 0, required_handovers_ = 3;
+  std::vector<double> quiet_q_, seed_expected_q_;
+  double initial_hold_position_tolerance_ = .03;
+  dummy_interface::msg::MotorControl last_applied_command_, initial_hold_command_, expected_first_command_;
+  std::vector<double> previous_total_;
+  rclcpp::Publisher<dummy_interface::msg::MotorControl>::SharedPtr pub_applied_command_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_support_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr prepare_service_, operator_hold_service_, manual_service_;
 
   bool got_command_ = false;
   bool holding_ = false;

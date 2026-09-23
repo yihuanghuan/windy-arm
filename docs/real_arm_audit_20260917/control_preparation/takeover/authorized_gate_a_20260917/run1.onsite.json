@@ -1,0 +1,12 @@
+{
+  "onsite_observation": "User confirmed: joint2 appeared to move downward slightly; no other abnormal phenomena observed.",
+  "onsite_abnormality": true,
+  "motion_assessment": {
+    "jump": "No large instantaneous encoder step; small real downward joint2 movement confirmed on site.",
+    "unidirectional_drift": "Joint2 late samples increased monotonically during the short observed post-TX interval; guard triggered. Long-term drift unobserved.",
+    "acceleration": "Joint2 protocol velocity rose during several samples; insufficient duration to establish sustained acceleration.",
+    "oscillation": "No sustained oscillation established; 30.7ms post-TX coverage is insufficient to exclude it.",
+    "communication": "No checksum/malformed/nonfinite/stale detected in saved window.",
+    "guard_margin": "50ms displacement guard exceeded, joint2 ratio 1.243781095. This is a real guard abort, not a logging failure."
+  }
+}

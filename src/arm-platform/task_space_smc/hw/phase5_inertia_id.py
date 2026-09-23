@@ -39,6 +39,7 @@ from task_space_smc.hw.phase4_gravity_compensation import (
     desk_margin, BASE_P, BASE_D,
 )
 from task_space_smc.core.model import load_arm6_calibration
+from task_space_smc.core.gravity_semantics import explicit_offsets, urdf_feedforward
 
 OUT = Path(__file__).resolve().parent / "data" / "phase5"
 
@@ -57,12 +58,12 @@ DESK_MARGIN_MIN = 0.10
 
 
 class InertiaId(Node):
-    def __init__(self, calibration_yaml: str | None = None):
+    def __init__(self, calibration_yaml: str | None = None, model_zero_offset_rad=None):
         super().__init__("phase5_inertia_id")
         self.model = GravityModel()
         cal = load_arm6_calibration(calibration_yaml)
-        self.offset = np.array(cal["zero_offset_rad"], dtype=float)
-        self.ratio = np.array(cal["first_moment_ratio"], dtype=float)
+        self.offset = explicit_offsets(N_ARM, model_zero_offset_rad)
+        self.ratio = np.ones(N_ARM)
         self.stiction = np.array(cal["stiction_nm"], dtype=float)
         self.cal_source = cal["source"]
         self.q = None
@@ -90,7 +91,7 @@ class InertiaId(Node):
         self.stamp = time.time()
 
     def feedforward(self, q):
-        return self.model.gravity(np.asarray(q, float) + self.offset) * self.ratio
+        return urdf_feedforward(self.model, q, self.offset)
 
     def send(self, posture, kp, kd, tff):
         msg = MotorControl()
@@ -434,6 +435,8 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--joints', default='2')
+    ap.add_argument('--model-zero-offset-rad', nargs=6, type=float, default=None,
+                    help='Explicit verified model offsets; defaults to zero')
     ap.add_argument('--calibration-yaml', default=None,
                     help='candidate arm6 calibration YAML used for feedforward/stiction')
     ap.add_argument('--posture', default=None, help='逗号分隔的 6 个安全初始角度')
@@ -469,7 +472,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime('%Y%m%d_%H%M%S')
     rclpy.init()
-    node = InertiaId(args.calibration_yaml)
+    node = InertiaId(args.calibration_yaml, args.model_zero_offset_rad)
     results = []
     try:
         if not node.wait_state():

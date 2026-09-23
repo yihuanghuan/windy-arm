@@ -1,6 +1,9 @@
 #include <manipulator/robotics/protocol/protocol_v1.h>
 #include <cstring>
 #include <limits>
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
 
 namespace manipulator::protocol {
 
@@ -8,6 +11,25 @@ ProtocolV1::ProtocolV1() : positions_(7), velocities_(7), currents_(7),
   temperatures_(7), voltages_(7), desired_positions_(7), desired_velocities_(7),
   desired_currents_(7), desired_kps_(7), desired_kds_(7) {
 
+}
+
+void ProtocolV1::SetActiveMotorCount(size_t count) {
+  if (count == 0 || count > 7) throw std::invalid_argument("invalid motor count");
+  active_motor_count_ = count;
+}
+
+uint64_t ProtocolV1::GetFeedbackSequence() const {
+  return std::min({feedback_count_[0], feedback_count_[1], feedback_count_[2]});
+}
+
+bool ProtocolV1::HasFreshFeedback(double timeout_sec) const {
+  const auto now = std::chrono::steady_clock::now();
+  for (size_t i = 0; i < 3; ++i) {
+    if (!feedback_count_[i] ||
+        std::chrono::duration<double>(now - feedback_stamp_[i]).count() > timeout_sec)
+      return false;
+  }
+  return true;
 }
 
 void ProtocolV1::Pop(std::vector<uint8_t>& out) {
@@ -113,8 +135,23 @@ void ProtocolV1::DecodeFrame() {
   if (sum != recv_.sumCheck || add != recv_.addCheck)
     return;
 
+  const bool floats = recv_.cmd >= 0x20 && recv_.cmd <= 0x23;
+  if ((floats && recv_.dataLen != 28) ||
+      (recv_.cmd == 0x24 && recv_.dataLen != 14) ||
+      (recv_.cmd == 0x01 && recv_.dataLen != 1)) return;
+  if (floats) {
+    for (size_t i = 0; i < active_motor_count_; ++i) {
+      float value;
+      std::memcpy(&value, recv_.dataBuf + i * sizeof(float), sizeof(float));
+      if (!std::isfinite(value)) {
+        if (recv_.cmd <= 0x22) feedback_stamp_[recv_.cmd - 0x20] = {};
+        return;
+      }
+    }
+  }
+
   switch (recv_.cmd) {
-    case 0x01: DecodeHeartbeat(); break;
+    case 0x01: DecodeHeartbeat(); return;
     case 0x20: DecodePosition(); break;
     case 0x21: DecodeVelocity(); break;
     case 0x22: DecodeCurrent(); break;
@@ -125,9 +162,13 @@ void ProtocolV1::DecodeFrame() {
       // Counted rather than interpreted so firmware changes stay visible.
       unhandled_frame_count_++;
       last_unhandled_cmd_ = recv_.cmd;
-      break;
+      return;
   }
-
+  if (recv_.cmd >= 0x20 && recv_.cmd <= 0x22) {
+    const size_t index = recv_.cmd - 0x20;
+    ++feedback_count_[index];
+    feedback_stamp_[index] = std::chrono::steady_clock::now();
+  }
   Notify();
 }
 

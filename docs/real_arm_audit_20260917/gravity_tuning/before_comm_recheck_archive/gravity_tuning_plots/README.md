@@ -1,0 +1,1 @@
+No active run occurred in this session. Historical replay and offline predictions are labeled explicitly. There is no current-run motion/drift plot because qualification stopped at the first received chunk.

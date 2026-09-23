@@ -1,0 +1,17 @@
+Internal ctest changing into directory: /tmp/windy-arm6-handover-build/manipulator
+Test project /tmp/windy-arm6-handover-build/manipulator
+    Start 1: test_torque_sim_arm
+1/4 Test #1: test_torque_sim_arm ..............   Passed    0.05 sec
+    Start 2: test_arm6_config
+2/4 Test #2: test_arm6_config .................   Passed    0.05 sec
+    Start 3: test_protocol_heartbeat
+3/4 Test #3: test_protocol_heartbeat ..........   Passed    0.05 sec
+    Start 4: test_effort_safety
+4/4 Test #4: test_effort_safety ...............   Passed    0.04 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Label Time Summary:
+gtest    =   0.18 sec*proc (4 tests)
+
+Total Test time (real) =   0.19 sec

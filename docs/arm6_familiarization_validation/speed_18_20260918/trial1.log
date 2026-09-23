@@ -1,0 +1,6 @@
+[INFO] [1789720270.482908199] [arm6_manual_guidance]: gravity = g_arm6(q + explicit_offset), ratio=1; damping only in MIT Kd
+[INFO] [1789720270.512243761] [arm6_manual_guidance]: ACTIVE HANDOVER_START
+[INFO] [1789720270.522005884] [arm6_manual_guidance]: ACTIVE HANDOVER_GRAVITY_MATCH
+[INFO] [1789720273.512273715] [arm6_manual_guidance]: ACTIVE KP_WITHDRAWAL
+[INFO] [1789720276.522133031] [arm6_manual_guidance]: ACTIVE GUIDE
+[INFO] [1789720297.273979635] [arm6_manual_guidance]: HOLD: operator stop acknowledged

@@ -1,0 +1,51 @@
+[INFO] [1789718814.899011768] [arm6_manual_guidance]: gravity = g_arm6(q + explicit_offset), ratio=1; damping only in MIT Kd
+[INFO] [1789718814.927062385] [arm6_manual_guidance]: ACTIVE HANDOVER_START
+[INFO] [1789718814.937040275] [arm6_manual_guidance]: ACTIVE HANDOVER_GRAVITY_MATCH
+[INFO] [1789718817.927230742] [arm6_manual_guidance]: ACTIVE KP_WITHDRAWAL
+[INFO] [1789718820.927019661] [arm6_manual_guidance]: ACTIVE GUIDE
+[INFO] [1789718879.595234829] [arm6_manual_guidance]: MANUAL_PUSH: operator request acknowledged by driver
+[INFO] [1789718879.597034741] [arm6_manual_guidance]: ACTIVE MANUAL_PUSH
+[WARN] [1789718984.457149423] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=0.964592
+[WARN] [1789719056.387189190] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.915752
+[WARN] [1789719056.677010132] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.989010
+[WARN] [1789719059.356975540] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=0.866909
+[WARN] [1789719060.717067760] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=0.842491
+[WARN] [1789719061.147088205] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=0.818069
+[WARN] [1789719063.907009483] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=0.866909
+[WARN] [1789719068.207118426] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.866909
+[WARN] [1789719068.327104852] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.866909
+[WARN] [1789719068.706951426] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.915752
+[WARN] [1789719069.556987319] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.842491
+[WARN] [1789719071.067053470] [arm6_manual_guidance]: SPEED WARNING joint4 phase=MANUAL_PUSH dq=-0.818069
+[WARN] [1789719120.407127775] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.915752
+[WARN] [1789719120.787103843] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.940170
+[WARN] [1789719121.136913246] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.866909
+[WARN] [1789719121.477061255] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.818069
+[WARN] [1789719121.867059556] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.842491
+[WARN] [1789719123.796932743] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.940170
+[WARN] [1789719123.997132002] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.842491
+[WARN] [1789719124.016964324] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-1.013432
+[WARN] [1789719124.256907871] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.915752
+[WARN] [1789719124.556925931] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-1.062271
+[WARN] [1789719124.706935296] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.866909
+[WARN] [1789719124.877127533] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.866909
+[WARN] [1789719125.047006108] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-1.062271
+[WARN] [1789719125.207090500] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.818069
+[WARN] [1789719125.406944221] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.842491
+[WARN] [1789719125.757106778] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.940170
+[WARN] [1789719126.117012428] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.891331
+[WARN] [1789719126.417138619] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.891331
+[WARN] [1789719126.746959690] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=-0.964592
+[WARN] [1789719180.397101131] [arm6_manual_guidance]: SPEED WARNING joint6 phase=MANUAL_PUSH dq=-0.989010
+[WARN] [1789719180.627074979] [arm6_manual_guidance]: SPEED WARNING joint6 phase=MANUAL_PUSH dq=-1.086693
+[WARN] [1789719180.956965932] [arm6_manual_guidance]: SPEED WARNING joint6 phase=MANUAL_PUSH dq=-0.989010
+[WARN] [1789719181.826965354] [arm6_manual_guidance]: SPEED WARNING joint6 phase=MANUAL_PUSH dq=-0.915752
+[WARN] [1789719182.647121790] [arm6_manual_guidance]: SPEED WARNING joint6 phase=MANUAL_PUSH dq=-1.135532
+[WARN] [1789719188.016944243] [arm6_manual_guidance]: SPEED WARNING joint6 phase=MANUAL_PUSH dq=0.818069
+[WARN] [1789719193.286945282] [arm6_manual_guidance]: SPEED WARNING joint6 phase=MANUAL_PUSH dq=-1.159950
+[WARN] [1789719193.386954728] [arm6_manual_guidance]: SPEED WARNING joint6 phase=MANUAL_PUSH dq=-0.842491
+[WARN] [1789719193.586918448] [arm6_manual_guidance]: SPEED WARNING joint6 phase=MANUAL_PUSH dq=-0.915752
+[WARN] [1789719332.437065032] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.964592
+[WARN] [1789719334.227041709] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.818069
+[WARN] [1789719336.277132747] [arm6_manual_guidance]: SPEED WARNING joint5 phase=MANUAL_PUSH dq=0.842491
+[INFO] [1789719395.212315988] [arm6_manual_guidance]: HOLD: operator stop acknowledged

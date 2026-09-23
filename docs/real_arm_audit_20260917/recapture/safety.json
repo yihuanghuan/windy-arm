@@ -1,0 +1,18 @@
+{
+  "serial_write_syscalls": 0,
+  "tx_0x10_to_0x14_from_process": 0,
+  "opens": [
+    "19763 1789639304.415200 openat(AT_FDCWD</home/yihuang/westlake/windy-arm>, \"/dev/ttyUSB0\", O_RDONLY|O_NOCTTY|O_NONBLOCK|O_CLOEXEC) = 5</dev/ttyUSB0<char 188:0>>"
+  ],
+  "ioctl": [
+    "19763 1789639304.430194 ioctl(5</dev/ttyUSB0<char 188:0>>, TIOCEXCL) = 0",
+    "19763 1789639304.430243 ioctl(5</dev/ttyUSB0<char 188:0>>, TCGETS, {B921600 -opost -isig -icanon -echo ...}) = 0",
+    "19763 1789639304.430292 ioctl(5</dev/ttyUSB0<char 188:0>>, TCGETS, {B921600 -opost -isig -icanon -echo ...}) = 0",
+    "19763 1789639304.430330 ioctl(5</dev/ttyUSB0<char 188:0>>, TCGETS, {B921600 -opost -isig -icanon -echo ...}) = 0",
+    "19763 1789639304.430366 ioctl(5</dev/ttyUSB0<char 188:0>>, SNDCTL_TMR_START or TCSETS, {B921600 -opost -isig -icanon -echo ...}) = 0",
+    "19763 1789639304.430401 ioctl(5</dev/ttyUSB0<char 188:0>>, TCGETS, {B921600 -opost -isig -icanon -echo ...}) = 0"
+  ],
+  "closes": [
+    "19763 1789639320.431891 close(5</dev/ttyUSB0<char 188:0>>) = 0"
+  ]
+}

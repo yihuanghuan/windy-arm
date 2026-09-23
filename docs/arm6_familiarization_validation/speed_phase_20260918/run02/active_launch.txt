@@ -1,0 +1,45 @@
+[INFO] [launch]: All log files can be found below /home/yihuang/.ros/log/2026-09-18-15-01-32-021206-JIAOLONG-Series-34877
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [student_arm_node-1]: process started with pid [34901]
+[INFO] [robot_state_publisher-2]: process started with pid [34903]
+[INFO] [rviz2-3]: process started with pid [34905]
+[INFO] [manual_guidance.py-4]: process started with pid [34907]
+[robot_state_publisher-2] [WARN] [1789714892.347928274] [kdl_parser]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.
+[robot_state_publisher-2] [INFO] [1789714892.348687394] [robot_state_publisher]: got segment base_link
+[robot_state_publisher-2] [INFO] [1789714892.349958482] [robot_state_publisher]: got segment link1
+[robot_state_publisher-2] [INFO] [1789714892.351183794] [robot_state_publisher]: got segment link2
+[robot_state_publisher-2] [INFO] [1789714892.352433030] [robot_state_publisher]: got segment link3
+[robot_state_publisher-2] [INFO] [1789714892.353684722] [robot_state_publisher]: got segment link4
+[robot_state_publisher-2] [INFO] [1789714892.355155242] [robot_state_publisher]: got segment link5
+[robot_state_publisher-2] [INFO] [1789714892.356466155] [robot_state_publisher]: got segment link6
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] add motor
+[student_arm_node-1] [INFO] [1789714892.383392843] [student_arm_node]: Arm type 'a_l1' initialized from config
+[student_arm_node-1] [INFO] [1789714892.387159178] [student_arm_node]: Direct-effort fallback hold: gravity feedforward enabled
+[student_arm_node-1] [INFO] [1789714892.388324988] [student_arm_node]: SmoothPositionController: max_velocity=0.500, velocity_feedforward=false, ff_gain=0.700, fb_tau=0.150, fb_vel_limit=0.500, acceleration_limit=true, max_acceleration=5.000
+[student_arm_node-1] [INFO] [1789714892.389507631] [student_arm_node]: StudentArmNode started: six-axis familiarization; position commands disabled
+[student_arm_node-1] [INFO] [1789714892.390684101] [student_arm_node]: Direct effort command topic /student/joint_effort_command is enabled
+[student_arm_node-1] [INFO] [1789714892.414428497] [student_arm_node]: Direct effort startup: serial heartbeat and 3 feedback frames confirmed; ready for configured effort/hold mode
+[manual_guidance.py-4] [INFO] [1789714892.847263581] [arm6_manual_guidance]: gravity = g_arm6(q + explicit_offset), ratio=1; damping only in MIT Kd
+[manual_guidance.py-4] [INFO] [1789714892.865498391] [arm6_manual_guidance]: ACTIVE RAMP_GRAVITY
+[student_arm_node-1] [WARN] [1789714892.979951151] [student_arm_node]: SPEED WARNING joint2 phase=TRANSITION dq=0.503052
+[student_arm_node-1] [ERROR] [1789714892.980147499] [student_arm_node]: SPEED HARD_ABORT joint2 phase=TRANSITION type=transition dq=0.503052 duration=0.000000
+[student_arm_node-1] [ERROR] [1789714892.980429125] [student_arm_node]: feedback stale/invalid/overspeed: fault latched, restart required
+[manual_guidance.py-4] [WARN] [1789714892.985392881] [arm6_manual_guidance]: SPEED WARNING joint2 phase=RAMP_GRAVITY dq=0.503052
+[student_arm_node-1] [ERROR] [1789714892.985764646] [student_arm_node]: guidance speed fault axes=2: fault latched, restart required
+[manual_guidance.py-4] [ERROR] [1789714892.986891093] [arm6_manual_guidance]: GUIDANCE STOPPED: speed HARD_ABORT joint2 phase=RAMP_GRAVITY type=transition dq=0.503052 duration=0.000000s; restart required
+[rviz2-3] [INFO] [1789714894.095848218] [rviz2]: Stereo is NOT SUPPORTED
+[rviz2-3] [INFO] [1789714894.095995033] [rviz2]: OpenGl version: 4.6 (GLSL 4.6)
+[rviz2-3] [INFO] [1789714894.419082739] [rviz2]: Stereo is NOT SUPPORTED
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[rviz2-3] [INFO] [1789716590.622678603] [rclcpp]: signal_handler(signum=2)
+[robot_state_publisher-2] [INFO] [1789716590.622701897] [rclcpp]: signal_handler(signum=2)
+[student_arm_node-1] [INFO] [1789716590.622709531] [rclcpp]: signal_handler(signum=2)
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 34903]
+[INFO] [manual_guidance.py-4]: process has finished cleanly [pid 34907]
+[INFO] [student_arm_node-1]: process has finished cleanly [pid 34901]
+[INFO] [rviz2-3]: process has finished cleanly [pid 34905]

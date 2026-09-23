@@ -83,8 +83,7 @@ bool ArmPlatform::ExecuteControlCycle(double dt) {
     return false;
   }
 
-  NotifyJointState();
-  NotifyMotorFeedback();
+  NotifyFreshState();
 
   // Check if planner is done
   if(planner_ && planner_->IsDone()) {
@@ -108,8 +107,7 @@ bool ArmPlatform::ExecuteDirectMotorCommand(
 
   arm_state_ = arm_->GetJointStates();
   joint_names_ = arm_->GetJointNames();
-  NotifyJointState();
-  NotifyMotorFeedback();
+  NotifyFreshState();
   return true;
 }
 
@@ -119,6 +117,14 @@ void ArmPlatform::PublishCurrentState() {
   }
   arm_state_ = arm_->GetJointStates();
   joint_names_ = arm_->GetJointNames();
+  NotifyFreshState();
+}
+
+void ArmPlatform::NotifyFreshState() {
+  if (!arm_->HasFreshFeedback(0.05)) return;
+  const auto sequence = arm_->GetFeedbackSequence();
+  if (sequence != 0 && sequence == published_feedback_sequence_) return;
+  published_feedback_sequence_ = sequence;
   NotifyJointState();
   NotifyMotorFeedback();
 }
@@ -188,23 +194,10 @@ bool ArmPlatform::ApplyCollisionAvoidance() const {
 }
 
 void ArmPlatform::PrintDebugInfo() {
-  std::cout << "Joint position (rad): [" 
-            << arm_state_.position[0] << ", " 
-            << arm_state_.position[1] << ", " 
-            << arm_state_.position[2] << ", " 
-            << arm_state_.position[3] << ", " 
-            << arm_state_.position[4] << ", " 
-            << arm_state_.position[5] << ", " 
-            << arm_state_.position[6] << "]" << std::endl;
-            
-  std::cout << "Joint currents (A): [" 
-            << arm_state_.current[0] << ", " 
-            << arm_state_.current[1] << ", " 
-            << arm_state_.current[2] << ", " 
-            << arm_state_.current[3] << ", " 
-            << arm_state_.current[4] << ", " 
-            << arm_state_.current[5] << ", " 
-            << arm_state_.current[6] << "]" << std::endl;
+  for (size_t i = 0; i < arm_state_.position.size(); ++i) {
+    std::cout << joint_names_[i] << ": q=" << arm_state_.position[i]
+              << " effort=" << arm_state_.current[i] << std::endl;
+  }
 }
 
 }  // namespace manipulator
