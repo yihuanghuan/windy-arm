@@ -1,0 +1,8 @@
+# Validated 2026-09-24: manual horizontal base disturbance about 10 cm / 5 s.
+# Overlay AFTER camera_world_hold.yaml; all Phase 1 defaults remain unchanged.
+# Requires calibrated housing extrinsic and the existing position bridge.
+# Does not auto-enable HOLD or start motor actuation.
+camera_world_hold:
+  ros__parameters:
+    velocity_feedforward_linear_gain: 0.25
+    velocity_feedforward_angular_gain: 0.25
