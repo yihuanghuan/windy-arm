@@ -25,6 +25,13 @@ from camera_world_hold_core import ordered_joints
 MAX_INTEGRATION_RATE = .2
 
 
+def integration_interval(elapsed):
+    """Bound each position increment; never catch up a scheduling backlog."""
+    if not np.isfinite(elapsed) or not 0 < elapsed <= .1:
+        raise ValueError('position integration loop gap exceeded 0.1 s')
+    return min(elapsed, .03)
+
+
 def integrate_position(reference, dq, dt, speed):
     reference, dq = np.asarray(reference, float), np.asarray(dq, float)
     if (reference.shape != (6,) or dq.shape != (6,) or
@@ -110,8 +117,11 @@ class PositionBridge(Probe):
             if self.args.duration > 0 and now-started >= self.args.duration:
                 print('Bounded trial complete; returning to driver HOLD', flush=True)
                 break
-            target = integrate_position(self.command.position, self.rate,
-                                        now-previous, self.args.speed)
+            elapsed = now-previous
+            dt = integration_interval(elapsed)
+            if dt < elapsed:
+                self.record('integration_time_clamped', elapsed=elapsed, integrated=dt)
+            target = integrate_position(self.command.position, self.rate, dt, self.args.speed)
             previous = now
             if np.max(abs(target-self.seed['position'])) > np.deg2rad(self.args.max_offset_deg):
                 print('Bounded trial excursion reached; returning to driver HOLD', flush=True)

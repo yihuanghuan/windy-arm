@@ -1,7 +1,16 @@
 import numpy as np
 import pytest
 
-from camera_world_hold_position_bridge import integrate_position, PositionBridge
+from camera_world_hold_position_bridge import integrate_position, integration_interval, PositionBridge
+
+
+def test_scheduling_jitter_never_produces_a_catchup_position_jump():
+    for elapsed in (.005,.03,.04,.08,.1):
+        dt=integration_interval(elapsed)
+        target=integrate_position(np.zeros(6),np.full(6,.12),dt,.12)
+        np.testing.assert_allclose(target,np.full(6,.12*min(elapsed,.03)))
+    for elapsed in (0.,-.1,.10001,np.nan,np.inf):
+        with pytest.raises(ValueError):integration_interval(elapsed)
 
 
 def test_integrates_from_support_reference_instead_of_resetting_to_feedback():
