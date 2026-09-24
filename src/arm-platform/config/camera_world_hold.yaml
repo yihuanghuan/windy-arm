@@ -1,0 +1,29 @@
+camera_world_hold:
+  ros__parameters:
+    # Node/interface name retained; controlled body is link6, reconstructed from camera + q6.
+    # D435i is fixed to joint6 MOTOR HOUSING, not its rotating output/link6.
+    # joint6_housing is the URDF joint6 origin before joint6 rotation (fixed to link5).
+    parent_frame: joint6_housing
+    world_frame: orb_map
+    camera_frame: camera_link
+    left_optical_frame: camera_infra1_optical_frame
+    joint6_to_left_xyz: [-0.0042, 0.018, 0.037]
+    # R_joint6_housing_left_optical, xyzw, maps optical vectors INTO housing axes.
+    # Do not substitute the RealSense internal optical rotation here.
+    joint6_to_left_optical_xyzw: [-0.5305694028154708, 0.47933163435847387, -0.471658272171696, 0.5160191540934111]
+    read_only: false
+    publish_command: false
+    control_rate: 25.0
+    kp_position: 1.2
+    kp_rotation: 1.0
+    max_linear_velocity: 0.05
+    max_angular_velocity: 0.2
+    # Validated about 10 cm / 5 s base translation with the MIT position bridge.
+    max_joint_velocity: 0.12
+    damping_lambda: 0.02
+    position_deadband: 0.003
+    rotation_deadband: 0.017453292519943295
+    pose_receive_timeout: 0.20
+    pose_header_max_age: 1.0
+    joint_timeout: 0.15
+    validity_timeout: 0.25

@@ -246,6 +246,14 @@ install(DIRECTORY meshes/
 )
 
 install(PROGRAMS
+  demo/camera_fk_motion_probe.py
+  demo/camera_world_hold_position_bridge.py
+  demo/calibrate_camera_mount_rotation.py
+  demo/camera_mount_calibration_core.py
+  demo/camera_world_hold_core.py
+  demo/camera_world_hold_monitor.py
+  demo/camera_world_hold_controller.py
+  demo/plot_camera_world_hold.py
   demo/base_trust_estimator.py
   demo/dart_noise.py
   demo/online_path_time_scaler.py

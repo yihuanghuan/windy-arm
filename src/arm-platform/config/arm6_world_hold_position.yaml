@@ -1,0 +1,95 @@
+# Existing student_arm6 position gains used by the verified world-hold demo.
+# Remaining familiarization driver limits are unchanged; start_guidance must be false.
+damping:
+- 0.2
+- 0.2
+- 0.2
+- 0.05
+- 0.05
+- 0.05
+feedback_timeout_sec: 0.05
+guide_instant_abort_speed: 1.2
+guide_manual_instant_abort_speed:
+- 2.0
+- 2.0
+- 2.0
+- 2.2
+- 2.2
+- 2.2
+guide_manual_sustained_abort_speed:
+- 1.8
+- 1.8
+- 1.8
+- 1.8
+- 1.8
+- 1.8
+guide_manual_sustained_duration: 0.12
+guide_manual_warning_speed:
+- 1.0
+- 1.0
+- 1.0
+- 1.5
+- 1.5
+- 1.5
+guide_sustained_abort_duration: 0.08
+guide_sustained_abort_speed: 1.0
+guide_warning_speed: 0.5
+hold_d:
+- 1.5
+- 1.5
+- 1.5
+- 1.0
+- 1.0
+- 1.0
+hold_p:
+- 35.0
+- 35.0
+- 35.0
+- 5.0
+- 5.0
+- 5.0
+joint_limit_margin: 0.1
+joint_lower_limits:
+- -4.0
+- -3.1415
+- -1.5708
+- -4.0
+- -2.0
+- -4.0
+joint_upper_limits:
+- 4.0
+- 2.0
+- 1.5708
+- 4.0
+- 2.0
+- 4.0
+model_zero_offset_rad:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+no_touch_duration_sec: 5.0
+no_touch_position_tolerance: 0.01
+no_touch_speed_limit: 0.2
+ramp_duration_sec: 3.0
+rate_hz: 100.0
+release_duration_sec: 3.0
+required_handover_trials: 3
+torque_limits:
+- 9.0
+- 9.0
+- 9.0
+- 1.6
+- 1.6
+- 1.6
+torque_rate_limits:
+- 3.0
+- 3.0
+- 3.0
+- 0.5
+- 0.5
+- 0.5
+transition_abort_speed: 0.5
+transition_warning_speed: 0.5
