@@ -246,6 +246,8 @@ install(DIRECTORY meshes/
 )
 
 install(PROGRAMS
+  demo/link6_hold_visualizer.py
+  demo/record_rviz_window.py
   demo/camera_fk_motion_probe.py
   demo/camera_world_hold_position_bridge.py
   demo/calibrate_camera_mount_rotation.py

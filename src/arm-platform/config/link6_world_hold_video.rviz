@@ -1,0 +1,68 @@
+Panels: []
+Visualization Manager:
+  Class: ''
+  Displays:
+  - Class: rviz_default_plugins/Grid
+    Name: World grid - 10 cm
+    Enabled: true
+    Cell Size: 0.1
+    Plane Cell Count: 16
+    Color: 65; 85; 110
+    Alpha: 0.35
+    Line Style:
+      Value: Lines
+      Line Width: 0.001
+    Plane: XY
+    Offset:
+      X: 0
+      Y: 0
+      Z: -0.45
+    Reference Frame: <Fixed Frame>
+  - Class: rviz_default_plugins/MarkerArray
+    Name: Live robot - target - trails - error
+    Enabled: true
+    Marker Topic:
+      Value: /link6_hold_view/markers
+      Depth: 1
+      Durability Policy: Volatile
+      Reliability Policy: Reliable
+      History Policy: Keep Last
+    Value: true
+    Topic: /link6_hold_view/markers
+  Enabled: true
+  Global Options:
+    Background Color: 14; 21; 34
+    Fixed Frame: orb_map
+    Frame Rate: 30
+  Name: root
+  Tools:
+  - Class: rviz_default_plugins/MoveCamera
+  - Class: rviz_default_plugins/Select
+  - Class: rviz_default_plugins/FocusCamera
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 1.15
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: -0.04
+      Name: Filming view
+      Near Clip Distance: 0.01
+      Pitch: 0.22
+      Yaw: 0.8
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz)
+    Saved: null
+  Value: true
+Window Geometry:
+  Displays:
+    collapsed: true
+  Views:
+    collapsed: true
+  Hide Left Dock: true
+  Hide Right Dock: true
+  Height: 1300
+  Width: 2400
+  X: 30
+  Y: 70
