@@ -9,7 +9,7 @@ import subprocess
 import numpy as np
 import pytest
 import rclpy
-from geometry_msgs.msg import PoseStamped, TransformStamped
+from geometry_msgs.msg import PoseStamped, TransformStamped, TwistStamped
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -23,7 +23,7 @@ from camera_world_hold_controller import CameraWorldHold
 
 
 class Rig:
-    def __init__(self, publish, tmp_path, mount=True, external_driver=False):
+    def __init__(self, publish, tmp_path, mount=True, external_driver=False, extra_parameters=None):
         if os.environ.get('ROS_DOMAIN_ID') != '196' or os.environ.get('ROS_LOCALHOST_ONLY') != '1':
             pytest.fail('requires ROS_DOMAIN_ID=196 ROS_LOCALHOST_ONLY=1; never test on robot domain')
         rclpy.init()
@@ -33,6 +33,7 @@ class Rig:
                                joint_lower_limits=[-4.,-3.14,-1.57,-4.,-2.,-4.]).items():
             self.driver.declare_parameter(key, value)
         parameters = dict(publish_command=publish, log_path=str(tmp_path/'test.csv'))
+        parameters.update(extra_parameters or {})
         if mount:
             # Explicit synthetic mount, never copied to production YAML.
             parameters['joint6_to_left_optical_xyzw'] = [0.,0.,0.,1.]
@@ -44,6 +45,7 @@ class Rig:
         self.pose_pub = self.probe.create_publisher(PoseStamped, '/slam/camera_pose', 10)
         self.q_pub = self.probe.create_publisher(JointState, '/joint_states', 10)
         self.valid_pub = self.probe.create_publisher(Bool, '/slam/state_valid', 10)
+        self.twist_pub = self.probe.create_publisher(TwistStamped, '/slam/camera_twist', 10)
         self.tf = StaticTransformBroadcaster(self.probe)
         tf = TransformStamped()
         tf.header.stamp = self.probe.get_clock().now().to_msg()
@@ -55,6 +57,9 @@ class Rig:
         self.q = [.2,.6,-.7,.5,.4,-.3]
         self.x, self.valid, self.old_stamp, self.frame = 0., True, False, 'orb_map'
         self.pose_delay=0.
+        self.send_twist=False
+        self.twist_frame='orb_map'
+        self.twist_x=.02
         self.send_pose, self.send_joints, self.send_valid = True, True, True
         if external_driver:
             self.send_joints = False
@@ -77,6 +82,11 @@ class Rig:
             m.pose.position.x = self.x
             m.pose.orientation.w = 1.
             self.pose_pub.publish(m)
+            if self.send_twist:
+                twist=TwistStamped();twist.header=m.header
+                twist.header.frame_id=self.twist_frame
+                twist.twist.linear.x=self.twist_x
+                self.twist_pub.publish(twist)
         if self.send_joints:
             m = JointState()
             m.header.stamp = stamp
@@ -245,3 +255,46 @@ def test_existing_cpp_position_interface(tmp_path):
                 rig.close()
             os.killpg(process.pid, signal.SIGINT)
             process.wait(timeout=8)
+
+
+def test_velocity_feedforward_shadow_transport_and_p_only_fallback(tmp_path):
+    rig=Rig(False,tmp_path,extra_parameters=dict(
+        velocity_feedforward_linear_gain=.5, velocity_feedforward_angular_gain=.5,
+        feedforward_linear_deadband=0., feedforward_angular_deadband=0.))
+    velocity_ages=[]
+    rig.probe.create_subscription(TwistStamped, '/camera_world_hold/measured_link6_twist',
+        lambda m:velocity_ages.append(rig.probe.get_clock().now().nanoseconds*1e-9-
+                                      m.header.stamp.sec-m.header.stamp.nanosec*1e-9),10)
+    try:
+        rig.pose_delay=.15;rig.send_twist=True
+        rig.spin(2.3)
+        assert rig.enable().success
+        rig.spin(.25)
+        assert rig.node.ff_status['ff_valid']
+        assert rig.node.state=='HOLD' and not rig.commands
+        assert velocity_ages and .10 < np.median(velocity_ages) < .25
+        assert np.linalg.norm(np.array(rig.shadows[-1].position)-rig.q)>1e-5
+        # Missing twist must not leave the last nonzero FF latched.
+        rig.send_twist=False;rig.spin(.35)
+        assert rig.node.state=='HOLD' and not rig.node.ff_status['ff_valid']
+        np.testing.assert_allclose(rig.shadows[-1].position,rig.q,atol=1e-12)
+        rig.x=.01;rig.spin(.1)
+        assert np.linalg.norm(np.array(rig.shadows[-1].position)-rig.q)>1e-5
+        rig.send_twist=True;rig.twist_frame='wrong_frame';rig.spin(.15)
+        assert rig.node.state=='HOLD' and not rig.node.ff_status['ff_valid']
+        rig.twist_frame='orb_map';rig.twist_x=float('nan');rig.spin(.15)
+        assert not rig.node.ff_status['ff_valid']
+        rig.twist_x=.02;rig.spin(.15)
+        assert rig.node.ff_status['ff_valid']
+        rig.valid=False;rig.spin(.1)
+        assert rig.node.desired is None
+        rig.valid=True;rig.spin(.15)
+        assert rig.node.state=='READY' and rig.node.desired is None
+        assert not rig.commands
+    finally:
+        rig.close()
+    import csv
+    rows=list(csv.DictReader((tmp_path/'test.csv').open()))
+    assert rows and all(None not in row for row in rows)
+    active=[r for r in rows if r['ff_valid']=='True']
+    assert active and any(float(r['feedforward_twist_vx'])<-.009 for r in active)

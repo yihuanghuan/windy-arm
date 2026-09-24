@@ -27,3 +27,13 @@ camera_world_hold:
     pose_header_max_age: 1.0
     joint_timeout: 0.15
     validity_timeout: 0.25
+    # Phase 2 is opt-in. Zero gains reproduce the frozen Phase 1 P loop.
+    velocity_feedforward_linear_gain: 0.0
+    velocity_feedforward_angular_gain: 0.0
+    feedforward_max_linear_velocity: 0.03
+    feedforward_max_angular_velocity: 0.10
+    feedforward_linear_deadband: 0.003
+    feedforward_angular_deadband: 0.01
+    joint_velocity_window: 0.10
+    twist_receive_timeout: 0.20
+    feedforward_max_sample_lag: 0.08

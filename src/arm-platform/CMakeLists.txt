@@ -251,6 +251,7 @@ install(PROGRAMS
   demo/calibrate_camera_mount_rotation.py
   demo/camera_mount_calibration_core.py
   demo/camera_world_hold_core.py
+  demo/camera_world_hold_velocity.py
   demo/camera_world_hold_monitor.py
   demo/camera_world_hold_controller.py
   demo/plot_camera_world_hold.py

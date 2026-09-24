@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pose-only camera hold math. Twists use Pinocchio's [linear, angular] order."""
+"""World hold math. Twists use Pinocchio's [linear, angular] order."""
 from pathlib import Path
 
 import numpy as np
@@ -112,7 +112,7 @@ class CameraKinematics:
     def step(self, q, measured, desired, dt, kp_position=1.5, kp_rotation=1.5,
              max_linear_velocity=0.05, max_angular_velocity=0.2,
              max_joint_velocity=0.3, damping_lambda=0.03,
-             position_deadband=0., rotation_deadband=0.):
+             position_deadband=0., rotation_deadband=0., feedforward=None):
         q = self.check_q(q)
         scalars = np.array([dt, kp_position, kp_rotation, max_linear_velocity,
                             max_angular_velocity, max_joint_velocity, damping_lambda])
@@ -123,9 +123,12 @@ class CameraKinematics:
         er = pin.log3(re)
         # Keep raw error for diagnostics. A continuous radial deadzone prevents
         # stationary measurement noise from winding up the position reference.
-        world_twist = np.r_[clamp_norm(kp_position * pose_deadzone(ep, position_deadband),
+        ff = np.zeros(6) if feedforward is None else vector(feedforward, 6)
+        feedback = np.r_[kp_position * pose_deadzone(ep, position_deadband),
+                         kp_rotation * pose_deadzone(er, rotation_deadband)]
+        world_twist = np.r_[clamp_norm(feedback[:3] + ff[:3],
                                       max_linear_velocity),
-                            clamp_norm(kp_rotation * pose_deadzone(er, rotation_deadband),
+                            clamp_norm(feedback[3:] + ff[3:],
                                       max_angular_velocity)]
         # Both blocks refer to the controlled frame origin; only rotate axes.
         # A full SE(3) adjoint here would incorrectly add a world-origin lever arm.
@@ -141,6 +144,7 @@ class CameraKinematics:
         if not np.isfinite(np.r_[ep, er, world_twist, dq, q_cmd]).all():
             raise ValueError('non-finite control result')
         return dict(position_error=ep, rotation_error=er,
+                    feedback_twist=feedback, feedforward_twist=ff,
                     rpy_error=pin.rpy.matrixToRpy(re), twist=world_twist, dq=dq, q_cmd=q_cmd,
                     jacobian_singular_values=singular_values,
                     jacobian_rank=np.asarray(np.linalg.matrix_rank(j)),
@@ -182,3 +186,23 @@ class Link6Kinematics(CameraKinematics):
         # Equivalent to rotating LOCAL_WORLD_ALIGNED J by R_W_B; no base observer.
         j = self.jacobian(q)
         return np.vstack((world_link6.rotation @ j[:3], world_link6.rotation @ j[3:]))
+
+    def external_velocity(self, q, dq, world_camera, camera_twist):
+        """Subtract arm self-motion at C, then shift external twist C -> E.
+
+        All inputs describe the SAME sensor timestamp. No world/base pose
+        estimator: use R_W_C solely to express the camera's LOCAL Jacobian.
+        q6 contributes to J_E and measured E angular velocity, but not J_C.
+        """
+        dq, camera_twist = vector(dq, self.model.nv), vector(camera_twist, 6)
+        world_link6 = self.reconstruct(q, world_camera)
+        jc = CameraKinematics.jacobian(self, q)
+        jc = np.vstack((world_camera.rotation @ jc[:3], world_camera.rotation @ jc[3:]))
+        robot_camera = jc @ dq
+        external_camera = camera_twist - robot_camera
+        offset = world_link6.translation - world_camera.translation
+        external_link6 = np.r_[external_camera[:3] + np.cross(external_camera[3:], offset),
+                              external_camera[3:]]
+        measured_link6 = self.world_jacobian(q, world_link6) @ dq + external_link6
+        return dict(camera_twist=camera_twist, robot_camera_twist=robot_camera,
+                    external_link6_twist=external_link6, measured_link6_twist=measured_link6)

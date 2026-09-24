@@ -21,6 +21,7 @@ from std_srvs.srv import SetBool
 from tf2_ros import Buffer, TransformListener, TransformException
 
 from camera_world_hold_core import Link6Kinematics, default_urdf, ordered_joints, transform
+from camera_world_hold_velocity import VelocitySamples
 
 
 class CameraWorldHold(Node):
@@ -34,6 +35,11 @@ class CameraWorldHold(Node):
                         kp_position=1.5, kp_rotation=1.5, max_linear_velocity=0.05,
                         max_angular_velocity=0.2, max_joint_velocity=0.3, damping_lambda=0.03,
                         position_deadband=0., rotation_deadband=0.,
+                        velocity_feedforward_linear_gain=0., velocity_feedforward_angular_gain=0.,
+                        feedforward_max_linear_velocity=.03, feedforward_max_angular_velocity=.10,
+                        feedforward_linear_deadband=.003, feedforward_angular_deadband=.01,
+                        joint_velocity_window=.10, twist_receive_timeout=.20,
+                        feedforward_max_sample_lag=.08,
                         pose_receive_timeout=0.20, pose_header_max_age=1.0,
                         joint_timeout=0.15, validity_timeout=0.25,
                         log_path='', driver_node='/student_arm_node')
@@ -41,14 +47,24 @@ class CameraWorldHold(Node):
                     for k, v in defaults.items()}
         for key in ('control_rate', 'kp_position', 'kp_rotation', 'max_linear_velocity',
                     'max_angular_velocity', 'max_joint_velocity', 'damping_lambda',
-                    'pose_receive_timeout', 'pose_header_max_age', 'joint_timeout', 'validity_timeout'):
+                    'pose_receive_timeout', 'pose_header_max_age', 'joint_timeout', 'validity_timeout',
+                    'feedforward_max_linear_velocity', 'feedforward_max_angular_velocity',
+                    'twist_receive_timeout', 'feedforward_max_sample_lag'):
             if not np.isfinite(self.cfg[key]) or self.cfg[key] <= 0:
                 raise ValueError(f'{key} must be positive and finite')
         if self.cfg['read_only'] and self.cfg['publish_command']:
             raise ValueError('read_only and publish_command are mutually exclusive')
-        for key in ('position_deadband', 'rotation_deadband'):
+        for key in ('position_deadband', 'rotation_deadband',
+                    'feedforward_linear_deadband', 'feedforward_angular_deadband'):
             if not np.isfinite(self.cfg[key]) or self.cfg[key] < 0:
                 raise ValueError(f'{key} must be nonnegative and finite')
+        for key in ('velocity_feedforward_linear_gain', 'velocity_feedforward_angular_gain'):
+            if not np.isfinite(self.cfg[key]) or not 0 <= self.cfg[key] <= 1:
+                raise ValueError(f'{key} must be within [0, 1]')
+        self.ff_enabled = bool(self.cfg['velocity_feedforward_linear_gain'] or
+                               self.cfg['velocity_feedforward_angular_gain'])
+        self.velocity_samples = VelocitySamples(self.cfg['joint_velocity_window'])
+        self.ff_status = dict(ff_enabled=self.ff_enabled, ff_valid=False, ff_reason='not HOLD')
         self.kin = Link6Kinematics(self.cfg['urdf_path'], self.cfg['parent_frame'])
         self.samples = {}
         self.desired = None
@@ -60,6 +76,8 @@ class CameraWorldHold(Node):
         self.create_subscription(PoseStamped, '/slam/camera_pose', self.on_pose, qos_profile_sensor_data)
         self.create_subscription(JointState, '/joint_states', self.on_joints, qos_profile_sensor_data)
         self.create_subscription(Bool, '/slam/state_valid', self.on_valid, qos_profile_sensor_data)
+        if self.ff_enabled:
+            self.create_subscription(TwistStamped, '/slam/camera_twist', self.on_twist, qos_profile_sensor_data)
         self.command_pub = (self.create_publisher(JointState, '/student/joint_command', 1)
                             if self.cfg['publish_command'] else None)
         self.shadow_pub = self.create_publisher(JointState, '~/shadow_joint_command', 1)
@@ -70,6 +88,9 @@ class CameraWorldHold(Node):
         self.measured_pub = self.create_publisher(PoseStamped, '~/measured_link6_pose', 1)
         self.error_pub = self.create_publisher(TwistStamped, '~/pose_error', 1)
         self.twist_pub = self.create_publisher(TwistStamped, '~/command_twist', 1)
+        self.feedforward_pub = self.create_publisher(TwistStamped, '~/feedforward_twist', 1)
+        self.external_velocity_pub = self.create_publisher(TwistStamped, '~/external_link6_twist', 1)
+        self.measured_velocity_pub = self.create_publisher(TwistStamped, '~/measured_link6_twist', 1)
         self.status_pub = self.create_publisher(String, '~/status', 1)
         self.create_service(SetBool, '~/enable', self.on_enable)
         self.driver = None
@@ -95,7 +116,13 @@ class CameraWorldHold(Node):
                                   ('q', self.kin.names), ('dq', self.kin.names),
                                   ('q_cmd', self.kin.names)) for axis in axes] +
                               [f'jacobian_sigma_{i+1}' for i in range(6)] +
-                              ['jacobian_rank','jacobian_condition','command_published'])
+                              ['jacobian_rank','jacobian_condition','command_published'] +
+                              [f'{group}_{axis}' for group in (
+                                  'feedback_twist', 'feedforward_twist', 'camera_twist',
+                                  'robot_camera_twist', 'external_link6_twist', 'measured_link6_twist')
+                               for axis in ('vx','vy','vz','wx','wy','wz')] +
+                              [f'synchronized_dq_{name}' for name in self.kin.names] +
+                              ['ff_valid','ff_reason','ff_sample_stamp','ff_sensor_latency','ff_receive_gap'])
         self.last_tick = time.monotonic()
         self.last_report = 0.0
         self.create_timer(1.0, self.resolve_geometry)
@@ -117,14 +144,30 @@ class CameraWorldHold(Node):
                 raise ValueError('unexpected camera pose frame')
             p, q = msg.pose.position, msg.pose.orientation
             self.receive('pose', transform([p.x,p.y,p.z], [q.x,q.y,q.z,q.w]), msg)
+            if self.ff_enabled:
+                pose, received, stamp = self.samples['pose']
+                self.velocity_samples.add_pose(stamp, received, pose)
         except ValueError as error:
             self.samples.pop('pose', None)
             self.stop(str(error))
+
+    def on_twist(self, msg):
+        try:
+            if msg.header.frame_id != self.cfg['world_frame']:
+                raise ValueError('unexpected camera twist frame; P-only fallback')
+            v, w = msg.twist.linear, msg.twist.angular
+            stamp = msg.header.stamp.sec + msg.header.stamp.nanosec*1e-9
+            self.velocity_samples.add_twist(stamp, time.monotonic(),
+                                            [v.x,v.y,v.z,w.x,w.y,w.z])
+        except ValueError as error:
+            self.velocity_samples.invalidate(str(error))
 
     def on_joints(self, msg):
         try:
             q = ordered_joints(msg.name, msg.position, self.kin.names)
             self.receive('joints', self.kin.check_q(q), msg)
+            if self.ff_enabled:
+                self.velocity_samples.joints.add(self.samples['joints'][2], q)
         except ValueError as error:
             self.samples.pop('joints', None)
             self.stop(str(error))
@@ -132,6 +175,7 @@ class CameraWorldHold(Node):
     def on_valid(self, msg):
         self.receive('valid', msg.data)
         if not msg.data:
+            self.velocity_samples.invalidate('SLAM invalid')
             self.stop('SLAM invalid: re-enable manually after recovery')
 
     def age(self, key):
@@ -234,7 +278,7 @@ class CameraWorldHold(Node):
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.name, msg.position = self.kin.names, q.tolist()
-        # Position-only interface. No velocity or acceleration feedforward.
+        # Position-only motor interface; Cartesian FF still integrates into position.
         msg.velocity = [0.0] * len(q)
         return msg
 
@@ -256,9 +300,10 @@ class CameraWorldHold(Node):
          msg.pose.orientation.z, msg.pose.orientation.w) = q.tolist()
         return msg
 
-    def publish_twist(self, publisher, values):
+    def publish_twist(self, publisher, values, sample_stamp=None):
         msg = TwistStamped()
-        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.stamp = (self.get_clock().now().to_msg() if sample_stamp is None else
+                            rclpy.time.Time(seconds=sample_stamp).to_msg())
         msg.header.frame_id = self.cfg['world_frame']
         msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z = values[:3].tolist()
         msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z = values[3:].tolist()
@@ -269,6 +314,8 @@ class CameraWorldHold(Node):
         dt, self.last_tick = now-self.last_tick, now
         ready, reason = self.readiness()
         result = None
+        velocity_details = {}
+        self.ff_status = dict(ff_enabled=self.ff_enabled, ff_valid=False, ff_reason='not HOLD')
         measured = None
         published = False
         if ready and self.kin.frame_id is not None:
@@ -282,8 +329,11 @@ class CameraWorldHold(Node):
             try:
                 if not self.driver_ready():
                     raise ValueError('position driver unavailable or incompatible')
+                ff, self.ff_status, velocity_details = self.velocity_samples.evaluate(
+                    self.kin, now, self.ros_seconds(), self.samples['pose'][2], self.cfg)
                 result = self.kin.step(self.samples['joints'][0], measured,
                                        self.desired, min(dt, 1.0/self.cfg['control_rate']),
+                                       feedforward=ff,
                                        **{key: self.cfg[key] for key in (
                                            'kp_position','kp_rotation','max_linear_velocity',
                                            'max_angular_velocity','max_joint_velocity','damping_lambda',
@@ -291,6 +341,12 @@ class CameraWorldHold(Node):
                 self.desired_pub.publish(self.pose_message(self.desired))
                 self.publish_twist(self.error_pub, np.r_[result['position_error'], result['rotation_error']])
                 self.publish_twist(self.twist_pub, result['twist'])
+                self.publish_twist(self.feedforward_pub, ff)
+                if self.ff_status['ff_valid']:
+                    self.publish_twist(self.external_velocity_pub, velocity_details['external_link6_twist'],
+                                       self.ff_status['ff_sample_stamp'])
+                    self.publish_twist(self.measured_velocity_pub, velocity_details['measured_link6_twist'],
+                                       self.ff_status['ff_sample_stamp'])
                 msg = self.joint_message(result['q_cmd'])
                 self.shadow_pub.publish(msg)
                 rate = self.joint_message(self.samples['joints'][0])
@@ -316,7 +372,15 @@ class CameraWorldHold(Node):
             row += ([float('nan')]*6 if result is None else result['jacobian_singular_values'].tolist())
             row += ([float('nan')]*2 if result is None else
                     [int(result['jacobian_rank']),float(result['jacobian_condition'])])
-            self.csv.writerow(row + [published])
+            row += [published]
+            for key in ('feedback_twist','feedforward_twist','camera_twist',
+                        'robot_camera_twist','external_link6_twist','measured_link6_twist',
+                        'synchronized_joint_velocity'):
+                value = (result or {}).get(key, velocity_details.get(key))
+                row += [float('nan')]*6 if value is None else value.tolist()
+            row += [self.ff_status.get(k) for k in
+                    ('ff_valid','ff_reason','ff_sample_stamp','ff_sensor_latency','ff_receive_gap')]
+            self.csv.writerow(row)
         if now-self.last_report >= 1.0:
             self.last_report = now
             status = dict(state=self.state, reason=self.reason, geometry=self.mount_reason,
@@ -339,6 +403,8 @@ class CameraWorldHold(Node):
                 status.update({k: v.tolist() for k, v in result.items()})
                 if not np.isfinite(result['jacobian_condition']):
                     status['jacobian_condition']=None
+            status.update(self.ff_status)
+            status.update({k:v.tolist() for k,v in velocity_details.items()})
             message = json.dumps(status)
             self.status_pub.publish(String(data=message))
             self.get_logger().info(message)
