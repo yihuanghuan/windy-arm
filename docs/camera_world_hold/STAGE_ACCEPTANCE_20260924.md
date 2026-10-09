@@ -13,7 +13,7 @@
 | 项目 | 验收配置 |
 |---|---|
 | 机械臂 | `a_l1/gamma6`，主动关节 `joint1`–`joint6`，URDF `src/arm-platform/config/arm6.urdf` |
-| 视觉 | D435i stereo-inertial ORB-SLAM3；`/slam/camera_pose` 为 `orb_map → camera_link` |
+| 视觉 | D435i stereo-inertial ORB-SLAM3；`/slam/camera_pose` 为 `orb_map → camera_link`；现场使用 `opencv_threads:=1` |
 | 安装 | D435i 固定在 `joint6_housing` 电机壳体，不随 joint6 输出端转动 |
 | 控制对象 | joint6 输出端 `link6` 的世界 6D 位姿；joint6 保留在完整六列 Jacobian 中 |
 | 位姿重建 | `T_W_link6 = T_W_camera · inverse(T_housing_camera) · T_housing_link6(q6)` |
@@ -52,6 +52,6 @@
 
 `windy-arm` 分支：`agent/link6-velocity-feedforward`；Phase 1 冻结标签 `link6-world-hold-phase1-20260924`，前馈标签 `link6-world-hold-ff025-20260924`，视频演示标签 `link6-world-hold-video-demo-20260924`。
 
-`ORB-SLAM3` 分支：`agent/orb-slam3-ros2-motion-state`。两项局部性能修复分别保留原观测、描述子中位数与并列选择规则：`8c71b4d` 避免描述子平方栈内存，`20e353a` 避免 local-keyframe 投票时反复复制观测树。对应参考测试与构建通过。原仓库工作区仍有更早的 profiling 修改和本地生成文件，本次只推送已审阅的提交。
+`ORB-SLAM3` 分支：[agent/orb-slam3-ros2-motion-state](https://github.com/yihuanghuan/ORB_SLAM3/tree/agent/orb-slam3-ros2-motion-state)。两项局部性能修复分别保留原观测、描述子中位数与并列选择规则：`8c71b4d` 避免描述子平方栈内存，`20e353a` 避免 local-keyframe 投票时反复复制观测树。`55cbe2c` 增加现场使用的 `opencv_threads` 启动参数，默认 0 保留 OpenCV 原行为；该节点和 launch 编译/语法检查通过。原仓库工作区仍有更早的 profiling 修改和本地生成文件，本次只推送已审阅的提交。现场性能时序可能受该本地 profiling 编译配置影响，因此不能仅凭远端源码宣称逐毫秒复现；上传的逐周期 CSV 保存了本次实测输出。
 
 10 cm 前馈试验中 joint5 增量跟踪偏差峰值约 **0.078 rad**，接近现有 **0.08 rad** 保护阈值；尚未验证更大或更快的扰动。长时 SLAM 跟踪曾短暂 invalid，控制器会退出 HOLD 并保持保位，不会自动追旧目标。阶段验收不覆盖持续高带宽或任意六方向的大幅扰动。
