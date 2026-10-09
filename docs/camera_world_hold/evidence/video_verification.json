@@ -1,0 +1,25 @@
+{
+  "file": "log/link6_phase2_20260924/link6_3d_demo_rviz.mp4",
+  "frames": 3594,
+  "fps": 15.0,
+  "duration_seconds": 239.6,
+  "size": [
+    1280,
+    740
+  ],
+  "decoded_frames": [
+    0,
+    1797,
+    2875,
+    3593
+  ],
+  "size_bytes": 31557223,
+  "realtime_export": {
+    "file": "log/link6_phase2_20260924/link6_3d_demo_rviz_realtime.mp4",
+    "frames": 3594,
+    "fps": 15.622011649135008,
+    "duration_seconds": 230.06017155293816,
+    "recorded_wall_seconds": 230.06,
+    "method": "Uniform frame-rate correction from measured capture wall time; all original frames retained. Original MP4 preserved."
+  }
+}

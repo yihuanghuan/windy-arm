@@ -1,7 +1,7 @@
-# D435i world pose hold — Phase 1
+# D435i / link6 世界位姿稳定
 
-> 当前实机扩大扰动记录和命令见 [EXTENDED_RESULT_20260924.md](EXTENDED_RESULT_20260924.md)。
-> 冻结后的可选速度前馈见 [VELOCITY_FEEDFORWARD.md](VELOCITY_FEEDFORWARD.md)，默认关闭，尚未实机接入。
+> 阶段验收结论、实机数据、RViz 视频及证据见 [STAGE_ACCEPTANCE_20260924.md](STAGE_ACCEPTANCE_20260924.md)。
+> 冻结的纯 P 实验见 [EXTENDED_RESULT_20260924.md](EXTENDED_RESULT_20260924.md)；可选速度前馈已完成真机验证，默认关闭，见 [VELOCITY_FEEDFORWARD.md](VELOCITY_FEEDFORWARD.md)。
 > 下文保留早期审计；其“外参未定/尚未闭环”状态和默认增益已被后续实验更新。
 
 > 现场更正（2026-09-23）：D435i 安装在 joint6 **电机壳体**，不随 joint6 输出端转动。
